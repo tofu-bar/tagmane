@@ -27,6 +27,8 @@ namespace tagmane
         private bool _isUpdatingSelection = false;
         private HashSet<string> _selectedTags = new HashSet<string>();
         private HashSet<string> _currentImageTags = new HashSet<string>();
+        private Stack<Action> _undoStack = new Stack<Action>();
+        private Stack<Action> _redoStack = new Stack<Action>();
 
         public MainWindow()
         {
@@ -81,7 +83,7 @@ namespace tagmane
                     SelectedImage.Source = new BitmapImage(new Uri(selectedImage.ImagePath));
                     AssociatedText.Text = selectedImage.AssociatedText;
                     _currentImageTags = new HashSet<string>(selectedImage.Tags);
-                    UpdateTagListBox();
+                    UpdateTagListView();
                     UpdateAllTagsListView();
                 }
                 catch (Exception ex)
@@ -96,20 +98,23 @@ namespace tagmane
         }
 
         // 右ペイン1: 現在の画像のタグリスト表示と選択
-        private void UpdateTagListBox()
+        private void UpdateTagListView()
         {
             _isUpdatingSelection = true;
             try
             {
                 var currentTags = _currentImageTags.ToList();
-                TagListBox.ItemsSource = currentTags;
+                TagListView.ItemsSource = currentTags;
 
-                for (int i = 0; i < currentTags.Count; i++)
+                // ItemsSourceを設定した後、UIが更新されるまで少し待つ
+                TagListView.UpdateLayout();
+
+                foreach (var tag in currentTags)
                 {
-                    var item = TagListBox.ItemContainerGenerator.ContainerFromIndex(i) as ListBoxItem;
+                    var item = TagListView.ItemContainerGenerator.ContainerFromItem(tag) as ListViewItem;
                     if (item != null)
                     {
-                        item.IsSelected = _selectedTags.Contains(currentTags[i]);
+                        item.IsSelected = _selectedTags.Contains(tag);
                     }
                 }
             }
@@ -119,7 +124,7 @@ namespace tagmane
             }
         }
 
-        private void TagListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void TagListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_isUpdatingSelection) return;
 
@@ -215,7 +220,7 @@ namespace tagmane
                 }
 
                 UpdateAllTagsListView();
-                UpdateTagListBox();  // この行を追加
+                UpdateTagListView();  // 個別タグリストを更新
                 UpdateSelectedTagsListBox();
             }
             finally
@@ -244,16 +249,156 @@ namespace tagmane
         }
 
         // 共通: タグの選択状態を更新
-        private void UpdateTagListBoxSelection(IEnumerable<string> selectedTags)
+        private void UpdateTagListViewSelection(IEnumerable<string> selectedTags)
         {
-            TagListBox.SelectedItems.Clear();
-            foreach (var tag in TagListBox.Items)
+            TagListView.SelectedItems.Clear();
+            foreach (var tag in TagListView.Items)
             {
                 if (selectedTags.Contains(tag as string))
                 {
-                    TagListBox.SelectedItems.Add(tag);
+                    TagListView.SelectedItems.Add(tag);
                 }
             }
+        }
+
+        private void UndoButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_undoStack.Count > 0)
+            {
+                var action = _undoStack.Pop();
+                _redoStack.Push(action);
+                action();
+                UpdateButtonStates();
+            }
+        }
+
+        private void RedoButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_redoStack.Count > 0)
+            {
+                var action = _redoStack.Pop();
+                _undoStack.Push(action);
+                action();
+                UpdateButtonStates();
+            }
+        }
+
+        private void AddTagButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage != null)
+            {
+                var selectedTags = TagListView.SelectedItems.Cast<string>().ToList();
+                var addedTags = new List<string>();
+
+                foreach (var tag in selectedTags)
+                {
+                    if (!selectedImage.Tags.Contains(tag))
+                    {
+                        selectedImage.Tags.Add(tag);
+                        addedTags.Add(tag);
+                    }
+                }
+
+                if (addedTags.Count > 0)
+                {
+                    _undoStack.Push(() => 
+                    {
+                        foreach (var tag in addedTags)
+                        {
+                            selectedImage.Tags.Remove(tag);
+                        }
+                        UpdateTagListView();
+                        UpdateAllTags();
+                    });
+                    _redoStack.Clear();
+                    UpdateTagListView();
+                    UpdateAllTags();
+                    UpdateButtonStates();
+                }
+            }
+        }
+
+        private void RemoveTagButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage != null)
+            {
+                var selectedTags = TagListView.SelectedItems.Cast<string>().ToList();
+                var removedTags = new List<string>();
+
+                foreach (var tag in selectedTags)
+                {
+                    if (selectedImage.Tags.Contains(tag))
+                    {
+                        selectedImage.Tags.Remove(tag);
+                        removedTags.Add(tag);
+                    }
+                }
+
+                if (removedTags.Count > 0)
+                {
+                    _undoStack.Push(() => 
+                    {
+                        foreach (var tag in removedTags)
+                        {
+                            selectedImage.Tags.Add(tag);
+                        }
+                        UpdateTagListView();
+                        UpdateAllTags();
+                    });
+                    _redoStack.Clear();
+                    UpdateTagListView();
+                    UpdateAllTags();
+                    UpdateButtonStates();
+                }
+            }
+        }
+
+        private void RemoveAllTagsButton_Click(object sender, RoutedEventArgs e)
+        {
+            var result = MessageBox.Show("選択したタグをすべての画像から削除しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (result == MessageBoxResult.Yes)
+            {
+                var selectedTags = AllTagsListView.SelectedItems.Cast<dynamic>().Select(item => item.Tag as string).ToList();
+                var removedTags = new Dictionary<ImageInfo, List<string>>();
+
+                foreach (var imageInfo in _imageInfos)
+                {
+                    var tagsToRemove = imageInfo.Tags.Intersect(selectedTags).ToList();
+                    if (tagsToRemove.Count > 0)
+                    {
+                        removedTags[imageInfo] = tagsToRemove;
+                        foreach (var tag in tagsToRemove)
+                        {
+                            imageInfo.Tags.Remove(tag);
+                        }
+                    }
+                }
+
+                if (removedTags.Count > 0)
+                {
+                    _undoStack.Push(() => 
+                    {
+                        foreach (var kvp in removedTags)
+                        {
+                            kvp.Key.Tags.AddRange(kvp.Value);
+                        }
+                        UpdateTagListView();
+                        UpdateAllTags();
+                    });
+                    _redoStack.Clear();
+                    UpdateTagListView();
+                    UpdateAllTags();
+                    UpdateButtonStates();
+                }
+            }
+        }
+
+        private void UpdateButtonStates()
+        {
+            UndoButton.IsEnabled = _undoStack.Count > 0;
+            RedoButton.IsEnabled = _redoStack.Count > 0;
         }
     }
 }
