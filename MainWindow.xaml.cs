@@ -268,6 +268,16 @@ namespace tagmane
                 var action = _undoStack.Pop();
                 _redoStack.Push(action);
                 action();
+                
+                // 現在の画像のタグを更新
+                var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+                if (selectedImage != null)
+                {
+                    _currentImageTags = new HashSet<string>(selectedImage.Tags);
+                }
+                
+                UpdateTagListView();
+                UpdateAllTags();
                 UpdateButtonStates();
             }
         }
@@ -288,7 +298,7 @@ namespace tagmane
             var selectedImage = ImageListBox.SelectedItem as ImageInfo;
             if (selectedImage != null)
             {
-                var selectedTags = TagListView.SelectedItems.Cast<string>().ToList();
+                var selectedTags = SelectedTagsListBox.Items.Cast<string>().ToList(); // 変更：TagListViewからSelectedTagsListBoxに
                 var addedTags = new List<string>();
 
                 foreach (var tag in selectedTags)
@@ -308,10 +318,12 @@ namespace tagmane
                         {
                             selectedImage.Tags.Remove(tag);
                         }
+                        _currentImageTags = new HashSet<string>(selectedImage.Tags);
                         UpdateTagListView();
                         UpdateAllTags();
                     });
                     _redoStack.Clear();
+                    _currentImageTags = new HashSet<string>(selectedImage.Tags);
                     UpdateTagListView();
                     UpdateAllTags();
                     UpdateButtonStates();
@@ -344,10 +356,12 @@ namespace tagmane
                         {
                             selectedImage.Tags.Add(tag);
                         }
+                        _currentImageTags = new HashSet<string>(selectedImage.Tags);
                         UpdateTagListView();
                         UpdateAllTags();
                     });
                     _redoStack.Clear();
+                    _currentImageTags = new HashSet<string>(selectedImage.Tags);
                     UpdateTagListView();
                     UpdateAllTags();
                     UpdateButtonStates();
