@@ -73,7 +73,7 @@ namespace tagmane
                 UpdateAllTags();
                 
                 // デバッグ用のメッセージを追加
-                MessageBox.Show($"{_imageInfos.Count}個の画像が見つかりました。");
+                AddLogEntry($"{_imageInfos.Count}個の画像が見つかりました。");
                 AddLogEntry($"フォルダを選択しました: {dialog.FileName}");
             }
         }
@@ -97,7 +97,7 @@ namespace tagmane
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"画像の読み込み中にエラーが発生しました: {ex.Message}");
+                    AddLogEntry($"画像の読み込み中にエラーが発生しました: {ex.Message}");
                 }
                 finally
                 {
@@ -107,6 +107,7 @@ namespace tagmane
         }
 
         // 右ペイン1: 現在の画像のタグリスト表示と選択
+        // タグリストビューの更新
         private void UpdateTagListView()
         {
             _isUpdatingSelection = true;
@@ -133,6 +134,7 @@ namespace tagmane
             }
         }
 
+        // 選択の更新
         private void TagListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_isUpdatingSelection) return;
@@ -160,27 +162,7 @@ namespace tagmane
         }
 
         // 右ペイン2: 全タグリストの表示、選択、ソート
-        private void UpdateAllTags()
-        {
-            _allTags.Clear();
-            foreach (var imageInfo in _imageInfos)
-            {
-                foreach (var tag in imageInfo.Tags)
-                {
-                    if (_allTags.ContainsKey(tag))
-                    {
-                        _allTags[tag]++;
-                    }
-                    else
-                    {
-                        _allTags[tag] = 1;
-                    }
-                }
-            }
-
-            UpdateAllTagsListView();
-        }
-
+        // 全タグリストビューの更新
         private void UpdateAllTagsListView()
         {
             var sortedTags = _allTags
@@ -209,6 +191,7 @@ namespace tagmane
             }
         }
 
+        // 全タグリストの選択
         private void AllTagsListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_isUpdatingSelection) return;
@@ -238,6 +221,7 @@ namespace tagmane
             }
         }
 
+        // このメソッドは、AllTagsListViewの選択状態を更新します。
         private void UpdateAllTagsSelection(IEnumerable<string> selectedTags)
         {
             var selectedTagsSet = new HashSet<string>(selectedTags);
@@ -270,6 +254,46 @@ namespace tagmane
             }
         }
 
+        // 全タグの更新
+        private void UpdateAllTags()
+        {
+            _allTags.Clear();
+            foreach (var imageInfo in _imageInfos)
+            {
+                foreach (var tag in imageInfo.Tags)
+                {
+                    if (_allTags.ContainsKey(tag))
+                    {
+                        _allTags[tag]++;
+                    }
+                    else
+                    {
+                        _allTags[tag] = 1;
+                    }
+                }
+            }
+
+            UpdateCurrentTags();
+            UpdateTagListView();
+            UpdateAllTagsListView();
+        }
+
+        // 個別タグの更新
+        private void UpdateCurrentTags()
+        {
+            _currentImageTags.Clear();
+            var imageInfo = ImageListBox.SelectedItem as ImageInfo;
+            if (imageInfo != null)
+            {
+                foreach (var tag in imageInfo.Tags)
+                {
+                    _currentImageTags.Add(tag);
+                }
+            }
+        }
+
+        // ボタンのクリックイベント
+        // 元に戻す
         private void UndoButton_Click(object sender, RoutedEventArgs e)
         {
             if (_undoStack.Count > 0)
@@ -283,6 +307,7 @@ namespace tagmane
             }
         }
 
+        // やり直し
         private void RedoButton_Click(object sender, RoutedEventArgs e)
         {
             if (_redoStack.Count > 0)
@@ -296,6 +321,7 @@ namespace tagmane
             }
         }
 
+        // タグの追加
         private void AddTagButton_Click(object sender, RoutedEventArgs e)
         {
             var selectedImage = ImageListBox.SelectedItem as ImageInfo;
@@ -360,11 +386,15 @@ namespace tagmane
                         {
                             selectedImage.Tags.Remove(tag);
                             AddLogEntry($"タグ '{tag}' を削除しました");
+                            UpdateTagListView();
+                            UpdateAllTags();
                         },
                         UndoAction = () =>
                         {
                             selectedImage.Tags.Add(tag);
                             AddLogEntry($"タグ '{tag}' の削除を取り消しました");
+                            UpdateTagListView();
+                            UpdateAllTags();
                         },
                         Description = $"タグ '{tag}' を削除"
                     };
@@ -376,6 +406,7 @@ namespace tagmane
 
                 if (removedTags.Count > 0)
                 {
+                    AddLogEntry($"{removedTags.Count}個のタグを削除しました。");
                     UpdateAllTags();
                     UpdateButtonStates();
                     _redoStack.Clear();
