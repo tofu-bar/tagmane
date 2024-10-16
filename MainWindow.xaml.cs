@@ -72,9 +72,14 @@ namespace tagmane
                 ImageListBox.ItemsSource = _imageInfos;
                 UpdateAllTags();
                 
+                // Undo/Redoスタックをクリア
+                _undoStack.Clear();
+                _redoStack.Clear();
+                
                 // デバッグ用のメッセージを追加
                 AddLogEntry($"{_imageInfos.Count}個の画像が見つかりました。");
                 AddLogEntry($"フォルダを選択しました: {dialog.FileName}");
+                AddLogEntry("Undo/Redoスタックをクリアしました。");
             }
         }
 
@@ -116,15 +121,13 @@ namespace tagmane
                 var currentTags = _currentImageTags.ToList();
                 TagListView.ItemsSource = currentTags;
 
-                // ItemsSourceを設定した後、UIが更新されるまで少し待つ
-                TagListView.UpdateLayout();
-
+                // 選択状態を更新
+                TagListView.SelectedItems.Clear();
                 foreach (var tag in currentTags)
                 {
-                    var item = TagListView.ItemContainerGenerator.ContainerFromItem(tag) as ListViewItem;
-                    if (item != null)
+                    if (_selectedTags.Contains(tag))
                     {
-                        item.IsSelected = _selectedTags.Contains(tag);
+                        TagListView.SelectedItems.Add(tag);
                     }
                 }
             }
@@ -285,10 +288,7 @@ namespace tagmane
             var imageInfo = ImageListBox.SelectedItem as ImageInfo;
             if (imageInfo != null)
             {
-                foreach (var tag in imageInfo.Tags)
-                {
-                    _currentImageTags.Add(tag);
-                }
+                _currentImageTags = new HashSet<string>(imageInfo.Tags);
             }
         }
 
@@ -434,6 +434,7 @@ namespace tagmane
                         }
                     }
                 }
+                AddLogEntry($"{removedTags.Count}個のタグを削除しました。");
 
                 if (removedTags.Count > 0)
                 {
@@ -448,6 +449,7 @@ namespace tagmane
                                     kvp.Key.Tags.Remove(tag);
                                 }
                             }
+                            AddLogEntry($"{removedTags.Count}個のタグを削除しました。");
                             UpdateTagListView();
                             UpdateAllTags();
                         },
@@ -457,6 +459,7 @@ namespace tagmane
                             {
                                 kvp.Key.Tags.AddRange(kvp.Value);
                             }
+                            AddLogEntry($"{removedTags.Count}個のタグを復元しました。");
                             UpdateTagListView();
                             UpdateAllTags();
                         }

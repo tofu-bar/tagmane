@@ -21,7 +21,24 @@
 
         <!-- 左ペイン -->
         <DockPanel Grid.Column="0">
-            <Button DockPanel.Dock="Top" Content="フォルダを選択" Click="SelectFolder_Click"/>
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+                <Button Click="SelectFolder_Click">
+                    <Button.Content>
+                        <Image Source="/icon/open.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="フォルダを選択"/>
+                    </Button.ToolTip>
+                </Button>
+                <Button>
+                    <Button.Content>
+                        <Image Source="/icon/save.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="現在のタグ状態を保存"/>
+                    </Button.ToolTip>
+                </Button>
+            </StackPanel>
             <ListBox x:Name="ImageListBox" SelectionChanged="ImageListBox_SelectionChanged"/>
         </DockPanel>
 
@@ -98,7 +115,7 @@
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Visibility" Value="Collapsed"/>
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsCurrentTag}" Value="True">
+                                                        <DataTrigger Binding="{Binding IsCurrentImageTag}" Value="True">
                                                             <Setter Property="Visibility" Value="Visible"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
