@@ -114,7 +114,29 @@
             </ListView>
         </Grid>
 
-        <!-- 右ペイン3: 選択されたタグ -->
-        <ListBox x:Name="SelectedTagsListBox" Grid.Column="4" IsEnabled="False"/>
+        <!-- 右ペイン3: ログ、動作処理リスト、選択されたタグ -->
+        <Grid Grid.Column="4">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="2*"/>
+                <RowDefinition Height="1*"/>
+                <RowDefinition Height="1*"/>
+            </Grid.RowDefinitions>
+
+            <!-- ログの表示領域 -->
+            <TextBox x:Name="LogTextBox" Grid.Row="0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+
+            <!-- Undo/Redoのための動作処理リスト -->
+            <ListView x:Name="ActionListView" Grid.Row="1">
+                <ListView.View>
+                    <GridView>
+                        <GridViewColumn Header="操作" DisplayMemberBinding="{Binding ActionType}"/>
+                        <GridViewColumn Header="詳細" DisplayMemberBinding="{Binding Description}"/>
+                    </GridView>
+                </ListView.View>
+            </ListView>
+
+            <!-- 選択されたタグ -->
+            <ListBox x:Name="SelectedTagsListBox" Grid.Row="2" IsEnabled="False"/>
+        </Grid>
     </Grid>
 </Window>
