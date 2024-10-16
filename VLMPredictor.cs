@@ -172,7 +172,14 @@ namespace tagmane
             bool characterMcutEnabled)
         {
             AddLogEntry("VLMログ：推論を開始します");
+            AddLogEntry($"generalThresh: {generalThresh}");
+            AddLogEntry($"generalMcutEnabled: {generalMcutEnabled}");
+            AddLogEntry($"characterThresh: {characterThresh}");
+            AddLogEntry($"characterMcutEnabled: {characterMcutEnabled}");
+
             var inputTensor = PrepareImage(image);
+            AddLogEntry($"inputTensor: {inputTensor[0, 1, 1, 0]}");
+            
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("input", inputTensor) };
             var output = _model.Run(inputs);
             var predictions = output.First().AsEnumerable<float>().ToArray();
@@ -203,24 +210,25 @@ namespace tagmane
             }
 
             AddLogEntry("VLMログ：画像のリサイズが完了しました");
-            var stride = image.PixelWidth * 4;
-            var pixels = new byte[image.PixelHeight * stride];
-            image.CopyPixels(pixels, stride, 0);
-
-            // テンソルの形状を [1, 448, 448, 3] に変更
+            // 画像をバイト配列に変換
+            byte[] pixels = new byte[4 * _modelTargetSize * _modelTargetSize];
+            image.CopyPixels(pixels, 4 * _modelTargetSize, 0);
+            // テンソルを作成
             var tensor = new DenseTensor<float>(new[] { 1, _modelTargetSize, _modelTargetSize, 3 });
 
+            // ピクセルデータをテンソルに変換
             for (int y = 0; y < _modelTargetSize; y++)
             {
                 for (int x = 0; x < _modelTargetSize; x++)
                 {
-                    int pixelIndex = (y * _modelTargetSize + x) * 4;
-                    // RGBの順番で格納
-                    tensor[0, y, x, 0] = pixels[pixelIndex + 2] / 255.0f; // R
-                    tensor[0, y, x, 1] = pixels[pixelIndex + 1] / 255.0f; // G
-                    tensor[0, y, x, 2] = pixels[pixelIndex + 0] / 255.0f; // B
+                    int i = (y * _modelTargetSize + x) * 4;
+                    tensor[0, y, x, 2] = pixels[i + 2];     // R
+                    tensor[0, y, x, 1] = pixels[i + 1];     // G
+                    tensor[0, y, x, 0] = pixels[i];         // B
                 }
             }
+
+            AddLogEntry("VLMログ：画像をテンソルに変換しました");
 
             // テンソルを画像に変換
             BitmapSource previewImage = TensorToBitmapSource(tensor);
@@ -269,9 +277,9 @@ namespace tagmane
                 for (int x = 0; x < width; x++)
                 {
                     int i = (y * width + x) * 4;
-                    pixels[i] = (byte)(tensor[0, y, x, 2] * 255); // B
-                    pixels[i + 1] = (byte)(tensor[0, y, x, 1] * 255); // G
-                    pixels[i + 2] = (byte)(tensor[0, y, x, 0] * 255); // R
+                    pixels[i + 2] = (byte)(tensor[0, y, x, 2]);     // R
+                    pixels[i + 1] = (byte)(tensor[0, y, x, 1]);     // G
+                    pixels[i] = (byte)(tensor[0, y, x, 0]);         // B
                     pixels[i + 3] = 255; // A (完全不透明)
                 }
             }
