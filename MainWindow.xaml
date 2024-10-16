@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:tagmane"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         mc:Ignorable="d"
-        Title="tagmane" Height="450" Width="1200">
+        Title="MainWindow" Height="450" Width="800">
     <Window.Resources>
         <SolidColorBrush x:Key="SelectedTagBrush" Color="#E0FFE0"/>
     </Window.Resources>
@@ -38,6 +38,14 @@
                         <TextBlock Text="現在のタグ状態を保存"/>
                     </Button.ToolTip>
                 </Button>
+                <Button Click="MakeTagsWithVLM_Click">
+                    <Button.Content>
+                        <Image Source="/icon/vlm.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="VLMでタグを作成"/>
+                    </Button.ToolTip>
+                </Button>
             </StackPanel>
             <ListBox x:Name="ImageListBox" SelectionChanged="ImageListBox_SelectionChanged"/>
         </DockPanel>
@@ -64,8 +72,30 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center">
-                <Button x:Name="AddTagButton" Content="+" Background="Green" Foreground="White" Width="30" Height="30" Margin="5" Click="AddTagButton_Click"/>
-                <Button x:Name="RemoveTagButton" Content="-" Background="Red" Foreground="White" Width="30" Height="30" Margin="5" Click="RemoveTagButton_Click"/>
+                <Button x:Name="AddTagButton" Click="AddTagButton_Click">
+                    <Button.Content>
+                        <Image Source="/icon/add.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="タグを追加"/>
+                    </Button.ToolTip>
+                </Button>
+                <Button x:Name="RemoveTagButton" Click="RemoveTagButton_Click">
+                    <Button.Content>
+                        <Image Source="/icon/erase.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="タグを削除"/>
+                    </Button.ToolTip>
+                </Button>
+                <Button x:Name="VLMPredictButton" Click="VLMPredictButton_Click">
+                    <Button.Content>
+                        <Image Source="/icon/vlm.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="VLMでタグを作成"/>
+                    </Button.ToolTip>
+                </Button>
             </StackPanel>
             <ListView x:Name="TagListView" Grid.Row="1" SelectionMode="Multiple" SelectionChanged="TagListView_SelectionChanged"
                       ItemsSource="{Binding SelectedImage.Tags}" 
@@ -147,8 +177,15 @@
             <!-- デバッグログの表示領域-->
             <TextBox x:Name="DebugLogTextBox" Grid.Row="0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
 
-            <!-- ログの表示領域 -->
-            <TextBox x:Name="LogTextBox" Grid.Row="1" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+            <!-- ログ表示用のTabControl -->
+            <TabControl Grid.Row="1">
+                <TabItem Header="メインログ">
+                    <TextBox x:Name="MainLogTextBox" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                </TabItem>
+                <TabItem Header="VLMログ">
+                    <TextBox x:Name="VLMLogTextBox" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                </TabItem>
+            </TabControl>
 
             <!-- Undo/Redoのための動作処理リスト -->
             <ListView x:Name="ActionListView" Grid.Row="2">

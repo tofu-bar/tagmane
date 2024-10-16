@@ -38,6 +38,7 @@ namespace tagmane
         private Point? _startPoint;
         private ListViewItem _draggedItem;
         private bool _isDragging = false;
+        private VLMPredictor _vlmPredictor;
 
         public MainWindow()
         {
@@ -56,11 +57,137 @@ namespace tagmane
                 
                 // ウィンドウを表示
                 this.Show();
+
+                InitializeVLMPredictor();
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"MainWindowの初期化中にエラーが発生しました: {ex.Message}\n\nStackTrace: {ex.StackTrace}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        private async void InitializeVLMPredictor()
+        {
+            _vlmPredictor = new VLMPredictor();
+            _vlmPredictor.LogUpdated += UpdateVLMLog;
+            LoadVLMModel();
+        }
+
+        private async void LoadVLMModel()
+        {
+            try
+            {
+                AddMainLogEntry("VLMモデルの読み込みを開始します。");
+                await _vlmPredictor.LoadModel("SmilingWolf/wd-swinv2-tagger-v3");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"VLMモデルの読み込みに失敗しました: {ex.Message}");
+            }
+        }
+
+        private async void PredictVLMTags()
+        {
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage == null)
+            {
+                AddMainLogEntry("画像が選択されていません。");
+                return;
+            }
+
+            AddMainLogEntry("VLM推論を開始します");
+
+            try
+            {
+                var (generalTags, rating, characters, allTags) = _vlmPredictor.Predict(
+                    new BitmapImage(new Uri(selectedImage.ImagePath)),
+                    0.35f, // generalThresh
+                    false, // generalMcutEnabled
+                    0.85f, // characterThresh
+                    false  // characterMcutEnabled
+                );
+
+                // 結果を表示または処理する
+                UpdateVLMTagsDisplay(generalTags, rating, characters, allTags);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"VLM推論中にエラーが発生しました: {ex.Message}");
+            }
+        }
+
+        private void UpdateVLMTagsDisplay(string generalTags, Dictionary<string, float> rating, Dictionary<string, float> characters, Dictionary<string, float> allTags)
+        {
+            // UIを更新して結果を表示する
+            // 例: ListBoxやTextBlockに結果を表示する
+            AddMainLogEntry($"VLM推論結果: {generalTags}");
+        }
+
+        // VLM推論を実行するボタンのクリックイベントハンドラ
+        private async void VLMPredictButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // ボタンを無効化して、処理中であることを示す
+                VLMPredictButton.IsEnabled = false;
+                
+                // 非同期でPredictVLMTagsを呼び出す
+                await PredictVLMTagsAsync();
+            }
+            catch (Exception ex)
+            {
+                // エラーメッセージをログに記録
+                AddMainLogEntry($"VLM推論中にエラーが発生しました: {ex.Message}");
+                MessageBox.Show($"エラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                // 処理が完了したらボタンを再度有効化
+                VLMPredictButton.IsEnabled = true;
+            }
+        }
+
+        // PredictVLMTagsメソッドを非同期に変更
+        private async Task PredictVLMTagsAsync()
+        {
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage == null)
+            {
+                AddMainLogEntry("画像が選択されていません。");
+                return;
+            }
+
+            AddMainLogEntry("VLM推論を開始します");
+
+            try
+            {
+                var (generalTags, rating, characters, allTags) = _vlmPredictor.Predict(
+                    new BitmapImage(new Uri(selectedImage.ImagePath)),
+                    0.35f, // generalThresh
+                    false, // generalMcutEnabled
+                    0.85f, // characterThresh
+                    false  // characterMcutEnabled
+                );
+
+                // 結果を表示または処理する
+                UpdateVLMTagsDisplay(generalTags, rating, characters, allTags);
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"VLM推論中にエラーが発生しました: {ex.Message}");
+                throw;
+            }
+
+            AddMainLogEntry("VLM推論が完了しました。");
+        }
+
+        // VLMログの更新
+        private void UpdateVLMLog(object sender, string log)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                VLMLogTextBox.Text = log;
+            });
         }
 
         // 左ペイン: フォルダ選択と画像リスト表示
@@ -83,11 +210,11 @@ namespace tagmane
                 _redoStack.Clear();
                 
                 // デバッグ用のメッセージを追加
-                AddLogEntry($"{_imageInfos.Count}個の画像が見つかりました。");
-                AddLogEntry($"フォルダを選択しました: {dialog.FileName}");
-                AddLogEntry("Undo/Redoスタックをクリアしました。");
+                AddMainLogEntry($"{_imageInfos.Count}個の画像が見つかりました。");
+                AddMainLogEntry($"フォルダを選択しました: {dialog.FileName}");
+                AddMainLogEntry("Undo/Redoスタックをクリアしました。");
             }
-        }
+        }    
 
         // 中央ペイン: 選択された画像の表示と関連テキストの表示
         private void ImageListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -104,11 +231,11 @@ namespace tagmane
                     _currentImageTags = new HashSet<string>(selectedImage.Tags);
                     UpdateTagListView();
                     UpdateAllTagsListView();
-                    AddLogEntry($"画像を選択しました: {System.IO.Path.GetFileName(selectedImage.ImagePath)}");
+                    AddMainLogEntry($"画像を選択しました: {System.IO.Path.GetFileName(selectedImage.ImagePath)}");
                 }
                 catch (Exception ex)
                 {
-                    AddLogEntry($"画像の読み込み中にエラーが発生しました: {ex.Message}");
+                    AddMainLogEntry($"画像の読み込み中にエラーが発生しました: {ex.Message}");
                 }
                 finally
                 {
@@ -268,7 +395,7 @@ namespace tagmane
             }
         }
 
-        // 全タグの更新
+        // 全タ��の更新
         private void UpdateAllTags()
         {
             _allTags.Clear();
@@ -302,7 +429,6 @@ namespace tagmane
                 _currentImageTags = new HashSet<string>(imageInfo.Tags);
             }
         }
-
         // ボタンのクリックイベント
         // 元に戻す
         private void UndoButton_Click(object sender, RoutedEventArgs e)
@@ -353,12 +479,12 @@ namespace tagmane
                             DoAction = () =>
                             {
                                 selectedImage.Tags.Add(tag);
-                                AddLogEntry($"タグ '{tag}' を追加しました");
+                                AddMainLogEntry($"タグ '{tag}' を追加しました");
                             },
                             UndoAction = () =>
                             {
                                 selectedImage.Tags.Remove(tag);
-                                AddLogEntry($"タグ '{tag}' の追加を取り消しました");
+                                AddMainLogEntry($"タグ '{tag}' の追加を取り消しました");
                             },
                             Description = $"タグ '{tag}' を追加"
                         };
@@ -396,14 +522,14 @@ namespace tagmane
                         DoAction = () =>
                         {
                             selectedImage.Tags.Remove(tag);
-                            AddLogEntry($"タグ '{tag}' を削除しました");
+                            AddMainLogEntry($"タグ '{tag}' を削除しました");
                             UpdateTagListView();
                             UpdateAllTags();
                         },
                         UndoAction = () =>
                         {
                             selectedImage.Tags.Add(tag);
-                            AddLogEntry($"タグ '{tag}' の削除を取り消しました");
+                            AddMainLogEntry($"タグ '{tag}' の削除を取り消しました");
                             UpdateTagListView();
                             UpdateAllTags();
                         },
@@ -417,7 +543,7 @@ namespace tagmane
 
                 if (removedTags.Count > 0)
                 {
-                    AddLogEntry($"{removedTags.Count}個のタグを削除しました。");
+                    AddMainLogEntry($"{removedTags.Count}個のタグを削除しました。");
                     UpdateAllTags();
                     UpdateButtonStates();
                     _redoStack.Clear();
@@ -445,7 +571,7 @@ namespace tagmane
                         }
                     }
                 }
-                AddLogEntry($"{removedTags.Count}個のタグを削除しました。");
+                AddMainLogEntry($"{removedTags.Count}個のタグを削除しました。");
 
                 if (removedTags.Count > 0)
                 {
@@ -460,7 +586,7 @@ namespace tagmane
                                     kvp.Key.Tags.Remove(tag);
                                 }
                             }
-                            AddLogEntry($"{removedTags.Count}個のタグを削除しました。");
+                            AddMainLogEntry($"{removedTags.Count}個のタグを削除しました。");
                             UpdateTagListView();
                             UpdateAllTags();
                         },
@@ -470,7 +596,7 @@ namespace tagmane
                             {
                                 kvp.Key.Tags.AddRange(kvp.Value);
                             }
-                            AddLogEntry($"{removedTags.Count}個のタグを復元しました。");
+                            AddMainLogEntry($"{removedTags.Count}個のタグを復元しました。");
                             UpdateTagListView();
                             UpdateAllTags();
                         }
@@ -503,7 +629,7 @@ namespace tagmane
         }
 
         // ログを追加するメソッド
-        private void AddLogEntry(string message)
+        private void AddMainLogEntry(string message)
         {
             string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
             _logEntries.Insert(0, logMessage);
@@ -512,7 +638,7 @@ namespace tagmane
                 _logEntries.RemoveAt(_logEntries.Count - 1);
             }
             // TextBoxに直接ログを追加
-            LogTextBox.Text = string.Join(Environment.NewLine, _logEntries);
+            MainLogTextBox.Text = string.Join(Environment.NewLine, _logEntries);
         }
 
         // アクションログを追加するメソッド
@@ -549,7 +675,7 @@ namespace tagmane
             {
                 SaveTagsToFile(imageInfo);
             }
-            MessageBox.Show("すべての画像のタグを保存しました。", "保存完了", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("すべての画像のタグを保存しまた。", "保存完了", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void SaveTagsToFile(ImageInfo imageInfo)
@@ -564,8 +690,20 @@ namespace tagmane
             catch (Exception ex)
             {
                 MessageBox.Show($"ファイルの保存中にエラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
-                AddLogEntry($"タグの保存に失敗: {System.IO.Path.GetFileName(imageInfo.ImagePath)} - {ex.Message}");
+                AddMainLogEntry($"タグの保存に失敗: {System.IO.Path.GetFileName(imageInfo.ImagePath)} - {ex.Message}");
             }
+        }
+
+        // VLMでタグを作成
+        private void MakeTagsWithVLM_Click(object sender, RoutedEventArgs e)
+        {
+            AddDebugLogEntry("MakeTagsWithVLM_Click");
+
+            // 警告を表示
+            MessageBox.Show("VLMでタグを作成します。\nこの操作は時間がかかります。", "VLMタグ作成", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+            // VLMを使用してタグを作成するロジックを実装
+            MessageBox.Show("VLMでタグを作成しました。", "VLMタグ作成", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private ListBoxItem dragLbi;

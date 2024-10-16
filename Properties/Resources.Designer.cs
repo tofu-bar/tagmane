@@ -93,9 +93,9 @@ namespace tagmane.Properties {
         /// <summary>
         ///   型 System.Drawing.Bitmap のローカライズされたリソースを検索します。
         /// </summary>
-        internal static System.Drawing.Bitmap elasem {
+        internal static System.Drawing.Bitmap erase {
             get {
-                object obj = ResourceManager.GetObject("elasem", resourceCulture);
+                object obj = ResourceManager.GetObject("erase", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }
@@ -103,9 +103,9 @@ namespace tagmane.Properties {
         /// <summary>
         ///   型 System.Drawing.Bitmap のローカライズされたリソースを検索します。
         /// </summary>
-        internal static System.Drawing.Bitmap erase {
+        internal static System.Drawing.Bitmap erasem {
             get {
-                object obj = ResourceManager.GetObject("erase", resourceCulture);
+                object obj = ResourceManager.GetObject("erasem", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }
