@@ -29,8 +29,8 @@ namespace tagmane
         private bool _isUpdatingSelection = false;
         private HashSet<string> _selectedTags = new HashSet<string>();
         private HashSet<string> _currentImageTags = new HashSet<string>();
-        private Stack<TagAction> _undoStack = new Stack<TagAction>();
-        private Stack<TagAction> _redoStack = new Stack<TagAction>();
+        private Stack<ITagAction> _undoStack = new Stack<ITagAction>();
+        private Stack<ITagAction> _redoStack = new Stack<ITagAction>();
         private ObservableCollection<string> _debugLogEntries;
         private ObservableCollection<string> _logEntries;
         private ObservableCollection<ActionLogItem> _actionLogItems;
@@ -39,6 +39,42 @@ namespace tagmane
         private ListViewItem _draggedItem;
         private bool _isDragging = false;
         private VLMPredictor _vlmPredictor;
+
+        // インターフェースを追加
+        private interface ITagAction
+        {
+            void DoAction();
+            void UndoAction();
+            string Description { get; }
+        }
+
+        // TagActionクラスを修正
+        private class TagAction : ITagAction
+        {
+            public ImageInfo Image { get; set; }
+            public TagPositionInfo TagInfo { get; set; }
+            public bool IsAdd { get; set; }
+            public Action DoAction { get; set; }
+            public Action UndoAction { get; set; }
+            public string Description { get; set; }
+
+            void ITagAction.DoAction() => DoAction();
+            void ITagAction.UndoAction() => UndoAction();
+        }
+
+        // TagGroupActionクラスを修正
+        private class TagGroupAction : ITagAction
+        {
+            public ImageInfo Image { get; set; }
+            public List<TagPositionInfo> TagInfos { get; set; }
+            public bool IsAdd { get; set; }
+            public Action DoAction { get; set; }
+            public Action UndoAction { get; set; }
+            public string Description { get; set; }
+
+            void ITagAction.DoAction() => DoAction();
+            void ITagAction.UndoAction() => UndoAction();
+        }
 
         public MainWindow()
         {
@@ -362,7 +398,7 @@ namespace tagmane
             }
         }
 
-        // このメソッドは、AllTagsListViewの選択状態を更新します。
+        // 全タグリストの選択状態を更新
         private void UpdateAllTagsSelection(IEnumerable<string> selectedTags)
         {
             var selectedTagsSet = new HashSet<string>(selectedTags);
@@ -376,13 +412,7 @@ namespace tagmane
             }
         }
 
-        // 右ペイン3: 選択されたタグの表示
-        private void UpdateSelectedTagsListBox()
-        {
-            SelectedTagsListBox.ItemsSource = _selectedTags.ToList();
-        }
-
-        // 共通: タグの選択状態更新
+        // タグの選択状態更新
         private void UpdateTagListViewSelection(IEnumerable<string> selectedTags)
         {
             TagListView.SelectedItems.Clear();
@@ -395,7 +425,7 @@ namespace tagmane
             }
         }
 
-        // 全タ��の更新
+        // 全タグの更新
         private void UpdateAllTags()
         {
             _allTags.Clear();
@@ -429,6 +459,13 @@ namespace tagmane
                 _currentImageTags = new HashSet<string>(imageInfo.Tags);
             }
         }
+
+        // 右ペイン3: 選択されたタグの更新
+        private void UpdateSelectedTagsListBox()
+        {
+            SelectedTagsListBox.ItemsSource = _selectedTags.ToList();
+        }
+
         // ボタンのクリックイベント
         // 元に戻す
         private void UndoButton_Click(object sender, RoutedEventArgs e)
@@ -465,41 +502,51 @@ namespace tagmane
             if (selectedImage != null)
             {
                 var selectedTags = SelectedTagsListBox.Items.Cast<string>().ToList();
-                var addedTags = new List<string>();
+                var addedTags = new List<TagPositionInfo>();
 
                 foreach (var tag in selectedTags)
                 {
                     if (!selectedImage.Tags.Contains(tag))
                     {
-                        var action = new TagAction
-                        {
-                            Image = selectedImage,
-                            Tag = tag,
-                            IsAdd = true,
-                            DoAction = () =>
-                            {
-                                selectedImage.Tags.Add(tag);
-                                AddMainLogEntry($"タグ '{tag}' を追加しました");
-                            },
-                            UndoAction = () =>
-                            {
-                                selectedImage.Tags.Remove(tag);
-                                AddMainLogEntry($"タグ '{tag}' の追加を取り消しました");
-                            },
-                            Description = $"タグ '{tag}' を追加"
-                        };
-
-                        action.DoAction();
-                        _undoStack.Push(action);
-                        addedTags.Add(tag);
+                        int insertPosition = selectedImage.Tags.Count;
+                        addedTags.Add(new TagPositionInfo { Tag = tag, Position = insertPosition });
                     }
                 }
 
                 if (addedTags.Count > 0)
                 {
-                    UpdateAllTags();
-                    UpdateButtonStates();
+                    var action = new TagGroupAction
+                    {
+                        Image = selectedImage,
+                        TagInfos = addedTags,
+                        IsAdd = true,
+                        DoAction = () =>
+                        {
+                            foreach (var tagInfo in addedTags)
+                            {
+                                selectedImage.Tags.Insert(tagInfo.Position, tagInfo.Tag);
+                            }
+                            AddMainLogEntry($"{addedTags.Count}個のタグを追加しました");
+                            UpdateTagListView();
+                            UpdateAllTags();
+                        },
+                        UndoAction = () =>
+                        {
+                            foreach (var tagInfo in addedTags.OrderByDescending(t => t.Position))
+                            {
+                                selectedImage.Tags.RemoveAt(tagInfo.Position);
+                            }
+                            AddMainLogEntry($"{addedTags.Count}個のタグの追加を取り消しました");
+                            UpdateTagListView();
+                            UpdateAllTags();
+                        },
+                        Description = $"{addedTags.Count}個のタグを追加"
+                    };
+
+                    action.DoAction();
+                    _undoStack.Push(action);
                     _redoStack.Clear();
+                    UpdateButtonStates();
                 }
             }
         }
@@ -509,44 +556,52 @@ namespace tagmane
             var selectedImage = ImageListBox.SelectedItem as ImageInfo;
             if (selectedImage != null)
             {
-                var selectedTags = TagListView.SelectedItems.Cast<string>().ToList(); // ImageTagsListBoxをTagListViewに変更
-                var removedTags = new List<string>();
+                var selectedTags = TagListView.SelectedItems.Cast<string>().ToList();
+                var removedTags = new List<TagPositionInfo>();
 
                 foreach (var tag in selectedTags)
                 {
-                    var action = new TagAction
+                    int removePosition = selectedImage.Tags.IndexOf(tag);
+                    if (removePosition != -1)
+                    {
+                        removedTags.Add(new TagPositionInfo { Tag = tag, Position = removePosition });
+                    }
+                }
+
+                if (removedTags.Count > 0)
+                {
+                    var action = new TagGroupAction
                     {
                         Image = selectedImage,
-                        Tag = tag,
+                        TagInfos = removedTags,
                         IsAdd = false,
                         DoAction = () =>
                         {
-                            selectedImage.Tags.Remove(tag);
-                            AddMainLogEntry($"タグ '{tag}' を削除しました");
+                            foreach (var tagInfo in removedTags.OrderByDescending(t => t.Position))
+                            {
+                                selectedImage.Tags.RemoveAt(tagInfo.Position);
+                            }
+                            AddMainLogEntry($"{removedTags.Count}個のタグを削除しました");
                             UpdateTagListView();
                             UpdateAllTags();
                         },
                         UndoAction = () =>
                         {
-                            selectedImage.Tags.Add(tag);
-                            AddMainLogEntry($"タグ '{tag}' の削除を取り消しました");
+                            foreach (var tagInfo in removedTags)
+                            {
+                                selectedImage.Tags.Insert(tagInfo.Position, tagInfo.Tag);
+                            }
+                            AddMainLogEntry($"{removedTags.Count}個のタグの削除を取り消しました");
                             UpdateTagListView();
                             UpdateAllTags();
                         },
-                        Description = $"タグ '{tag}' を削除"
+                        Description = $"{removedTags.Count}個のタグを削除"
                     };
 
                     action.DoAction();
                     _undoStack.Push(action);
-                    removedTags.Add(tag);
-                }
-
-                if (removedTags.Count > 0)
-                {
-                    AddMainLogEntry($"{removedTags.Count}個のタグを削除しました。");
-                    UpdateAllTags();
-                    UpdateButtonStates();
                     _redoStack.Clear();
+                    UpdateButtonStates();
                 }
             }
         }
@@ -557,36 +612,42 @@ namespace tagmane
             if (result == MessageBoxResult.Yes)
             {
                 var selectedTags = AllTagsListView.SelectedItems.Cast<dynamic>().Select(item => item.Tag as string).ToList();
-                var removedTags = new Dictionary<ImageInfo, List<string>>();
+                var removedTags = new Dictionary<ImageInfo, List<TagPositionInfo>>();
 
                 foreach (var imageInfo in _imageInfos)
                 {
-                    var tagsToRemove = imageInfo.Tags.Intersect(selectedTags).ToList();
+                    var tagsToRemove = imageInfo.Tags
+                        .Select((tag, index) => new { Tag = tag, Index = index })
+                        .Where(item => selectedTags.Contains(item.Tag))
+                        .Select(item => new TagPositionInfo { Tag = item.Tag, Position = item.Index })
+                        .ToList();
+
                     if (tagsToRemove.Count > 0)
                     {
                         removedTags[imageInfo] = tagsToRemove;
-                        foreach (var tag in tagsToRemove)
+                        foreach (var tagInfo in tagsToRemove.OrderByDescending(t => t.Position))
                         {
-                            imageInfo.Tags.Remove(tag);
+                            imageInfo.Tags.RemoveAt(tagInfo.Position);
                         }
                     }
                 }
-                AddMainLogEntry($"{removedTags.Count}個のタグを削除しました。");
+
+                AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを削除しました。");
 
                 if (removedTags.Count > 0)
                 {
-                    var action = new TagAction
+                    var action = new TagGroupAction
                     {
                         DoAction = () =>
                         {
                             foreach (var kvp in removedTags)
                             {
-                                foreach (var tag in kvp.Value)
+                                foreach (var tagInfo in kvp.Value.OrderByDescending(t => t.Position))
                                 {
-                                    kvp.Key.Tags.Remove(tag);
+                                    kvp.Key.Tags.RemoveAt(tagInfo.Position);
                                 }
                             }
-                            AddMainLogEntry($"{removedTags.Count}個のタグを削除しました。");
+                            AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを削除しました。");
                             UpdateTagListView();
                             UpdateAllTags();
                         },
@@ -594,12 +655,16 @@ namespace tagmane
                         {
                             foreach (var kvp in removedTags)
                             {
-                                kvp.Key.Tags.AddRange(kvp.Value);
+                                foreach (var tagInfo in kvp.Value)
+                                {
+                                    kvp.Key.Tags.Insert(tagInfo.Position, tagInfo.Tag);
+                                }
                             }
-                            AddMainLogEntry($"{removedTags.Count}個のタグを復元しました。");
+                            AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを復元しました。");
                             UpdateTagListView();
                             UpdateAllTags();
-                        }
+                        },
+                        Description = $"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを全画像から削除"
                     };
                     _undoStack.Push(action);
                     _redoStack.Clear();
@@ -655,17 +720,6 @@ namespace tagmane
         public class ActionLogItem
         {
             public string ActionType { get; set; }
-            public string Description { get; set; }
-        }
-
-        // TagActionクラスを修正
-        private class TagAction
-        {
-            public ImageInfo Image { get; set; }
-            public string Tag { get; set; }
-            public bool IsAdd { get; set; }
-            public Action DoAction { get; set; }
-            public Action UndoAction { get; set; }
             public string Description { get; set; }
         }
 
@@ -775,6 +829,13 @@ namespace tagmane
                 _startPoint = null;
                 _draggedItem = null;
             }
+        }
+
+        // 新しいクラスを追加
+        private class TagPositionInfo
+        {
+            public string Tag { get; set; }
+            public int Position { get; set; }
         }
     }
 }
