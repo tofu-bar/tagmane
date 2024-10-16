@@ -67,7 +67,9 @@
                 <Button x:Name="AddTagButton" Content="+" Background="Green" Foreground="White" Width="30" Height="30" Margin="5" Click="AddTagButton_Click"/>
                 <Button x:Name="RemoveTagButton" Content="-" Background="Red" Foreground="White" Width="30" Height="30" Margin="5" Click="RemoveTagButton_Click"/>
             </StackPanel>
-            <ListView x:Name="TagListView" Grid.Row="1" SelectionMode="Multiple" SelectionChanged="TagListView_SelectionChanged">
+            <ListView x:Name="TagListView" Grid.Row="1" SelectionMode="Multiple" SelectionChanged="TagListView_SelectionChanged"
+                      ItemsSource="{Binding SelectedImage.Tags}" 
+                      PreviewMouseLeftButtonDown="TagListView_PreviewMouseLeftButtonDown">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Style.Triggers>
@@ -92,7 +94,9 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <Button x:Name="RemoveAllTagsButton" Grid.Row="0" Content="-" Background="Red" Foreground="White" Width="30" Height="30" Margin="5" HorizontalAlignment="Center" Click="RemoveAllTagsButton_Click"/>
-            <ListView x:Name="AllTagsListView" Grid.Row="1" SelectionMode="Multiple" SelectionChanged="AllTagsListView_SelectionChanged">
+            <ListView x:Name="AllTagsListView" Grid.Row="1" SelectionMode="Multiple" SelectionChanged="AllTagsListView_SelectionChanged"
+                      ItemsSource="{Binding AllTags}" 
+                      PreviewMouseLeftButtonDown="AllTagsListView_PreviewMouseLeftButtonDown">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Style.Triggers>
@@ -132,18 +136,22 @@
         </Grid>
 
         <!-- 右ペイン3: ログ、動作処理リスト、選択されたタグ -->
-        <Grid Grid.Column="4">
+        <Grid Grid.Column="5">
             <Grid.RowDefinitions>
+                <RowDefinition Height="1*"/>
                 <RowDefinition Height="2*"/>
                 <RowDefinition Height="1*"/>
                 <RowDefinition Height="1*"/>
             </Grid.RowDefinitions>
 
+            <!-- デバッグログの表示領域-->
+            <TextBox x:Name="DebugLogTextBox" Grid.Row="0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+
             <!-- ログの表示領域 -->
-            <TextBox x:Name="LogTextBox" Grid.Row="0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+            <TextBox x:Name="LogTextBox" Grid.Row="1" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
 
             <!-- Undo/Redoのための動作処理リスト -->
-            <ListView x:Name="ActionListView" Grid.Row="1">
+            <ListView x:Name="ActionListView" Grid.Row="2">
                 <ListView.View>
                     <GridView>
                         <GridViewColumn Header="操作" DisplayMemberBinding="{Binding ActionType}"/>
@@ -153,7 +161,7 @@
             </ListView>
 
             <!-- 選択されたタグ -->
-            <ListBox x:Name="SelectedTagsListBox" Grid.Row="2" IsEnabled="False"/>
+            <ListBox x:Name="SelectedTagsListBox" Grid.Row="3" IsEnabled="False"/>
         </Grid>
     </Grid>
 </Window>
