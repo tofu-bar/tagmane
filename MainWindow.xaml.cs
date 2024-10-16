@@ -14,6 +14,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Collections.ObjectModel;
+using System.IO;
 
 namespace tagmane
 {
@@ -518,6 +519,31 @@ namespace tagmane
             public Action DoAction { get; set; }
             public Action UndoAction { get; set; }
             public string Description { get; set; }
+        }
+
+        private void SaveTagsButton_Click(object sender, RoutedEventArgs e)
+        {
+            foreach (var imageInfo in _imageInfos)
+            {
+                SaveTagsToFile(imageInfo);
+            }
+            MessageBox.Show("すべての画像のタグを保存しました。", "保存完了", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void SaveTagsToFile(ImageInfo imageInfo)
+        {
+            string textFilePath = System.IO.Path.ChangeExtension(imageInfo.ImagePath, ".txt");
+            string tagString = string.Join(", ", imageInfo.Tags);
+            
+            try
+            {
+                File.WriteAllText(textFilePath, tagString);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"ファイルの保存中にエラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                AddLogEntry($"タグの保存に失敗: {System.IO.Path.GetFileName(imageInfo.ImagePath)} - {ex.Message}");
+            }
         }
     }
 }

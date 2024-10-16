@@ -30,7 +30,7 @@
                         <TextBlock Text="フォルダを選択"/>
                     </Button.ToolTip>
                 </Button>
-                <Button>
+                <Button Click="SaveTagsButton_Click">
                     <Button.Content>
                         <Image Source="/icon/save.png" Width="32" Height="32"/>
                     </Button.Content>
