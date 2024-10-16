@@ -13,6 +13,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using System.Collections.ObjectModel;
 
 namespace tagmane
 {
@@ -27,8 +28,11 @@ namespace tagmane
         private bool _isUpdatingSelection = false;
         private HashSet<string> _selectedTags = new HashSet<string>();
         private HashSet<string> _currentImageTags = new HashSet<string>();
-        private Stack<Action> _undoStack = new Stack<Action>();
-        private Stack<Action> _redoStack = new Stack<Action>();
+        private Stack<TagAction> _undoStack = new Stack<TagAction>();
+        private Stack<TagAction> _redoStack = new Stack<TagAction>();
+        private ObservableCollection<string> _logEntries;
+        private ObservableCollection<ActionLogItem> _actionLogItems;
+        private const int MaxLogEntries = 20; // 100から20に変更
 
         public MainWindow()
         {
@@ -37,6 +41,9 @@ namespace tagmane
                 InitializeComponent();
                 _fileExplorer = new FileExplorer();
                 _allTags = new Dictionary<string, int>();
+                _logEntries = new ObservableCollection<string>();
+                _actionLogItems = new ObservableCollection<ActionLogItem>();
+                ActionListView.ItemsSource = _actionLogItems;
                 
                 // デバッグ用のメッセージを追加
                 MessageBox.Show("MainWindowが初期化されました。");
@@ -67,6 +74,7 @@ namespace tagmane
                 
                 // デバッグ用のメッセージを追加
                 MessageBox.Show($"{_imageInfos.Count}個の画像が見つかりました。");
+                AddLogEntry($"フォルダを選択しました: {dialog.FileName}");
             }
         }
 
@@ -85,6 +93,7 @@ namespace tagmane
                     _currentImageTags = new HashSet<string>(selectedImage.Tags);
                     UpdateTagListView();
                     UpdateAllTagsListView();
+                    AddLogEntry($"画像を選択しました: {System.IO.Path.GetFileName(selectedImage.ImagePath)}");
                 }
                 catch (Exception ex)
                 {
@@ -248,7 +257,7 @@ namespace tagmane
             SelectedTagsListBox.ItemsSource = _selectedTags.ToList();
         }
 
-        // 共通: タグの選択状態を更新
+        // 共通: タグの選択状態更新
         private void UpdateTagListViewSelection(IEnumerable<string> selectedTags)
         {
             TagListView.SelectedItems.Clear();
@@ -266,19 +275,11 @@ namespace tagmane
             if (_undoStack.Count > 0)
             {
                 var action = _undoStack.Pop();
+                action.UndoAction();
                 _redoStack.Push(action);
-                action();
-                
-                // 現在の画像のタグを更新
-                var selectedImage = ImageListBox.SelectedItem as ImageInfo;
-                if (selectedImage != null)
-                {
-                    _currentImageTags = new HashSet<string>(selectedImage.Tags);
-                }
-                
-                UpdateTagListView();
                 UpdateAllTags();
                 UpdateButtonStates();
+                AddActionLogItem("元に戻す", action.Description);
             }
         }
 
@@ -287,9 +288,11 @@ namespace tagmane
             if (_redoStack.Count > 0)
             {
                 var action = _redoStack.Pop();
+                action.DoAction();
                 _undoStack.Push(action);
-                action();
+                UpdateAllTags();
                 UpdateButtonStates();
+                AddActionLogItem("やり直し", action.Description);
             }
         }
 
@@ -298,35 +301,42 @@ namespace tagmane
             var selectedImage = ImageListBox.SelectedItem as ImageInfo;
             if (selectedImage != null)
             {
-                var selectedTags = SelectedTagsListBox.Items.Cast<string>().ToList(); // 変更：TagListViewからSelectedTagsListBoxに
+                var selectedTags = SelectedTagsListBox.Items.Cast<string>().ToList();
                 var addedTags = new List<string>();
 
                 foreach (var tag in selectedTags)
                 {
                     if (!selectedImage.Tags.Contains(tag))
                     {
-                        selectedImage.Tags.Add(tag);
+                        var action = new TagAction
+                        {
+                            Image = selectedImage,
+                            Tag = tag,
+                            IsAdd = true,
+                            DoAction = () =>
+                            {
+                                selectedImage.Tags.Add(tag);
+                                AddLogEntry($"タグ '{tag}' を追加しました");
+                            },
+                            UndoAction = () =>
+                            {
+                                selectedImage.Tags.Remove(tag);
+                                AddLogEntry($"タグ '{tag}' の追加を取り消しました");
+                            },
+                            Description = $"タグ '{tag}' を追加"
+                        };
+
+                        action.DoAction();
+                        _undoStack.Push(action);
                         addedTags.Add(tag);
                     }
                 }
 
                 if (addedTags.Count > 0)
                 {
-                    _undoStack.Push(() => 
-                    {
-                        foreach (var tag in addedTags)
-                        {
-                            selectedImage.Tags.Remove(tag);
-                        }
-                        _currentImageTags = new HashSet<string>(selectedImage.Tags);
-                        UpdateTagListView();
-                        UpdateAllTags();
-                    });
-                    _redoStack.Clear();
-                    _currentImageTags = new HashSet<string>(selectedImage.Tags);
-                    UpdateTagListView();
                     UpdateAllTags();
                     UpdateButtonStates();
+                    _redoStack.Clear();
                 }
             }
         }
@@ -336,35 +346,39 @@ namespace tagmane
             var selectedImage = ImageListBox.SelectedItem as ImageInfo;
             if (selectedImage != null)
             {
-                var selectedTags = TagListView.SelectedItems.Cast<string>().ToList();
+                var selectedTags = TagListView.SelectedItems.Cast<string>().ToList(); // ImageTagsListBoxをTagListViewに変更
                 var removedTags = new List<string>();
 
                 foreach (var tag in selectedTags)
                 {
-                    if (selectedImage.Tags.Contains(tag))
+                    var action = new TagAction
                     {
-                        selectedImage.Tags.Remove(tag);
-                        removedTags.Add(tag);
-                    }
+                        Image = selectedImage,
+                        Tag = tag,
+                        IsAdd = false,
+                        DoAction = () =>
+                        {
+                            selectedImage.Tags.Remove(tag);
+                            AddLogEntry($"タグ '{tag}' を削除しました");
+                        },
+                        UndoAction = () =>
+                        {
+                            selectedImage.Tags.Add(tag);
+                            AddLogEntry($"タグ '{tag}' の削除を取り消しました");
+                        },
+                        Description = $"タグ '{tag}' を削除"
+                    };
+
+                    action.DoAction();
+                    _undoStack.Push(action);
+                    removedTags.Add(tag);
                 }
 
                 if (removedTags.Count > 0)
                 {
-                    _undoStack.Push(() => 
-                    {
-                        foreach (var tag in removedTags)
-                        {
-                            selectedImage.Tags.Add(tag);
-                        }
-                        _currentImageTags = new HashSet<string>(selectedImage.Tags);
-                        UpdateTagListView();
-                        UpdateAllTags();
-                    });
-                    _redoStack.Clear();
-                    _currentImageTags = new HashSet<string>(selectedImage.Tags);
-                    UpdateTagListView();
                     UpdateAllTags();
                     UpdateButtonStates();
+                    _redoStack.Clear();
                 }
             }
         }
@@ -392,15 +406,31 @@ namespace tagmane
 
                 if (removedTags.Count > 0)
                 {
-                    _undoStack.Push(() => 
+                    var action = new TagAction
                     {
-                        foreach (var kvp in removedTags)
+                        DoAction = () =>
                         {
-                            kvp.Key.Tags.AddRange(kvp.Value);
+                            foreach (var kvp in removedTags)
+                            {
+                                foreach (var tag in kvp.Value)
+                                {
+                                    kvp.Key.Tags.Remove(tag);
+                                }
+                            }
+                            UpdateTagListView();
+                            UpdateAllTags();
+                        },
+                        UndoAction = () =>
+                        {
+                            foreach (var kvp in removedTags)
+                            {
+                                kvp.Key.Tags.AddRange(kvp.Value);
+                            }
+                            UpdateTagListView();
+                            UpdateAllTags();
                         }
-                        UpdateTagListView();
-                        UpdateAllTags();
-                    });
+                    };
+                    _undoStack.Push(action);
                     _redoStack.Clear();
                     UpdateTagListView();
                     UpdateAllTags();
@@ -413,6 +443,47 @@ namespace tagmane
         {
             UndoButton.IsEnabled = _undoStack.Count > 0;
             RedoButton.IsEnabled = _redoStack.Count > 0;
+        }
+
+        // ログを追加するメソッド
+        private void AddLogEntry(string message)
+        {
+            string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
+            _logEntries.Insert(0, logMessage);
+            while (_logEntries.Count > MaxLogEntries)
+            {
+                _logEntries.RemoveAt(_logEntries.Count - 1);
+            }
+            // TextBoxに直接ログを追加
+            LogTextBox.Text = string.Join(Environment.NewLine, _logEntries);
+        }
+
+        // アクションログを追加するメソッド
+        private void AddActionLogItem(string actionType, string description)
+        {
+            _actionLogItems.Insert(0, new ActionLogItem { ActionType = actionType, Description = description });
+            while (_actionLogItems.Count > MaxLogEntries)
+            {
+                _actionLogItems.RemoveAt(_actionLogItems.Count - 1);
+            }
+        }
+
+        // ActionLogItemクラスを追加
+        public class ActionLogItem
+        {
+            public string ActionType { get; set; }
+            public string Description { get; set; }
+        }
+
+        // TagActionクラスを修正
+        private class TagAction
+        {
+            public ImageInfo Image { get; set; }
+            public string Tag { get; set; }
+            public bool IsAdd { get; set; }
+            public Action DoAction { get; set; }
+            public Action UndoAction { get; set; }
+            public string Description { get; set; }
         }
     }
 }
