@@ -23,7 +23,7 @@ namespace tagmane
         private List<int> _generalIndexes;
         private List<int> _characterIndexes;
         private int _modelTargetSize;
-        private const int MaxLogEntries = 20; // 適切な数に調整してください
+        private const int MaxLogEntries = 20; // ログエントリの最大数を定義
 
         private const string MODEL_FILENAME = "model.onnx";
         private const string LABEL_FILENAME = "selected_tags.csv";
@@ -36,14 +36,16 @@ namespace tagmane
 
         private void AddLogEntry(string message)
         {
-            string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
-            _vlmLogEntries.Insert(0, logMessage);
-            while (_vlmLogEntries.Count > MaxLogEntries)
+            lock (_vlmLogEntries)
             {
-                _vlmLogEntries.RemoveAt(_vlmLogEntries.Count - 1);
-            }            
-            // ログが更新されたことを通知
-            LogUpdated?.Invoke(this, string.Join(Environment.NewLine, _vlmLogEntries));            
+                _vlmLogEntries.Add(message);
+                
+                // ログエントリ数が最大数を超えた場合、古いエントリを削除
+                while (_vlmLogEntries.Count > MaxLogEntries)
+                {
+                    _vlmLogEntries.RemoveAt(0);
+                }
+            }
         }
 
         public async Task LoadModel(string modelRepo)

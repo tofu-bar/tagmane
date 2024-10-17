@@ -38,14 +38,6 @@
                         <TextBlock Text="現在のタグ状態を保存"/>
                     </Button.ToolTip>
                 </Button>
-                <Button Click="MakeTagsWithVLM_Click">
-                    <Button.Content>
-                        <Image Source="/icon/vlm.png" Width="32" Height="32"/>
-                    </Button.Content>
-                    <Button.ToolTip>
-                        <TextBlock Text="VLMでタグを作成"/>
-                    </Button.ToolTip>
-                </Button>
             </StackPanel>
             <ListBox x:Name="ImageListBox" SelectionChanged="ImageListBox_SelectionChanged"/>
         </DockPanel>
@@ -185,17 +177,21 @@
         <!-- 右ペイン3: ログ、動作処理リスト、選択されたタグ -->
         <Grid Grid.Column="5">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>  <!-- プログレスバー用 -->
                 <RowDefinition Height="1*"/>
                 <RowDefinition Height="2*"/>
                 <RowDefinition Height="1*"/>
                 <RowDefinition Height="1*"/>
             </Grid.RowDefinitions>
 
+            <!-- プログレスバー -->
+            <ProgressBar x:Name="ProgressBar" Grid.Row="0" Height="20" Margin="5" Minimum="0" Maximum="100" Value="0"/>
+
             <!-- デバッグログの表示領域-->
-            <TextBox x:Name="DebugLogTextBox" Grid.Row="0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+            <TextBox x:Name="DebugLogTextBox" Grid.Row="1" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
 
             <!-- ログ表示用のTabControl -->
-            <TabControl Grid.Row="1">
+            <TabControl Grid.Row="2">
                 <TabItem Header="メインログ">
                     <TextBox x:Name="MainLogTextBox" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
                 </TabItem>
@@ -205,7 +201,7 @@
             </TabControl>
 
             <!-- Undo/Redoのための動作処理リスト -->
-            <ListView x:Name="ActionListView" Grid.Row="2">
+            <ListView x:Name="ActionListView" Grid.Row="3">
                 <ListView.View>
                     <GridView>
                         <GridViewColumn Header="操作" DisplayMemberBinding="{Binding ActionType}"/>
@@ -215,7 +211,7 @@
             </ListView>
 
             <!-- 選択されたタグ -->
-            <ListBox x:Name="SelectedTagsListBox" Grid.Row="3" IsEnabled="False"/>
+            <ListBox x:Name="SelectedTagsListBox" Grid.Row="4" IsEnabled="False"/>
         </Grid>
     </Grid>
 </Window>
