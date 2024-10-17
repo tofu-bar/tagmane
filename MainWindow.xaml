@@ -48,6 +48,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="2*"/>
                 <RowDefinition Height="1*"/>
+                <RowDefinition Height="Auto"/> <!-- オプション欄用に新しい行を追加 -->
             </Grid.RowDefinitions>
             <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center">
                 <Button x:Name="UndoButton" Content="←" Background="Green" Foreground="White" Width="30" Height="30" Margin="5" Click="UndoButton_Click"/>
@@ -55,6 +56,28 @@
             </StackPanel>
             <Image x:Name="SelectedImage" Grid.Row="1" Stretch="Uniform"/>
             <TextBox x:Name="AssociatedText" Grid.Row="2" IsReadOnly="True" TextWrapping="Wrap"/>
+            
+            <!-- オプション欄 -->
+            <StackPanel Grid.Row="3" Margin="5">
+                <StackPanel Orientation="Horizontal" Margin="0,5">
+                    <TextBlock Text="VLMモデル:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <ComboBox x:Name="VLMModelComboBox" Width="200" SelectionChanged="VLMModelComboBox_SelectionChanged"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,5">
+                    <TextBlock Text="General Threshold:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <Slider x:Name="GeneralThresholdSlider" Width="150" Minimum="0" Maximum="1" Value="0.35" 
+                            TickFrequency="0.05" IsSnapToTickEnabled="True" ValueChanged="GeneralThresholdSlider_ValueChanged"/>
+                    <TextBlock x:Name="GeneralThresholdValue" Text="{Binding ElementName=GeneralThresholdSlider, Path=Value, StringFormat={}{0:F2}}" 
+                               VerticalAlignment="Center" Margin="5,0,0,0"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,5">
+                    <TextBlock Text="Character Threshold:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <Slider x:Name="CharacterThresholdSlider" Width="150" Minimum="0" Maximum="1" Value="0.85" 
+                            TickFrequency="0.05" IsSnapToTickEnabled="True" ValueChanged="CharacterThresholdSlider_ValueChanged"/>
+                    <TextBlock x:Name="CharacterThresholdValue" Text="{Binding ElementName=CharacterThresholdSlider, Path=Value, StringFormat={}{0:F2}}" 
+                               VerticalAlignment="Center" Margin="5,0,0,0"/>
+                </StackPanel>
+            </StackPanel>
         </Grid>
 
         <!-- 右ペイン1: 個別タグ -->

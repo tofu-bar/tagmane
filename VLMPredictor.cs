@@ -45,12 +45,15 @@ namespace tagmane
                 {
                     _vlmLogEntries.RemoveAt(0);
                 }
+
+                // メインウィンドウにログを通知
+                LogUpdated?.Invoke(this, message);
             }
         }
 
         public async Task LoadModel(string modelRepo)
         {
-            AddLogEntry($"リポジトリからモデルを読み込んでいます: {modelRepo}");
+            AddLogEntry($"リポジトリからモデルを読み込みます: {modelRepo}");
             var (csvPath, modelPath) = await DownloadModel(modelRepo);
 
             _tagNames = new List<string>();
@@ -62,20 +65,27 @@ namespace tagmane
 
             AddLogEntry("ONNX推論セッションを初期化しています");
             _model = new InferenceSession(modelPath);
-            _modelTargetSize = _model.InputMetadata["input"].Dimensions[2];
+            // _modelTargetSize = _model.InputMetadata["input"].Dimensions[2];
+            _modelTargetSize = _model.InputMetadata.First().Value.Dimensions[2];
             AddLogEntry($"モデルの読み込みが完了しました。ターゲットサイズ: {_modelTargetSize}");
         }
 
         private async Task<(string, string)> DownloadModel(string modelRepo)
         {
             using var client = new HttpClient();
-            var csvPath = Path.Combine(Path.GetTempPath(), LABEL_FILENAME);
-            var modelPath = Path.Combine(Path.GetTempPath(), MODEL_FILENAME);
+            var modelDir = Path.Combine(Path.GetTempPath(), "tagmane", modelRepo.Split('/').Last());
+            Directory.CreateDirectory(modelDir);
+            var csvPath = Path.Combine(modelDir, LABEL_FILENAME);
+            var modelPath = Path.Combine(modelDir, MODEL_FILENAME);
+            AddLogEntry($"モデルファイルのダウンロードを開始します: {modelRepo}");
+            AddLogEntry($"辞書ダウンロードパス: {csvPath}");
+            AddLogEntry($"モデルダウンロードパス: {modelPath}");
 
             if (!File.Exists(csvPath) || !File.Exists(modelPath))
             {
                 await DownloadFileWithRetry(client, $"https://huggingface.co/{modelRepo}/resolve/main/{LABEL_FILENAME}", csvPath);
-                await DownloadFileWithRetry(client, $"https://huggingface.co/{modelRepo}/resolve/main/{MODEL_FILENAME}", modelPath);
+                var progress = new Progress<double>(p => Application.Current.Dispatcher.Invoke(() => ((MainWindow)Application.Current.MainWindow).ProgressBar.Value = p * 100));
+                await DownloadFileWithRetry(client, $"https://huggingface.co/{modelRepo}/resolve/main/{MODEL_FILENAME}", modelPath, progress: progress);
 
                 if (!VerifyFileIntegrity(modelPath))
                 {
@@ -86,23 +96,53 @@ namespace tagmane
             else
             {
                 AddLogEntry("既存のモデルファイルを使用します。");
+                Application.Current.Dispatcher.Invoke(() => ((MainWindow)Application.Current.MainWindow).ProgressBar.Value = 100);
             }
+
+            // プログレスバーをリセット
+            Application.Current.Dispatcher.Invoke(() => ((MainWindow)Application.Current.MainWindow).ProgressBar.Value = 0);
 
             return (csvPath, modelPath);
         }
 
-        private async Task DownloadFileWithRetry(HttpClient client, string url, string filePath, int maxRetries = 3)
+        private async Task DownloadFileWithRetry(HttpClient client, string url, string filePath, int maxRetries = 3, IProgress<double> progress = null)
         {
             for (int i = 0; i < maxRetries; i++)
             {
                 try
                 {
                     AddLogEntry($"ファイルをダウンロードしています: {url}");
-                    using var response = await client.GetAsync(url);
+                    using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
                     response.EnsureSuccessStatusCode();
-                    using var stream = await response.Content.ReadAsStreamAsync();
-                    using var fileStream = new FileStream(filePath, FileMode.Create);
-                    await stream.CopyToAsync(fileStream);
+                    long? totalBytes = response.Content.Headers.ContentLength;
+                    using var contentStream = await response.Content.ReadAsStreamAsync();
+                    using var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true);
+
+                    var totalRead = 0L;
+                    var buffer = new byte[8192];
+                    var isMoreToRead = true;
+
+                    do
+                    {
+                        var read = await contentStream.ReadAsync(buffer, 0, buffer.Length);
+                        if (read == 0)
+                        {
+                            isMoreToRead = false;
+                        }
+                        else
+                        {
+                            await fileStream.WriteAsync(buffer, 0, read);
+
+                            totalRead += read;
+                            if (totalBytes.HasValue)
+                            {
+                                var progressPercentage = (double)totalRead / totalBytes.Value;
+                                progress?.Report(progressPercentage);
+                            }
+                        }
+                    }
+                    while (isMoreToRead);
+
                     AddLogEntry($"ファイルのダウンロードが完了しました: {filePath}");
                     return;
                 }

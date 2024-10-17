@@ -41,6 +41,17 @@ namespace tagmane
         private bool _isDragging = false;
         private VLMPredictor _vlmPredictor;
         private CancellationTokenSource _cts;
+        private List<(string Name, double GeneralThreshold)> _vlmModels = new List<(string, double)> 
+        {
+            ("SmilingWolf/wd-eva02-large-tagger-v3", 0.50),
+            ("SmilingWolf/wd-vit-large-tagger-v3", 0.25),
+            ("SmilingWolf/wd-v1-4-swinv2-tagger-v2", 0.35),
+            ("SmilingWolf/wd-vit-tagger-v3", 0.25),
+            ("SmilingWolf/wd-swinv2-tagger-v3", 0.25),
+            ("SmilingWolf/wd-convnext-tagger-v3", 0.25)
+        };
+
+        private const double DefaultCharacterThreshold = 0.85;
 
         // インターフェースを追加
         private interface ITagAction
@@ -97,6 +108,13 @@ namespace tagmane
                 this.Show();
 
                 InitializeVLMPredictor();
+
+                // VLMモデルのコンボボックスを初期化
+                VLMModelComboBox.ItemsSource = _vlmModels.Select(m => m.Name);
+                VLMModelComboBox.SelectedIndex = 0;
+
+                // デフォルトのthresholdを設定
+                UpdateThresholds(_vlmModels[0].GeneralThreshold, DefaultCharacterThreshold);
             }
             catch (Exception ex)
             {
@@ -106,21 +124,37 @@ namespace tagmane
 
         private async void InitializeVLMPredictor()
         {
+            AddDebugLogEntry("InitializeVLMPredictor");
             _vlmPredictor = new VLMPredictor();
-            _vlmPredictor.LogUpdated += UpdateVLMLog;
-            LoadVLMModel();
+            _vlmPredictor.LogUpdated += UpdateVLMLog; // イベントリスナーを再追加
+            // LoadVLMModel(_vlmModels[0]); // デフォルトのモデルを読み込む
         }
 
-        private async void LoadVLMModel()
+        // private async void LoadVLMModel()
+        // {
+        //     try
+        //     {
+        //         AddMainLogEntry("VLMモデルの読み込みを開始します。");
+        //         await _vlmPredictor.LoadModel("SmilingWolf/wd-swinv2-tagger-v3");
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         MessageBox.Show($"VLMモデルの読み込みに失敗しました: {ex.Message}");
+        //     }
+        // }
+
+        private async void LoadVLMModel(string modelName)
         {
             try
             {
-                AddMainLogEntry("VLMモデルの読み込みを開始します。");
-                await _vlmPredictor.LoadModel("SmilingWolf/wd-swinv2-tagger-v3");
+                AddMainLogEntry($"VLMモデル '{modelName}' の読み込みを開始します。");
+                await _vlmPredictor.LoadModel(modelName);
+                AddMainLogEntry($"VLMモデル '{modelName}' の読み込みが完了しました。");
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"VLMモデルの読み込みに失敗しました: {ex.Message}");
+                AddMainLogEntry($"VLMモデルの読み込みに失敗しました: {ex.Message}");
             }
         }
 
@@ -250,9 +284,9 @@ namespace tagmane
             {
                 var (generalTags, rating, characters, allTags) = _vlmPredictor.Predict(
                     new BitmapImage(new Uri(selectedImage.ImagePath)),
-                    0.35f, // generalThresh
+                    (float)GeneralThresholdSlider.Value,
                     false, // generalMcutEnabled
-                    0.85f, // characterThresh
+                    (float)CharacterThresholdSlider.Value,
                     false  // characterMcutEnabled
                 );
 
@@ -408,7 +442,14 @@ namespace tagmane
         {
             Dispatcher.Invoke(() =>
             {
-                VLMLogTextBox.Text = log;
+                VLMLogTextBox.AppendText(log + Environment.NewLine);
+                
+                // ログエントリの数が最大数を超えた場合、古いエントリを削除
+                var lines = VLMLogTextBox.Text.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
+                if (lines.Length > MaxLogEntries)
+                {
+                    VLMLogTextBox.Text = string.Join(Environment.NewLine, lines.Skip(lines.Length - MaxLogEntries));
+                }
             });
         }
 
@@ -1010,6 +1051,34 @@ namespace tagmane
         {
             public string Tag { get; set; }
             public int Position { get; set; }
+        }
+
+        private void VLMModelComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (VLMModelComboBox.SelectedItem is string selectedModel)
+            {
+                var modelInfo = _vlmModels.First(m => m.Name == selectedModel);
+                UpdateThresholds(modelInfo.GeneralThreshold, DefaultCharacterThreshold);
+                LoadVLMModel(selectedModel);
+            }
+        }
+
+        private void UpdateThresholds(double generalThreshold, double characterThreshold)
+        {
+            GeneralThresholdSlider.Value = generalThreshold;
+            CharacterThresholdSlider.Value = characterThreshold;
+        }
+
+        private void GeneralThresholdSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            // スライダーの値が変更されたときの処理
+            // 必要に応じて、この値をVLMPredictorに渡す
+        }
+
+        private void CharacterThresholdSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            // スライダーの値が変更されたときの処理
+            // 必要に応じて、この値をVLMPredictorに渡す
         }
     }
 }
