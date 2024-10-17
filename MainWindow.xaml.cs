@@ -158,7 +158,6 @@ namespace tagmane
             // 例: ListBoxやTextBlockに結果を表示する
             AddMainLogEntry($"VLM推論結果: {generalTags}");
         }
-
         // VLM推論を実行するボタンのクリックイベントハンドラ
         private async void VLMPredictButton_Click(object sender, RoutedEventArgs e)
         {
@@ -168,7 +167,57 @@ namespace tagmane
                 VLMPredictButton.IsEnabled = false;
                 
                 // 非同期でPredictVLMTagsを呼び出す
-                await PredictVLMTagsAsync();
+                var predictedTags = await PredictVLMTagsAsync();
+                
+                // 選択された画像を取得
+                var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+                if (selectedImage != null && predictedTags.Any())
+                {
+                    // 既存のタグと重複しないタグを抽出
+                    var newTags = predictedTags.Except(selectedImage.Tags).ToList();
+                    
+                    if (newTags.Any())
+                    {
+                        // 新しいタグを追加するアクションを作成
+                        var action = new TagGroupAction
+                        {
+                            Image = selectedImage,
+                            TagInfos = newTags.Select(tag => new TagPositionInfo { Tag = tag, Position = selectedImage.Tags.Count }).ToList(),
+                            IsAdd = true,
+                            DoAction = () =>
+                            {
+                                foreach (var tagInfo in newTags)
+                                {
+                                    selectedImage.Tags.Add(tagInfo);
+                                }
+                                AddMainLogEntry($"VLM推論により{newTags.Count}個の新しいタグを追加しました");
+                                UpdateTagListView();
+                                UpdateAllTags();
+                            },
+                            UndoAction = () =>
+                            {
+                                for (int i = 0; i < newTags.Count; i++)
+                                {
+                                    selectedImage.Tags.RemoveAt(selectedImage.Tags.Count - 1);
+                                }
+                                AddMainLogEntry($"VLM推論により追加された{newTags.Count}個のタグを削除しました");
+                                UpdateTagListView();
+                                UpdateAllTags();
+                            },
+                            Description = $"VLM推論により{newTags.Count}個のタグを追加"
+                        };
+
+                        // アクションを実行し、Undoスタックに追加
+                        action.DoAction();
+                        _undoStack.Push(action);
+                        _redoStack.Clear();
+                        UpdateButtonStates();
+                    }
+                    else
+                    {
+                        AddMainLogEntry("VLM推論により新しいタグは見つかりませんでした");
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -183,14 +232,14 @@ namespace tagmane
             }
         }
 
-        // PredictVLMTagsメソッドを非同期に変更
-        private async Task PredictVLMTagsAsync()
+        // PredictVLMTagsAsyncメソッドを修正して、予測されたタグのリストを返すようにします
+        private async Task<List<string>> PredictVLMTagsAsync()
         {
             var selectedImage = ImageListBox.SelectedItem as ImageInfo;
             if (selectedImage == null)
             {
                 AddMainLogEntry("画像が選択されていません。");
-                return;
+                return new List<string>();
             }
 
             AddMainLogEntry("VLM推論を開始します");
@@ -207,14 +256,97 @@ namespace tagmane
 
                 // 結果を表示または処理する
                 UpdateVLMTagsDisplay(generalTags, rating, characters, allTags);
+
+                // generalTagsとcharactersを結合して返す
+                var predictedTags = generalTags.Split(',').Select(t => t.Trim()).ToList();
+                predictedTags.AddRange(characters.Keys);
+                return predictedTags;
             }
             catch (Exception ex)
             {
                 AddMainLogEntry($"VLM推論中にエラーが発生しました: {ex.Message}");
                 throw;
             }
+        }
 
-            AddMainLogEntry("VLM推論が完了しました。");
+        // すべての画像にVLM推論でタグを追加するメソッド
+        private async void VLMPredictAllButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // ボタンを無効化して、処理中であることを示す
+                VLMPredictAllButton.IsEnabled = false;
+                
+                AddMainLogEntry("すべての画像に対してVLM推論を開始します");
+
+                foreach (var imageInfo in _imageInfos)
+                {
+                    try
+                    {
+                        var (generalTags, rating, characters, allTags) = _vlmPredictor.Predict(
+                            new BitmapImage(new Uri(imageInfo.ImagePath)),
+                            0.35f, // generalThresh
+                            false, // generalMcutEnabled
+                            0.85f, // characterThresh
+                            false  // characterMcutEnabled
+                        );
+
+                        // 新しいタグを追加
+                        var newTags = allTags.Keys.Except(imageInfo.Tags).ToList();
+                        if (newTags.Any())
+                        {
+                            var action = new TagGroupAction
+                            {
+                                Image = imageInfo,
+                                TagInfos = newTags.Select(tag => new TagPositionInfo { Tag = tag, Position = imageInfo.Tags.Count }).ToList(),
+                                IsAdd = true,
+                                DoAction = () =>
+                                {
+                                    foreach (var tag in newTags)
+                                    {
+                                        imageInfo.Tags.Add(tag);
+                                    }
+                                    AddMainLogEntry($"{imageInfo.ImagePath}に{newTags.Count}個のタグを追加しました");
+                                    UpdateTagListView();
+                                    UpdateAllTags();
+                                },
+                                UndoAction = () =>
+                                {
+                                    foreach (var tag in newTags)
+                                    {
+                                        imageInfo.Tags.Remove(tag);
+                                    }
+                                    AddMainLogEntry($"{imageInfo.ImagePath}から{newTags.Count}個のタグの追加を取り消しました");
+                                    UpdateTagListView();
+                                    UpdateAllTags();
+                                },
+                                Description = $"{imageInfo.ImagePath}に{newTags.Count}個のタグを追加"
+                            };
+
+                            action.DoAction();
+                            _undoStack.Push(action);
+                        }
+
+                        AddMainLogEntry($"{imageInfo.ImagePath}のVLM推論が完了しました");
+                    }
+                    catch (Exception ex)
+                    {
+                        AddMainLogEntry($"{imageInfo.ImagePath}のVLM推論中にエラーが発生しました: {ex.Message}");
+                    }
+                }
+
+                AddMainLogEntry("すべての画像に対するVLM推論が完了しました");
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"VLM推論中にエラーが発生しました: {ex.Message}");
+                MessageBox.Show($"エラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                // 処理が完了したらボタンを再度有効化
+                VLMPredictAllButton.IsEnabled = true;
+            }
         }
 
         // VLMログの更新

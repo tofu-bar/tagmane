@@ -221,6 +221,7 @@ namespace tagmane
             {
                 for (int x = 0; x < _modelTargetSize; x++)
                 {
+
                     int i = (y * _modelTargetSize + x) * 4;
                     tensor[0, y, x, 2] = pixels[i + 2];     // R
                     tensor[0, y, x, 1] = pixels[i + 1];     // G
@@ -231,21 +232,21 @@ namespace tagmane
             AddLogEntry("VLMログ：画像をテンソルに変換しました");
 
             // テンソルを画像に変換
-            BitmapSource previewImage = TensorToBitmapSource(tensor);
-            AddLogEntry("VLMログ：画像を準備しました");
+            // BitmapSource previewImage = TensorToBitmapSource(tensor);
+            // AddLogEntry("VLMログ：画像を準備しました");
 
-            // UI スレッドで MessageBox を表示
-            Application.Current.Dispatcher.Invoke(() =>
-            {
-                var window = new Window
-                {
-                    Title = "推論前の画像プレビュー",
-                    SizeToContent = SizeToContent.WidthAndHeight,
-                    WindowStartupLocation = WindowStartupLocation.CenterScreen,
-                    Content = new System.Windows.Controls.Image { Source = previewImage, Stretch = System.Windows.Media.Stretch.None }
-                };
-                window.ShowDialog();
-            });
+            // // UI スレッドで MessageBox を表示
+            // Application.Current.Dispatcher.Invoke(() =>
+            // {
+            //     var window = new Window
+            //     {
+            //         Title = "推論前の画像プレビュー",
+            //         SizeToContent = SizeToContent.WidthAndHeight,
+            //         WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            //         Content = new System.Windows.Controls.Image { Source = previewImage, Stretch = System.Windows.Media.Stretch.None }
+            //     };
+            //     window.ShowDialog();
+            // });
 
             return tensor;
         }
