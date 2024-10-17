@@ -33,21 +33,19 @@ namespace tagmane
         public event EventHandler<string> LogUpdated;
 
         private List<string> _vlmLogEntries = new List<string>();
-
         private void AddLogEntry(string message)
         {
             lock (_vlmLogEntries)
             {
-                _vlmLogEntries.Add(message);
-                
-                // ログエントリ数が最大数を超えた場合、古いエントリを削除
+                string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
+                _vlmLogEntries.Insert(0, logMessage);
                 while (_vlmLogEntries.Count > MaxLogEntries)
                 {
-                    _vlmLogEntries.RemoveAt(0);
+                    _vlmLogEntries.RemoveAt(_vlmLogEntries.Count - 1);
                 }
-
+                
                 // メインウィンドウにログを通知
-                LogUpdated?.Invoke(this, message);
+                LogUpdated?.Invoke(this, logMessage);
             }
         }
 
@@ -221,8 +219,8 @@ namespace tagmane
 
             var inputTensor = PrepareImage(image);
             AddLogEntry($"inputTensor: {inputTensor[0, 1, 1, 0]}");
-            
-            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("input", inputTensor) };
+            // var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("input", inputTensor) };
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(_model.InputMetadata.First().Key, inputTensor) };
             var output = _model.Run(inputs);
             var predictions = output.First().AsEnumerable<float>().ToArray();
 

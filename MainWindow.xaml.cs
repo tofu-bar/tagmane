@@ -48,7 +48,11 @@ namespace tagmane
             ("SmilingWolf/wd-v1-4-swinv2-tagger-v2", 0.35),
             ("SmilingWolf/wd-vit-tagger-v3", 0.25),
             ("SmilingWolf/wd-swinv2-tagger-v3", 0.25),
-            ("SmilingWolf/wd-convnext-tagger-v3", 0.25)
+            ("SmilingWolf/wd-convnext-tagger-v3", 0.25),
+            ("SmilingWolf/wd-v1-4-moat-tagger-v2", 0.35),
+            ("SmilingWolf/wd-v1-4-convnext-tagger-v2", 0.35),
+            ("SmilingWolf/wd-v1-4-vit-tagger-v2", 0.35),
+            ("SmilingWolf/wd-v1-4-convnextv2-tagger-v2", 0.35)
         };
 
         private const double DefaultCharacterThreshold = 0.85;
@@ -442,14 +446,15 @@ namespace tagmane
         {
             Dispatcher.Invoke(() =>
             {
-                VLMLogTextBox.AppendText(log + Environment.NewLine);
-                
                 // ログエントリの数が最大数を超えた場合、古いエントリを削除
                 var lines = VLMLogTextBox.Text.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-                if (lines.Length > MaxLogEntries)
+                if (lines.Length >= MaxLogEntries)
                 {
-                    VLMLogTextBox.Text = string.Join(Environment.NewLine, lines.Skip(lines.Length - MaxLogEntries));
+                    VLMLogTextBox.Text = string.Join(Environment.NewLine, lines.Take(MaxLogEntries - 1));
                 }
+                
+                // 新しいログを上に追加
+                VLMLogTextBox.Text = log + Environment.NewLine + VLMLogTextBox.Text;
             });
         }
 
