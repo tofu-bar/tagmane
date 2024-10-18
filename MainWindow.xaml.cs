@@ -52,7 +52,8 @@ namespace tagmane
             ("SmilingWolf/wd-v1-4-moat-tagger-v2", 0.35),
             ("SmilingWolf/wd-v1-4-convnext-tagger-v2", 0.35),
             ("SmilingWolf/wd-v1-4-vit-tagger-v2", 0.35),
-            ("SmilingWolf/wd-v1-4-convnextv2-tagger-v2", 0.35)
+            ("SmilingWolf/wd-v1-4-convnextv2-tagger-v2", 0.35),
+            ("fancyfeast/joytag", 0.4)
         };
 
         private const double DefaultCharacterThreshold = 0.85;
@@ -134,19 +135,6 @@ namespace tagmane
             // LoadVLMModel(_vlmModels[0]); // デフォルトのモデルを読み込む
         }
 
-        // private async void LoadVLMModel()
-        // {
-        //     try
-        //     {
-        //         AddMainLogEntry("VLMモデルの読み込みを開始します。");
-        //         await _vlmPredictor.LoadModel("SmilingWolf/wd-swinv2-tagger-v3");
-        //     }
-        //     catch (Exception ex)
-        //     {
-        //         MessageBox.Show($"VLMモデルの読み込みに失敗しました: {ex.Message}");
-        //     }
-        // }
-
         private async void LoadVLMModel(string modelName)
         {
             try
@@ -162,35 +150,35 @@ namespace tagmane
             }
         }
 
-        private async void PredictVLMTags()
-        {
-            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
-            if (selectedImage == null)
-            {
-                AddMainLogEntry("画像が選択されていません。");
-                return;
-            }
+        // private async void PredictVLMTags()
+        // {
+        //     var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+        //     if (selectedImage == null)
+        //     {
+        //         AddMainLogEntry("画像が選択されていません。");
+        //         return;
+        //     }
 
-            AddMainLogEntry("VLM推論を開始します");
+        //     AddMainLogEntry("VLM推論を開始します");
 
-            try
-            {
-                var (generalTags, rating, characters, allTags) = _vlmPredictor.Predict(
-                    new BitmapImage(new Uri(selectedImage.ImagePath)),
-                    0.35f, // generalThresh
-                    false, // generalMcutEnabled
-                    0.85f, // characterThresh
-                    false  // characterMcutEnabled
-                );
+        //     try
+        //     {
+        //         var (generalTags, rating, characters, allTags) = _vlmPredictor.Predict(
+        //             new BitmapImage(new Uri(selectedImage.ImagePath)),
+        //             0.35f, // generalThresh
+        //             false, // generalMcutEnabled
+        //             0.85f, // characterThresh
+        //             false  // characterMcutEnabled
+        //         );
 
-                // 結果を表示または処理する
-                UpdateVLMTagsDisplay(generalTags, rating, characters, allTags);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"VLM推論中にエラーが発生しました: {ex.Message}");
-            }
-        }
+        //         // 結果を表示または処理する
+        //         UpdateVLMTagsDisplay(generalTags, rating, characters, allTags);
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         MessageBox.Show($"VLM推論中にエラーが発生しました: {ex.Message}");
+        //     }
+        // }
 
         private void UpdateVLMTagsDisplay(string generalTags, Dictionary<string, float> rating, Dictionary<string, float> characters, Dictionary<string, float> allTags)
         {
@@ -198,6 +186,7 @@ namespace tagmane
             // 例: ListBoxやTextBlockに結果を表示する
             AddMainLogEntry($"VLM推論結果: {generalTags}");
         }
+
         // VLM推論を実行するボタンのクリックイベントハンドラ
         private async void VLMPredictButton_Click(object sender, RoutedEventArgs e)
         {
@@ -205,12 +194,21 @@ namespace tagmane
             {
                 // ボタンを無効化して、処理中であることを示す
                 VLMPredictButton.IsEnabled = false;
-                
-                // 非同期でPredictVLMTagsを呼び出す
-                var predictedTags = await PredictVLMTagsAsync();
+
+                // キャンセルトークンソースを作成
+                _cts = new CancellationTokenSource();
                 
                 // 選択された画像を取得
                 var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+                if (selectedImage == null)
+                {
+                    AddMainLogEntry("画像が選択されていません。");
+                    return;
+                }
+
+                // 非同期でPredictVLMTagsを呼び出す
+                var predictedTags = await PredictVLMTagsAsync(selectedImage, _cts.Token);
+                
                 if (selectedImage != null && predictedTags.Any())
                 {
                     // 既存のタグと重複しないタグを抽出
@@ -272,43 +270,6 @@ namespace tagmane
             }
         }
 
-        // PredictVLMTagsAsyncメソッドを修正して、予測されたタグのリストを返すようにします
-        private async Task<List<string>> PredictVLMTagsAsync()
-        {
-            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
-            if (selectedImage == null)
-            {
-                AddMainLogEntry("画像が選択されていません。");
-                return new List<string>();
-            }
-
-            AddMainLogEntry("VLM推論を開始します");
-
-            try
-            {
-                var (generalTags, rating, characters, allTags) = _vlmPredictor.Predict(
-                    new BitmapImage(new Uri(selectedImage.ImagePath)),
-                    (float)GeneralThresholdSlider.Value,
-                    false, // generalMcutEnabled
-                    (float)CharacterThresholdSlider.Value,
-                    false  // characterMcutEnabled
-                );
-
-                // 結果を表示または処理する
-                UpdateVLMTagsDisplay(generalTags, rating, characters, allTags);
-
-                // generalTagsとcharactersを結合して返す
-                var predictedTags = generalTags.Split(',').Select(t => t.Trim()).ToList();
-                predictedTags.AddRange(characters.Keys);
-                return predictedTags;
-            }
-            catch (Exception ex)
-            {
-                AddMainLogEntry($"VLM推論中にエラーが発生しました: {ex.Message}");
-                throw;
-            }
-        }
-
         // すべての画像にVLM推論でタグを追加するメソッド
         private async void VLMPredictAllButton_Click(object sender, RoutedEventArgs e)
         {
@@ -333,7 +294,7 @@ namespace tagmane
                     {
                         try
                         {
-                            var predictedTags = await PredictVLMTagsForImageAsync(imageInfo, _cts.Token);
+                            var predictedTags = await PredictVLMTagsAsync(imageInfo, _cts.Token);
                             var newTags = predictedTags.Except(imageInfo.Tags).ToList();
                             if (newTags.Any())
                             {
@@ -378,19 +339,43 @@ namespace tagmane
             }
         }
 
-        private async Task<List<string>> PredictVLMTagsForImageAsync(ImageInfo imageInfo, CancellationToken cancellationToken)
+        // PredictVLMTagsAsyncメソッドを修正して、予測されたタグのリストを返すようにします
+        private async Task<List<string>> PredictVLMTagsAsync(ImageInfo imageInfo, CancellationToken cancellationToken)
         {
-            var (generalTags, rating, characters, allTags) = await Task.Run(() => _vlmPredictor.Predict(
-                new BitmapImage(new Uri(imageInfo.ImagePath)),
-                0.35f, // generalThresh
-                false, // generalMcutEnabled
-                0.85f, // characterThresh
-                false  // characterMcutEnabled
-            ), cancellationToken);
+            AddMainLogEntry("VLM推論を開始します");
 
-            var predictedTags = generalTags.Split(',').Select(t => t.Trim()).ToList();
-            predictedTags.AddRange(characters.Keys);
-            return predictedTags;
+            try
+            {
+                float generalThreshold = 0.35f;
+                float characterThreshold = 0.85f;
+                
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    generalThreshold = (float)GeneralThresholdSlider.Value;
+                    characterThreshold = (float)CharacterThresholdSlider.Value;
+                });
+
+                var (generalTags, rating, characters, allTags) = await Task.Run(() => _vlmPredictor.Predict(
+                    new BitmapImage(new Uri(imageInfo.ImagePath)),
+                    generalThreshold, // generalThresh
+                    false, // generalMcutEnabled
+                    characterThreshold, // characterThresh
+                    false  // characterMcutEnabled
+                ), cancellationToken);
+
+                // 結果を表示または処理する
+                await Dispatcher.InvokeAsync(() => UpdateVLMTagsDisplay(generalTags, rating, characters, allTags));
+
+                // generalTagsとcharactersを結合して返す
+                var predictedTags = generalTags.Split(',').Select(t => t.Trim()).ToList();
+                predictedTags.AddRange(characters.Keys);
+                return predictedTags;
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"VLM推論中にエラーが発生しました: {ex.Message}");
+                throw;
+            }
         }
 
         private TagGroupAction CreateAddTagsAction(ImageInfo imageInfo, List<string> newTags)
