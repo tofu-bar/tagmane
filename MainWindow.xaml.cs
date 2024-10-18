@@ -36,9 +36,9 @@ namespace tagmane
         private ObservableCollection<string> _logEntries;
         private ObservableCollection<ActionLogItem> _actionLogItems;
         private const int MaxLogEntries = 20; // 100から20に変更
-        private Point? _startPoint;
-        private ListViewItem _draggedItem;
-        private bool _isDragging = false;
+        // private Point? _startPoint;
+        // private ListViewItem _draggedItem;
+        // private bool _isDragging = false;
         private VLMPredictor _vlmPredictor;
         private CancellationTokenSource _cts;
         private List<(string Name, double GeneralThreshold)> _vlmModels = new List<(string, double)> 
@@ -52,8 +52,7 @@ namespace tagmane
             ("SmilingWolf/wd-v1-4-moat-tagger-v2", 0.35),
             ("SmilingWolf/wd-v1-4-convnext-tagger-v2", 0.35),
             ("SmilingWolf/wd-v1-4-vit-tagger-v2", 0.35),
-            ("SmilingWolf/wd-v1-4-convnextv2-tagger-v2", 0.35),
-            ("fancyfeast/joytag", 0.4)
+            ("SmilingWolf/wd-v1-4-convnextv2-tagger-v2", 0.35)
         };
 
         private const double DefaultCharacterThreshold = 0.85;
@@ -94,6 +93,8 @@ namespace tagmane
             void ITagAction.UndoAction() => UndoAction();
         }
 
+        public ObservableCollection<string> Tags { get; set; }
+
         public MainWindow()
         {
             try
@@ -120,6 +121,9 @@ namespace tagmane
 
                 // デフォルトのthresholdを設定
                 UpdateThresholds(_vlmModels[0].GeneralThreshold, DefaultCharacterThreshold);
+
+                Tags = new ObservableCollection<string>();
+                TagListView.ItemsSource = Tags;
             }
             catch (Exception ex)
             {
@@ -132,7 +136,6 @@ namespace tagmane
             AddDebugLogEntry("InitializeVLMPredictor");
             _vlmPredictor = new VLMPredictor();
             _vlmPredictor.LogUpdated += UpdateVLMLog; // イベントリスナーを再追加
-            // LoadVLMModel(_vlmModels[0]); // デフォルトのモデルを読み込む
         }
 
         private async void LoadVLMModel(string modelName)
@@ -149,36 +152,6 @@ namespace tagmane
                 AddMainLogEntry($"VLMモデルの読み込みに失敗しました: {ex.Message}");
             }
         }
-
-        // private async void PredictVLMTags()
-        // {
-        //     var selectedImage = ImageListBox.SelectedItem as ImageInfo;
-        //     if (selectedImage == null)
-        //     {
-        //         AddMainLogEntry("画像が選択されていません。");
-        //         return;
-        //     }
-
-        //     AddMainLogEntry("VLM推論を開始します");
-
-        //     try
-        //     {
-        //         var (generalTags, rating, characters, allTags) = _vlmPredictor.Predict(
-        //             new BitmapImage(new Uri(selectedImage.ImagePath)),
-        //             0.35f, // generalThresh
-        //             false, // generalMcutEnabled
-        //             0.85f, // characterThresh
-        //             false  // characterMcutEnabled
-        //         );
-
-        //         // 結果を表示または処理する
-        //         UpdateVLMTagsDisplay(generalTags, rating, characters, allTags);
-        //     }
-        //     catch (Exception ex)
-        //     {
-        //         MessageBox.Show($"VLM推論中にエラーが発生しました: {ex.Message}");
-        //     }
-        // }
 
         private void UpdateVLMTagsDisplay(string generalTags, Dictionary<string, float> rating, Dictionary<string, float> characters, Dictionary<string, float> allTags)
         {
@@ -502,12 +475,13 @@ namespace tagmane
         private void UpdateTagListView()
         {
             AddDebugLogEntry("UpdateTagListView");
+
+            var currentTags = _currentImageTags.ToList();
+            TagListView.ItemsSource = currentTags;
+
             _isUpdatingSelection = true;
             try
             {
-                var currentTags = _currentImageTags.ToList();
-                TagListView.ItemsSource = currentTags;
-
                 // 選択状態を更新
                 TagListView.SelectionChanged -= TagListView_SelectionChanged;
                 TagListView.SelectedItems.Clear();
@@ -528,29 +502,53 @@ namespace tagmane
         private void TagListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             AddDebugLogEntry("TagListView_SelectionChanged");
-            if (_isUpdatingSelection) return;
 
-            _isUpdatingSelection = true;
-            try
+            // ここで選択は処理しないので、SelectionChangedでの選択状態の反映はキャンセルする
+            foreach (var item in e.AddedItems)
             {
-                foreach (string removedTag in e.RemovedItems)
+                if (TagListView.SelectedItems.Contains(item))
                 {
-                    _selectedTags.Remove(removedTag);
+                    TagListView.SelectedItems.Remove(item);
                 }
-
-                foreach (string addedTag in e.AddedItems)
-                {
-                    _selectedTags.Add(addedTag);
-                }
-
-                UpdateAllTagsListView();
-                UpdateSelectedTagsListBox();
-            }
-            finally
-            {
-                _isUpdatingSelection = false;
             }
         }
+
+            // if (_isUpdatingSelection) return;
+
+            // _isUpdatingSelection = true;
+            // try
+            // {
+            //     foreach (string removedTag in e.RemovedItems)
+            //     {
+            //         _selectedTags.Remove(removedTag);
+            //     }
+
+            //     foreach (string addedTag in e.AddedItems)
+            //     {
+            //         _selectedTags.Add(addedTag);
+            //     }
+
+            //     UpdateAllTagsListView();
+            //     UpdateSelectedTagsListBox();
+            // }
+            // finally
+            // {
+            //     _isUpdatingSelection = false;
+            // }
+        // }
+
+        // タグの選択状態更新
+        // private void UpdateTagListViewSelection(IEnumerable<string> selectedTags)
+        // {
+        //     TagListView.SelectedItems.Clear();
+        //     foreach (var tag in TagListView.Items)
+        //     {
+        //         if (selectedTags.Contains(tag as string))
+        //         {
+        //             TagListView.SelectedItems.Add(tag);
+        //         }
+        //     }
+        // }
 
         // 右ペイン2: 全タグリストの表示、選択、ソート
         // 全タグリストビューの更新
@@ -572,6 +570,7 @@ namespace tagmane
 
             AllTagsListView.SelectionChanged -= AllTagsListView_SelectionChanged;
             AllTagsListView.ItemsSource = sortedTags;
+
             // 選択状態を更新
             AllTagsListView.SelectedItems.Clear();
             var selectedItems = AllTagsListView.Items.Cast<dynamic>()
@@ -616,31 +615,18 @@ namespace tagmane
         }
 
         // 全タグリストの選択状態を更新
-        private void UpdateAllTagsSelection(IEnumerable<string> selectedTags)
-        {
-            var selectedTagsSet = new HashSet<string>(selectedTags);
-            AllTagsListView.SelectedItems.Clear();
-            foreach (var item in AllTagsListView.Items)
-            {
-                if (selectedTagsSet.Contains(((dynamic)item).Tag))
-                {
-                    AllTagsListView.SelectedItems.Add(item);
-                }
-            }
-        }
-
-        // タグの選択状態更新
-        private void UpdateTagListViewSelection(IEnumerable<string> selectedTags)
-        {
-            TagListView.SelectedItems.Clear();
-            foreach (var tag in TagListView.Items)
-            {
-                if (selectedTags.Contains(tag as string))
-                {
-                    TagListView.SelectedItems.Add(tag);
-                }
-            }
-        }
+        // private void UpdateAllTagsSelection(IEnumerable<string> selectedTags)
+        // {
+        //     var selectedTagsSet = new HashSet<string>(selectedTags);
+        //     AllTagsListView.SelectedItems.Clear();
+        //     foreach (var item in AllTagsListView.Items)
+        //     {
+        //         if (selectedTagsSet.Contains(((dynamic)item).Tag))
+        //         {
+        //             AllTagsListView.SelectedItems.Add(item);
+        //         }
+        //     }
+        // }
 
         // 全タグの更新
         private void UpdateAllTags()
@@ -744,7 +730,7 @@ namespace tagmane
                                 selectedImage.Tags.Insert(tagInfo.Position, tagInfo.Tag);
                             }
                             AddMainLogEntry($"{addedTags.Count}個のタグを追加しました");
-                            UpdateTagListView();
+                            // UpdateTagListView();
                             UpdateAllTags();
                         },
                         UndoAction = () =>
@@ -754,7 +740,7 @@ namespace tagmane
                                 selectedImage.Tags.RemoveAt(tagInfo.Position);
                             }
                             AddMainLogEntry($"{addedTags.Count}個のタグの追加を取り消しました");
-                            UpdateTagListView();
+                            // UpdateTagListView();
                             UpdateAllTags();
                         },
                         Description = $"{addedTags.Count}個のタグを追加"
@@ -797,10 +783,11 @@ namespace tagmane
                             foreach (var tagInfo in removedTags.OrderByDescending(t => t.Position))
                             {
                                 selectedImage.Tags.RemoveAt(tagInfo.Position);
+                                _selectedTags.Remove(tagInfo.Tag);
                             }
                             AddMainLogEntry($"{removedTags.Count}個のタグを削除しました");
-                            UpdateTagListView();
                             UpdateAllTags();
+                            UpdateSelectedTagsListBox();
                         },
                         UndoAction = () =>
                         {
@@ -809,7 +796,6 @@ namespace tagmane
                                 selectedImage.Tags.Insert(tagInfo.Position, tagInfo.Tag);
                             }
                             AddMainLogEntry($"{removedTags.Count}個のタグの削除を取り消しました");
-                            UpdateTagListView();
                             UpdateAllTags();
                         },
                         Description = $"{removedTags.Count}個のタグを削除"
@@ -864,9 +850,13 @@ namespace tagmane
                                     kvp.Key.Tags.RemoveAt(tagInfo.Position);
                                 }
                             }
+                            foreach (var tag in selectedTags)
+                            {
+                                _selectedTags.Remove(tag);
+                            }
                             AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを削除しました。");
-                            UpdateTagListView();
                             UpdateAllTags();
+                            UpdateSelectedTagsListBox();
                         },
                         UndoAction = () =>
                         {
@@ -878,15 +868,13 @@ namespace tagmane
                                 }
                             }
                             AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを復元しました。");
-                            UpdateTagListView();
                             UpdateAllTags();
                         },
                         Description = $"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを全画像から削除"
                     };
                     _undoStack.Push(action);
                     _redoStack.Clear();
-                    UpdateTagListView();
-                    UpdateAllTags();
+                    action.DoAction();
                     UpdateButtonStates();
                 }
             }
@@ -965,75 +953,189 @@ namespace tagmane
             }
         }
 
-        private ListBoxItem dragLbi;
-        private int? dragIndex;
-        private Point? startPos;
-        private DataObject dragData;
-
-        private void CleanDragDropData()
-        {
-            dragLbi = null;
-            dragIndex = null;
-            startPos = null;
-            dragData = null;
-        }
+        private ListViewItem _draggedItem;
+        private Point? _startPoint;
+        private bool _isDragging;
 
         private void TagListView_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             AddDebugLogEntry("TagListView_PreviewMouseLeftButtonDown");
-            _startPoint = e.GetPosition(null);
-            var item = (e.OriginalSource as FrameworkElement)?.DataContext;
-            if (item != null)
+            if (e.LeftButton == MouseButtonState.Pressed)
             {
-                _draggedItem = (sender as ListView)?.ItemContainerGenerator.ContainerFromItem(item) as ListViewItem;
+                _startPoint = e.GetPosition(null);
+                _draggedItem = FindAncestor<ListViewItem>((DependencyObject)e.OriginalSource);
+                _isDragging = false;
             }
         }
 
         private void TagListView_PreviewMouseMove(object sender, MouseEventArgs e)
         {
-            AddDebugLogEntry("TagListView_PreviewMouseMove");
-            if (_startPoint == null || _draggedItem == null) return;
-
-            Point currentPosition = e.GetPosition(null);
-            Vector diff = currentPosition - _startPoint.Value;
-
-            if (e.LeftButton == MouseButtonState.Pressed &&
-                (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance + 2 ||
-                 Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance + 2))
+            if (e.LeftButton == MouseButtonState.Pressed && _startPoint.HasValue && _draggedItem != null)
             {
-                DragDrop.DoDragDrop(_draggedItem, _draggedItem.DataContext, DragDropEffects.Move);
-                _startPoint = null;
-                _draggedItem = null;
+                Point currentPosition = e.GetPosition(null);
+                Vector diff = _startPoint.Value - currentPosition;
+
+                if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance ||
+                    Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
+                {
+                    _isDragging = true;
+                    ListView listView = sender as ListView;
+                    ListViewItem listViewItem = _draggedItem;
+                    
+                    if (listViewItem != null && listViewItem.Content is string tagData)
+                    {
+                        DataObject dragData = new DataObject("TagData", tagData);
+                        DragDrop.DoDragDrop(listViewItem, dragData, DragDropEffects.Move);
+                    }
+                }
             }
+        }
+
+        private void TagListView_Drop(object sender, DragEventArgs e)
+        {
+            AddDebugLogEntry("TagListView_Drop");
+            if (e.Data.GetDataPresent("TagData"))
+            {
+                string droppedTag = (string)e.Data.GetData("TagData");
+                ListViewItem targetItem = FindAncestor<ListViewItem>((DependencyObject)e.OriginalSource);
+                AddDebugLogEntry($"droppedTag: {droppedTag}");
+                AddDebugLogEntry($"targetItem: {targetItem}");
+
+                if (targetItem != null && targetItem.Content is string)
+                {
+                    int targetIndex = TagListView.Items.IndexOf(targetItem.Content);
+                    int sourceIndex = TagListView.Items.IndexOf(droppedTag);
+
+                    AddDebugLogEntry($"sourceIndex: {sourceIndex}, targetIndex: {targetIndex}");
+
+                    if (sourceIndex != -1 && targetIndex != -1 && sourceIndex != targetIndex)
+                    {
+                        var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+                        AddDebugLogEntry($"selectedImage: {selectedImage}");
+                        if (selectedImage != null)
+                        {
+                            var action = new TagGroupAction
+                            {
+                                Image = selectedImage,
+                                TagInfos = new List<TagPositionInfo> 
+                                { 
+                                    new TagPositionInfo { Tag = droppedTag, Position = sourceIndex },
+                                    new TagPositionInfo { Tag = droppedTag, Position = targetIndex }
+                                },
+                                IsAdd = false,
+                                DoAction = () =>
+                                {
+                                    string movedTag = selectedImage.Tags[sourceIndex];
+                                    selectedImage.Tags.RemoveAt(sourceIndex);
+                                    selectedImage.Tags.Insert(targetIndex, movedTag);
+                                    UpdateAllTags();
+                                    AddMainLogEntry($"タグ '{droppedTag}' を移動しました: {sourceIndex} -> {targetIndex}");
+                                },
+                                UndoAction = () =>
+                                {
+                                    string movedTag = selectedImage.Tags[targetIndex];
+                                    selectedImage.Tags.RemoveAt(targetIndex);
+                                    selectedImage.Tags.Insert(sourceIndex, movedTag);
+                                    UpdateAllTags();
+                                    AddMainLogEntry($"タグ '{droppedTag}' の移動を元に戻しました: {targetIndex} -> {sourceIndex}");
+                                },
+                                Description = $"タグ '{droppedTag}' を移動: {sourceIndex} -> {targetIndex}"
+                            };
+
+                            action.DoAction();
+                            _undoStack.Push(action);
+                            _redoStack.Clear();
+                            UpdateButtonStates();
+                        }
+                        else
+                        {
+                            AddDebugLogEntry("選択された画像がありません。");
+                        }
+                    }
+                    else
+                    {
+                        AddDebugLogEntry("無効なソースまたはターゲットインデックス、または同じ位置にドロップされました。");
+                    }
+                }
+                else
+                {
+                    AddDebugLogEntry("ターゲットアイテムが無効です。");
+                }
+            }
+            else
+            {
+                AddDebugLogEntry("ドラッグデータが無効です。");
+            }
+        }
+        private void TagListView_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (!_isDragging && _draggedItem != null)
+            {
+                string tag = _draggedItem.Content as string;
+                if (tag != null)
+                {
+                    if (_selectedTags.Contains(tag))
+                    {
+                        _selectedTags.Remove(tag);
+                        AddDebugLogEntry($"タグ '{tag}' の選択を解除しました。");
+                    }
+                    else
+                    {
+                        _selectedTags.Add(tag);
+                        AddDebugLogEntry($"タグ '{tag}' を選択しました。");
+                    }
+                    UpdateTagListView();
+                    UpdateAllTagsListView();
+                    UpdateSelectedTagsListBox();
+                }
+            }
+            _draggedItem = null;
+            _startPoint = null;
+            _isDragging = false;
         }
 
         private void AllTagsListView_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             AddDebugLogEntry("AllTagsListView_PreviewMouseLeftButtonDown");
-            _startPoint = e.GetPosition(null);
-            var item = (e.OriginalSource as FrameworkElement)?.DataContext;
-            if (item != null)
-            {
-                _draggedItem = (sender as ListView)?.ItemContainerGenerator.ContainerFromItem(item) as ListViewItem;
-            }
+            // _startPoint = e.GetPosition(null);
+            // var item = (e.OriginalSource as FrameworkElement)?.DataContext;
+            // if (item != null)
+            // {
+            //     _draggedItem = (sender as ListView)?.ItemContainerGenerator.ContainerFromItem(item) as ListViewItem;
+            // }
         }
 
         private void AllTagsListView_PreviewMouseMove(object sender, MouseEventArgs e)
         {
             AddDebugLogEntry("AllTagsListView_PreviewMouseMove");
-            if (_startPoint == null || _draggedItem == null) return;
+            // if (_startPoint == null || _draggedItem == null) return;
 
-            Point currentPosition = e.GetPosition(null);
-            Vector diff = currentPosition - _startPoint.Value;
+            // Point currentPosition = e.GetPosition(null);
+            // Vector diff = currentPosition - _startPoint.Value;
 
-            if (e.LeftButton == MouseButtonState.Pressed &&
-                (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance + 2 ||
-                 Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance + 2))
+            // if (e.LeftButton == MouseButtonState.Pressed &&
+            //     (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance + 2 ||
+            //      Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance + 2))
+            // {
+            //     DragDrop.DoDragDrop(_draggedItem, _draggedItem.DataContext, DragDropEffects.Copy);
+            //     _startPoint = null;
+            //     _draggedItem = null;
+            // }
+        }
+
+        
+        private static T FindAncestor<T>(DependencyObject current) where T : DependencyObject
+        {
+            do
             {
-                DragDrop.DoDragDrop(_draggedItem, _draggedItem.DataContext, DragDropEffects.Copy);
-                _startPoint = null;
-                _draggedItem = null;
+                if (current is T)
+                {
+                    return (T)current;
+                }
+                current = VisualTreeHelper.GetParent(current);
             }
+            while (current != null);
+            return null;
         }
 
         // 新しいクラスを追加

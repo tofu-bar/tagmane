@@ -112,9 +112,14 @@
                     </Button.ToolTip>
                 </Button>
             </StackPanel>
-            <ListView x:Name="TagListView" Grid.Row="1" SelectionMode="Multiple" SelectionChanged="TagListView_SelectionChanged"
+            <ListView x:Name="TagListView" Grid.Row="1" SelectionMode="Multiple" 
+                      SelectionChanged="TagListView_SelectionChanged"
                       ItemsSource="{Binding SelectedImage.Tags}" 
-                      PreviewMouseLeftButtonDown="TagListView_PreviewMouseLeftButtonDown">
+                      PreviewMouseLeftButtonDown="TagListView_PreviewMouseLeftButtonDown"
+                      PreviewMouseMove="TagListView_PreviewMouseMove"
+                      PreviewMouseLeftButtonUp="TagListView_PreviewMouseLeftButtonUp"
+                      AllowDrop="True"
+                      Drop="TagListView_Drop">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Style.Triggers>
