@@ -210,14 +210,13 @@ namespace tagmane
             {
                 _originalImageInfos = _fileExplorer.GetImageInfos(dialog.FileName);
                 _imageInfos = _originalImageInfos;
-                ImageListBox.ItemsSource = _imageInfos;
-                UpdateAllTags();
                 
                 // Undo/Redoスタックをクリア
                 _undoStack.Clear();
                 _redoStack.Clear();
                 
-                // デバッグ用のメッセージを追加
+                UpdateUIAfterImageInfosChange();
+                
                 AddMainLogEntry($"{_imageInfos.Count}個の画像が見つかりました。");
                 AddMainLogEntry($"フォルダを選択しました: {dialog.FileName}");
                 AddMainLogEntry("Undo/Redoスタックをクリアしました。");
@@ -243,8 +242,9 @@ namespace tagmane
                     SelectedImage.Source = new BitmapImage(new Uri(selectedImage.ImagePath));
                     AssociatedText.Text = selectedImage.AssociatedText;
                     _currentImageTags = new HashSet<string>(selectedImage.Tags);
-                    UpdateTagListView();
-                    UpdateAllTagsListView();
+                    
+                    UpdateUIAfterSelectionChange();
+                    
                     AddMainLogEntry($"画像を選択しました: {System.IO.Path.GetFileName(selectedImage.ImagePath)}");
                 }
                 catch (Exception ex)
@@ -371,7 +371,7 @@ namespace tagmane
                 UpdateAllTagsListView();
                 UpdateTagListView();  // 個別タグリストを更新
                 UpdateSelectedTagsListBox();
-                UpdateSearchedTags();
+                UpdateSearchedTagsListView();
             }
             finally
             {
@@ -386,22 +386,8 @@ namespace tagmane
             UpdateTagListView();
             UpdateAllTagsListView();
             UpdateSelectedTagsListBox();
-            UpdateSearchedTags();
+            UpdateSearchedTagsListView();
         }
-
-        // 全タグリストの選択状態を更新
-        // private void UpdateAllTagsSelection(IEnumerable<string> selectedTags)
-        // {
-        //     var selectedTagsSet = new HashSet<string>(selectedTags);
-        //     AllTagsListView.SelectedItems.Clear();
-        //     foreach (var item in AllTagsListView.Items)
-        //     {
-        //         if (selectedTagsSet.Contains(((dynamic)item).Tag))
-        //         {
-        //             AllTagsListView.SelectedItems.Add(item);
-        //         }
-        //     }
-        // }
 
         // 全タグの更新
         private void UpdateAllTags()
@@ -421,10 +407,6 @@ namespace tagmane
                     }
                 }
             }
-
-            UpdateCurrentTags();
-            UpdateTagListView();
-            UpdateAllTagsListView();
         }
 
         // 個別タグの更新
@@ -511,8 +493,7 @@ namespace tagmane
                                 selectedImage.Tags.Insert(tagInfo.Position, tagInfo.Tag);
                             }
                             AddMainLogEntry($"{addedTags.Count}個のタグを追加しました");
-                            // UpdateTagListView();
-                            UpdateAllTags();
+                            UpdateUIAfterImageInfosChange();
                         },
                         UndoAction = () =>
                         {
@@ -521,8 +502,7 @@ namespace tagmane
                                 selectedImage.Tags.RemoveAt(tagInfo.Position);
                             }
                             AddMainLogEntry($"{addedTags.Count}個のタグの追加を取り消しました");
-                            // UpdateTagListView();
-                            UpdateAllTags();
+                            UpdateUIAfterImageInfosChange();
                         },
                         Description = $"{addedTags.Count}個のタグ追加"
                     };
@@ -567,8 +547,7 @@ namespace tagmane
                                 _selectedTags.Remove(tagInfo.Tag);
                             }
                             AddMainLogEntry($"{removedTags.Count}個のタグを削除しました");
-                            UpdateAllTags();
-                            UpdateSelectedTagsListBox();
+                            UpdateUIAfterImageInfosChange();
                         },
                         UndoAction = () =>
                         {
@@ -577,7 +556,7 @@ namespace tagmane
                                 selectedImage.Tags.Insert(tagInfo.Position, tagInfo.Tag);
                             }
                             AddMainLogEntry($"{removedTags.Count}個のタグの削除を取り消しました");
-                            UpdateAllTags();
+                            UpdateUIAfterImageInfosChange();
                         },
                         Description = $"{removedTags.Count}個のタグを削除"
                     };
@@ -643,8 +622,7 @@ namespace tagmane
                                 _selectedTags.Remove(tag);
                             }
                             AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを削除しました。");
-                            UpdateAllTags();
-                            UpdateSelectedTagsListBox();
+                            UpdateUIAfterImageInfosChange();
                         },
                         UndoAction = () =>
                         {
@@ -656,7 +634,7 @@ namespace tagmane
                                 }
                             }
                             AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを復元しました。");
-                            UpdateAllTags();
+                            UpdateUIAfterImageInfosChange();
                         },
                         Description = $"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを全画像から削除"
                     };
@@ -834,7 +812,7 @@ namespace tagmane
                                     string movedTag = selectedImage.Tags[sourceIndex];
                                     selectedImage.Tags.RemoveAt(sourceIndex);
                                     selectedImage.Tags.Insert(targetIndex, movedTag);
-                                    UpdateAllTags();
+                                    UpdateUIAfterImageInfosChange();
                                     AddMainLogEntry($"タグ '{droppedTag}' を移動しました: {sourceIndex} -> {targetIndex}");
                                 },
                                 UndoAction = () =>
@@ -842,7 +820,7 @@ namespace tagmane
                                     string movedTag = selectedImage.Tags[targetIndex];
                                     selectedImage.Tags.RemoveAt(targetIndex);
                                     selectedImage.Tags.Insert(sourceIndex, movedTag);
-                                    UpdateAllTags();
+                                    UpdateUIAfterImageInfosChange();
                                     AddMainLogEntry($"タグ '{droppedTag}' の移動を元に戻しました: {targetIndex} -> {sourceIndex}");
                                 },
                                 Description = $"タグ '{droppedTag}' を移動: {sourceIndex} -> {targetIndex}"
@@ -874,10 +852,7 @@ namespace tagmane
                         _selectedTags.Add(tag);
                         AddDebugLogEntry($"タグ '{tag}' を選択しました。");
                     }
-                    UpdateTagListView();
-                    UpdateAllTagsListView();
-                    UpdateSelectedTagsListBox();
-                    UpdateSearchedTags();
+                    UpdateUIAfterSelectionChange();
                 }
             }
             _draggedItem = null;
@@ -1035,13 +1010,6 @@ namespace tagmane
             }
         }
 
-        // private void UpdateVLMTagsDisplay(string generalTags, Dictionary<string, float> rating, Dictionary<string, float> characters, Dictionary<string, float> allTags)
-        // {
-        //     // UIを更新して結果を表示する
-        //     // 例: ListBoxやTextBlockに結果を表示する
-        //     AddMainLogEntry($"VLM推論結果: {generalTags}");
-        // }
-
         // VLM推論を実行するボタンのクリックイベントハンドラ
         private async void VLMPredictButton_Click(object sender, RoutedEventArgs e)
         {
@@ -1084,8 +1052,7 @@ namespace tagmane
                                     selectedImage.Tags.Add(tagInfo);
                                 }
                                 AddMainLogEntry($"VLM推論により{newTags.Count}個の新しいタグを追加しました");
-                                UpdateTagListView();
-                                UpdateAllTags();
+                                UpdateUIAfterImageInfosChange();
                             },
                             UndoAction = () =>
                             {
@@ -1094,8 +1061,7 @@ namespace tagmane
                                     selectedImage.Tags.RemoveAt(selectedImage.Tags.Count - 1);
                                 }
                                 AddMainLogEntry($"VLM推論により追加された{newTags.Count}個のタグを削除しました");
-                                UpdateTagListView();
-                                UpdateAllTags();
+                                UpdateUIAfterImageInfosChange();
                             },
                             Description = $"VLM推論により{newTags.Count}個のタグを追加"
                         };
@@ -1308,7 +1274,7 @@ namespace tagmane
                         DoAction = () =>
                         {
                             AddMainLogEntry($"タグ '{newTag}' を {addedToImages.Count} 個の画像に追加しました。");
-                            UpdateAllTags();
+                            UpdateUIAfterImageInfosChange();
                         },
                         UndoAction = () =>
                         {
@@ -1317,7 +1283,7 @@ namespace tagmane
                                 imageInfo.Tags.Remove(newTag);
                             }
                             AddMainLogEntry($"タグ '{newTag}' の追加を {addedToImages.Count} 個の画像から取り消しました。");
-                            UpdateAllTags();
+                            UpdateUIAfterImageInfosChange();
                         },
                         Description = $"タグ '{newTag}' を {addedToImages.Count} 個の画像に追加"
                     };
@@ -1352,15 +1318,13 @@ namespace tagmane
                         {
                             selectedImage.Tags.Add(newTag);
                             AddMainLogEntry($"タグ '{newTag}' を追加しました。");
-                            UpdateTagListView();
-                            UpdateAllTags();
+                            UpdateUIAfterImageInfosChange();
                         },
                         UndoAction = () =>
                         {
                             selectedImage.Tags.Remove(newTag);
                             AddMainLogEntry($"タグ '{newTag}' の追加を取り消しました。");
-                            UpdateTagListView();
-                            UpdateAllTags();
+                            UpdateUIAfterImageInfosChange();
                         },
                         Description = $"タグ '{newTag}' を追加"
                     };
@@ -1377,17 +1341,17 @@ namespace tagmane
             }
 
             SearchTextBox.Clear();
-            UpdateSearchedTags();
+            UpdateSearchedTagsListView();
         }
         
         private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            UpdateSearchedTags();
+            UpdateSearchedTagsListView();
         }
 
-        private void UpdateSearchedTags()
+        private void UpdateSearchedTagsListView()
         {
-            AddDebugLogEntry("UpdateSearchedTags");
+            AddDebugLogEntry("UpdateSearchedTagsListView");
             AddDebugLogEntry($"SearchTextBox.Text: {SearchTextBox.Text}");
 
             string searchText = SearchTextBox.Text.ToLower();
@@ -1435,9 +1399,28 @@ namespace tagmane
                 _selectedTags.Add(tag);
             }
 
+            UpdateUIAfterSelectionChange();
+        }
+
+        private void UpdateUIAfterImageInfosChange()
+        {
+            UpdateImageList();
+            UpdateCurrentTags();
+            UpdateAllTags();
             UpdateTagListView();
             UpdateAllTagsListView();
             UpdateSelectedTagsListBox();
+            UpdateFilteredTagsListBox();
+            UpdateSearchedTagsListView();
+        }
+
+        private void UpdateUIAfterSelectionChange()
+        {
+            UpdateCurrentTags();
+            UpdateTagListView();
+            UpdateAllTagsListView();
+            UpdateSelectedTagsListBox();
+            UpdateSearchedTagsListView();
         }
     }
 }
