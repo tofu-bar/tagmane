@@ -371,6 +371,7 @@ namespace tagmane
                 UpdateAllTagsListView();
                 UpdateTagListView();  // 個別タグリストを更新
                 UpdateSelectedTagsListBox();
+                UpdateSearchedTags();
             }
             finally
             {
@@ -1389,17 +1390,19 @@ namespace tagmane
                 AddMainLogEntry($"タグ '{newTag}' は既にすべての画像に存在します。");
             }
         }
-
         private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             UpdateSearchedTags();
         }
+
         private void UpdateSearchedTags()
         {
             AddDebugLogEntry("UpdateSearchedTags");
             AddDebugLogEntry($"SearchTextBox.Text: {SearchTextBox.Text}");
 
             string searchText = SearchTextBox.Text.ToLower();
+            SearchedTagsListView.SelectionChanged -= SearchedTagsListView_SelectionChanged;
+
             if (!string.IsNullOrEmpty(searchText))
             {
                 var matchingTags = _allTags.Keys
@@ -1409,26 +1412,27 @@ namespace tagmane
 
                 AddDebugLogEntry($"matchingTags: {string.Join(", ", matchingTags)}");
 
-                SearchedTagsListBox.SelectionChanged -= SearchedTagsListBox_SelectionChanged;
-                SearchedTagsListBox.ItemsSource = matchingTags;
-                SearchedTagsListBox.SelectedItems.Clear();
+                SearchedTagsListView.ItemsSource = matchingTags;
+                SearchedTagsListView.SelectedItems.Clear();
 
                 var tagsToSelect = matchingTags.Where(tag => _selectedTags.Contains(tag)).ToList();
                 foreach (var tag in tagsToSelect)
                 {
-                    SearchedTagsListBox.SelectedItems.Add(tag);
+                    SearchedTagsListView.SelectedItems.Add(tag);
                 }
-                SearchedTagsListBox.SelectionChanged += SearchedTagsListBox_SelectionChanged;
             }
             else
             {
-                SearchedTagsListBox.ItemsSource = null;
+                // 検索バーが空の場合、SearchedTagsListViewを空にする
+                SearchedTagsListView.ItemsSource = null;
             }
-        }    
 
-        private void SearchedTagsListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+            SearchedTagsListView.SelectionChanged += SearchedTagsListView_SelectionChanged;
+        }
+
+        private void SearchedTagsListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            AddDebugLogEntry("SearchedTagsListBox_SelectionChanged");
+            AddDebugLogEntry("SearchedTagsListView_SelectionChanged");
             if (_isUpdatingSelection) return;
             
             foreach (string tag in e.RemovedItems)

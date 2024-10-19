@@ -282,26 +282,25 @@
                 </Button>
             </Grid>
 
-            <!-- 検索されたタグのリストボックス -->
-            <ListBox x:Name="SearchedTagsListBox" Grid.Row="2" Height="100" SelectionChanged="SearchedTagsListBox_SelectionChanged" SelectionMode="Multiple" 
+            <!-- 検索されたタグのリストビュー -->
+            <ListView x:Name="SearchedTagsListView" Grid.Row="2" Height="100" 
+                      SelectionMode="Multiple" SelectionChanged="SearchedTagsListView_SelectionChanged"
                       ItemsSource="{Binding SearchedTags}">
-                <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="Background" Value="Transparent"/>
-                        <Setter Property="BorderThickness" Value="0"/>
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
                         <Style.Triggers>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter Property="Background" Value="{StaticResource SelectedTagBrush}"/>
                             </Trigger>
                         </Style.Triggers>
                     </Style>
-                </ListBox.ItemContainerStyle>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <TextBlock Text="{Binding}"/>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+                </ListView.ItemContainerStyle>
+                <ListView.View>
+                    <GridView>
+                        <GridViewColumn Header="タグ" DisplayMemberBinding="{Binding}" Width="120"/>
+                    </GridView>
+                </ListView.View>
+            </ListView>
 
             <!-- デバッグログの表示領域-->
             <TextBox x:Name="DebugLogTextBox" Grid.Row="3" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
