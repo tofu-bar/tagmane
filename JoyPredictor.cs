@@ -143,7 +143,7 @@ namespace tagmane
                 using var stream = File.OpenRead(filePath);
                 using var sha256 = SHA256.Create();
                 byte[] hash = sha256.ComputeHash(stream);
-                AddLogEntry($"ファイルの整��性チェックに成功しました: {filePath}");
+                AddLogEntry($"ファイルの整合性チェックに成功しました: {filePath}");
                 return true;
             }
             catch (Exception ex)

@@ -190,6 +190,14 @@
                         <TextBlock Text="VLMですべての画像にタグを作成"/>
                     </Button.ToolTip>
                 </Button>
+                <Button x:Name="FilterImageButton" Click="FilterImageButton_Click">
+                    <Button.Content>
+                        <Image Source="/icon/filter.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="画像をフィルタリング"/>
+                    </Button.ToolTip>
+                </Button>   
             </StackPanel>
             <ListView x:Name="AllTagsListView" Grid.Row="1" SelectionMode="Multiple" SelectionChanged="AllTagsListView_SelectionChanged"
                       ItemsSource="{Binding AllTags}" 
@@ -240,6 +248,7 @@
                 <RowDefinition Height="2*"/>
                 <RowDefinition Height="1*"/>
                 <RowDefinition Height="1*"/>
+                <RowDefinition Height="1*"/>
             </Grid.RowDefinitions>
 
             <!-- プログレスバー -->
@@ -270,6 +279,10 @@
 
             <!-- 選択されたタグ -->
             <ListBox x:Name="SelectedTagsListBox" Grid.Row="4" IsEnabled="False"/>
+
+            <!-- フィルタリングされているタグリスト -->
+            <ListBox x:Name="FilteredTagsListBox" Grid.Row="5" IsEnabled="False"/>
+
         </Grid>
     </Grid>
 </Window>

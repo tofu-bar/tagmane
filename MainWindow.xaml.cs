@@ -26,8 +26,10 @@ namespace tagmane
     {
         private FileExplorer _fileExplorer;
         private List<ImageInfo> _imageInfos;
+        private List<ImageInfo> _originalImageInfos;
         private Dictionary<string, int> _allTags;
         private bool _isUpdatingSelection = false;
+        private HashSet<string> _filterTags = new HashSet<string>();
         private HashSet<string> _selectedTags = new HashSet<string>();
         private HashSet<string> _currentImageTags = new HashSet<string>();
         private Stack<ITagAction> _undoStack = new Stack<ITagAction>();
@@ -94,7 +96,9 @@ namespace tagmane
             void ITagAction.UndoAction() => UndoAction();
         }
 
-        public ObservableCollection<string> Tags { get; set; }
+        public ObservableCollection<string> Tags { get; set; }    
+        private FilterMode _currentFilterMode = FilterMode.Off;
+        private enum FilterMode { Off, And, Or }
 
         public MainWindow()
         {
@@ -247,6 +251,11 @@ namespace tagmane
         // すべての画像にVLM推論でタグを追加するメソッド
         private async void VLMPredictAllButton_Click(object sender, RoutedEventArgs e)
         {
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("対象画像がありません。");
+                return;
+            }
             try
             {
                 // ボタンを無効化して、処理中であることを示す
@@ -387,7 +396,7 @@ namespace tagmane
         {
             Dispatcher.Invoke(() =>
             {
-                // プログレスバーの更新処理
+                // ���ログレスバーの更新処理
                 // ProgressBarコントロールがUIに追加されていることを前提としています
                 ProgressBar.Value = progress * 100;
             });
@@ -428,7 +437,8 @@ namespace tagmane
 
             if (dialog.ShowDialog() == CommonFileDialogResult.Ok)
             {
-                _imageInfos = _fileExplorer.GetImageInfos(dialog.FileName);
+                _originalImageInfos = _fileExplorer.GetImageInfos(dialog.FileName);
+                _imageInfos = _originalImageInfos;
                 ImageListBox.ItemsSource = _imageInfos;
                 UpdateAllTags();
                 
@@ -442,6 +452,12 @@ namespace tagmane
                 AddMainLogEntry("Undo/Redoスタックをクリアしました。");
             }
         }    
+
+        // 画像リストの更新
+        private void UpdateImageList()
+        {
+            ImageListBox.ItemsSource = _imageInfos;
+        }
 
         // 中央ペイン: 選択された画像の表示と関連テキストの表示
         private void ImageListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -655,6 +671,12 @@ namespace tagmane
             SelectedTagsListBox.ItemsSource = _selectedTags.ToList();
         }
 
+        // フィルターするタグリストの更新
+        private void UpdateFilteredTagsListBox()
+        {
+            FilteredTagsListBox.ItemsSource = _filterTags.ToList();
+        }
+
         // ボタンのクリックイベント
         // 元に戻す
         private void UndoButton_Click(object sender, RoutedEventArgs e)
@@ -729,7 +751,7 @@ namespace tagmane
                             // UpdateTagListView();
                             UpdateAllTags();
                         },
-                        Description = $"{addedTags.Count}個のタグを追加"
+                        Description = $"{addedTags.Count}個のタグ��追加"
                     };
 
                     action.DoAction();
@@ -797,6 +819,11 @@ namespace tagmane
 
         private void RemoveAllTagsButton_Click(object sender, RoutedEventArgs e)
         {
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("対象の画像がありません。");
+                return;
+            }
             var result = MessageBox.Show("選択したタグをすべての画像から削除しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Warning);
             if (result == MessageBoxResult.Yes)
             {
@@ -833,7 +860,15 @@ namespace tagmane
                             {
                                 foreach (var tagInfo in kvp.Value.OrderByDescending(t => t.Position))
                                 {
-                                    kvp.Key.Tags.RemoveAt(tagInfo.Position);
+                                    //テスト中
+                                    if (tagInfo.Position < kvp.Key.Tags.Count)
+                                    {
+                                        kvp.Key.Tags.RemoveAt(tagInfo.Position);
+                                    }
+                                    else
+                                    {
+                                        AddMainLogEntry($"タグの削除に失敗しました: インデックス {tagInfo.Position} が範囲外です。対象画像: {kvp.Key.ImagePath}、タグ: {tagInfo.Tag}");
+                                    }
                                 }
                             }
                             foreach (var tag in selectedTags)
@@ -1157,6 +1192,55 @@ namespace tagmane
         {
             // スライダーの値が変更されたときの処理
             // 必要に応じて、この値をVLMPredictorに渡す
+        }
+
+        private void FilterImageButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_originalImageInfos.Count == 0)
+            {
+                AddMainLogEntry("画像が読み込まれていません。");
+                return;
+            }
+            _currentFilterMode = (FilterMode)(((int)_currentFilterMode + 1) % 3);
+            switch (_currentFilterMode)
+            {
+                case FilterMode.Off:
+                    _filterTags = new HashSet<string>();
+                    _imageInfos = _originalImageInfos;
+                    break;
+                case FilterMode.And:
+                    _filterTags = _selectedTags;
+                    _imageInfos = _originalImageInfos.Where(image => _filterTags.All(tag => image.Tags.Contains(tag))).ToList();
+                    break;
+                case FilterMode.Or:
+                    _filterTags = _selectedTags;
+                    _imageInfos = _originalImageInfos.Where(image => image.Tags.Any(tag => _filterTags.Contains(tag))).ToList();
+                    break;
+            }
+            UpdateImageList();
+            UpdateAllTags();
+            UpdateFilteredTagsListBox();
+            UpdateFilterButton();
+        }
+
+        private void UpdateFilterButton()
+        {
+            var filterButton = (Button)FindName("FilterImageButton");
+            switch (_currentFilterMode)
+            {
+                case FilterMode.Off:
+                    filterButton.Content = new Image { Source = new BitmapImage(new Uri("/icon/filter.png", UriKind.Relative)), Width = 32, Height = 32 };
+                    filterButton.ToolTip = "フィルタリング: オフ";
+                    break;
+                case FilterMode.And:
+                    filterButton.Content = new Image { Source = new BitmapImage(new Uri("/icon/and.png", UriKind.Relative)), Width = 32, Height = 32 };
+                    filterButton.ToolTip = "フィルタリング: AND";
+                    break;
+                case FilterMode.Or:
+                    filterButton.Content = new Image { Source = new BitmapImage(new Uri("/icon/or.png", UriKind.Relative)), Width = 32, Height = 32 };
+                    filterButton.ToolTip = "フィルタリング: OR";
+                    break;
+            }
         }
     }
 }

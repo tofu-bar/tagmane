@@ -14,6 +14,7 @@
     <None Remove="icon\deselect.png" />
     <None Remove="icon\erasem.png" />
     <None Remove="icon\erase.png" />
+    <None Remove="icon\filter.png" />
     <None Remove="icon\florence.png" />
     <None Remove="icon\open.png" />
     <None Remove="icon\or.png" />
@@ -26,6 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="icon\filter.png" />
     <Resource Include="icon\florence.png" />
   </ItemGroup>
 
