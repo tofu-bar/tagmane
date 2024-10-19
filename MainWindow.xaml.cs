@@ -52,7 +52,8 @@ namespace tagmane
             ("SmilingWolf/wd-v1-4-moat-tagger-v2", 0.35),
             ("SmilingWolf/wd-v1-4-convnext-tagger-v2", 0.35),
             ("SmilingWolf/wd-v1-4-vit-tagger-v2", 0.35),
-            ("SmilingWolf/wd-v1-4-convnextv2-tagger-v2", 0.35)
+            ("SmilingWolf/wd-v1-4-convnextv2-tagger-v2", 0.35),
+            ("fancyfeast/joytag", 0.5)
         };
 
         private const double DefaultCharacterThreshold = 0.85;
