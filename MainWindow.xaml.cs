@@ -136,228 +136,18 @@ namespace tagmane
             }
         }
 
-        private async void InitializeVLMPredictor()
+        protected override void OnKeyDown(KeyEventArgs e)
         {
-            AddDebugLogEntry("InitializeVLMPredictor");
-            _vlmPredictor = new VLMPredictor();
-            _vlmPredictor.LogUpdated += UpdateVLMLog; // イベントリスナーを再追加
-        }
-
-        private async void LoadVLMModel(string modelName)
-        {
-            try
+            base.OnKeyDown(e);
+            if (e.Key == Key.O && Keyboard.Modifiers == ModifierKeys.Control)
             {
-                AddMainLogEntry($"VLMモデル '{modelName}' の読み込みを開始します。");
-                await _vlmPredictor.LoadModel(modelName);
-                AddMainLogEntry($"VLMモデル '{modelName}' の読み込みが完了しました。");
+                SelectFolder();
+                e.Handled = true;
             }
-            catch (Exception ex)
+            else if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control)
             {
-                MessageBox.Show($"VLMモデルの読み込みに失敗しました: {ex.Message}");
-                AddMainLogEntry($"VLMモデルの読み込みに失敗しました: {ex.Message}");
-            }
-        }
-
-        private void UpdateVLMTagsDisplay(string generalTags, Dictionary<string, float> rating, Dictionary<string, float> characters, Dictionary<string, float> allTags)
-        {
-            // UIを更新して結果を表示する
-            // 例: ListBoxやTextBlockに結果を表示する
-            AddMainLogEntry($"VLM推論結果: {generalTags}");
-        }
-
-        // VLM推論を実行するボタンのクリックイベントハンドラ
-        private async void VLMPredictButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                // ボタンを無効化して、処理中であることを示す
-                VLMPredictButton.IsEnabled = false;
-
-                // キャンセルトークンソースを作成
-                _cts = new CancellationTokenSource();
-                
-                // 選択された画像を取得
-                var selectedImage = ImageListBox.SelectedItem as ImageInfo;
-                if (selectedImage == null)
-                {
-                    AddMainLogEntry("画像が選択されていません。");
-                    return;
-                }
-
-                // 非同期でPredictVLMTagsを呼び出す
-                var predictedTags = await PredictVLMTagsAsync(selectedImage, _cts.Token);
-                
-                if (selectedImage != null && predictedTags.Any())
-                {
-                    // 既存のタグと重複しないタグを抽出
-                    var newTags = predictedTags.Except(selectedImage.Tags).ToList();
-                    
-                    if (newTags.Any())
-                    {
-                        // 新しいタグを追加するアクションを作成
-                        var action = new TagGroupAction
-                        {
-                            Image = selectedImage,
-                            TagInfos = newTags.Select(tag => new TagPositionInfo { Tag = tag, Position = selectedImage.Tags.Count }).ToList(),
-                            IsAdd = true,
-                            DoAction = () =>
-                            {
-                                foreach (var tagInfo in newTags)
-                                {
-                                    selectedImage.Tags.Add(tagInfo);
-                                }
-                                AddMainLogEntry($"VLM推論により{newTags.Count}個の新しいタグを追加しました");
-                                UpdateTagListView();
-                                UpdateAllTags();
-                            },
-                            UndoAction = () =>
-                            {
-                                for (int i = 0; i < newTags.Count; i++)
-                                {
-                                    selectedImage.Tags.RemoveAt(selectedImage.Tags.Count - 1);
-                                }
-                                AddMainLogEntry($"VLM推論により追加された{newTags.Count}個のタグを削除しました");
-                                UpdateTagListView();
-                                UpdateAllTags();
-                            },
-                            Description = $"VLM推論により{newTags.Count}個のタグを追加"
-                        };
-
-                        // アクションを実行し、Undoスタックに追加
-                        action.DoAction();
-                        _undoStack.Push(action);
-                        _redoStack.Clear();
-                        UpdateButtonStates();
-                    }
-                    else
-                    {
-                        AddMainLogEntry("VLM推論により新しいタグは見つかりませんでした");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // エラーメッセージをログに記録
-                AddMainLogEntry($"VLM推論中にエラーが発生しました: {ex.Message}");
-                MessageBox.Show($"エラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                // 処理が完了したらボタンを再度有効化
-                VLMPredictButton.IsEnabled = true;
-            }
-        }
-
-        // すべての画像にVLM推論でタグを追加するメソッド
-        private async void VLMPredictAllButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (_imageInfos == null || _imageInfos.Count == 0)
-            {
-                AddMainLogEntry("対象画像がありません。");
-                return;
-            }
-            try
-            {
-                // ボタンを無効化して、処理中であることを示す
-                VLMPredictAllButton.IsEnabled = false;
-                
-                // キャンセルトークンソースを作成
-                _cts = new CancellationTokenSource();
-                
-                AddMainLogEntry("すべての画像に対してVLM推論を開始します");
-
-                var batchSize = 1; // バッチサイズを設定
-                var totalImages = _imageInfos.Count;
-                var processedImages = 0;
-
-                for (int i = 0; i < _imageInfos.Count; i += batchSize)
-                {
-                    var batch = _imageInfos.Skip(i).Take(batchSize).ToList();
-                    var batchTasks = batch.Select(async imageInfo =>
-                    {
-                        try
-                        {
-                            var predictedTags = await PredictVLMTagsAsync(imageInfo, _cts.Token);
-                            var newTags = predictedTags.Except(imageInfo.Tags).ToList();
-                            if (newTags.Any())
-                            {
-                                var action = CreateAddTagsAction(imageInfo, newTags);
-                                action.DoAction();
-                                _undoStack.Push(action);
-                            }
-                            
-                            Interlocked.Increment(ref processedImages);
-                            UpdateProgressBar((double)processedImages / totalImages);
-                            
-                            AddMainLogEntry($"{imageInfo.ImagePath}のVLM推論が完了しました");
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            AddMainLogEntry("処理がキャンセルされました");
-                        }
-                        catch (Exception ex)
-                        {
-                            AddMainLogEntry($"{imageInfo.ImagePath}のVLM推論中にエラーが発生しました: {ex.Message}");
-                        }
-                    });
-
-                    await Task.WhenAll(batchTasks);
-
-                    if (_cts.Token.IsCancellationRequested)
-                        break;
-                }
-
-                AddMainLogEntry("すべての画像に対するVLM推論が完了しました");
-            }
-            catch (Exception ex)
-            {
-                AddMainLogEntry($"VLM推論中にエラーが発生しました: {ex.Message}");
-                MessageBox.Show($"エラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                // 処理が完了したらボタンを再度有効化
-                VLMPredictAllButton.IsEnabled = true;
-                UpdateProgressBar(0);
-            }
-        }
-
-        // PredictVLMTagsAsyncメソッドを修正して、予測されたタグのリストを返すようにします
-        private async Task<List<string>> PredictVLMTagsAsync(ImageInfo imageInfo, CancellationToken cancellationToken)
-        {
-            AddMainLogEntry("VLM推論を開始します");
-
-            try
-            {
-                float generalThreshold = 0.35f;
-                float characterThreshold = 0.85f;
-                
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    generalThreshold = (float)GeneralThresholdSlider.Value;
-                    characterThreshold = (float)CharacterThresholdSlider.Value;
-                });
-
-                var (generalTags, rating, characters, allTags) = await Task.Run(() => _vlmPredictor.Predict(
-                    new BitmapImage(new Uri(imageInfo.ImagePath)),
-                    generalThreshold, // generalThresh
-                    false, // generalMcutEnabled
-                    characterThreshold, // characterThresh
-                    false  // characterMcutEnabled
-                ), cancellationToken);
-
-                // 結果を表示または処理する
-                await Dispatcher.InvokeAsync(() => UpdateVLMTagsDisplay(generalTags, rating, characters, allTags));
-
-                // generalTagsとcharactersを結合して返す
-                var predictedTags = generalTags.Split(',').Select(t => t.Trim()).ToList();
-                predictedTags.AddRange(characters.Keys);
-                return predictedTags;
-            }
-            catch (Exception ex)
-            {
-                AddMainLogEntry($"VLM推論中にエラーが発生しました: {ex.Message}");
-                throw;
+                SaveAllTags();
+                e.Handled = true;
             }
         }
 
@@ -402,32 +192,13 @@ namespace tagmane
             });
         }
 
-        // キャンセルボタンのクリックイベントハンドラ
-        private void CancelButton_Click(object sender, RoutedEventArgs e)
-        {
-            _cts?.Cancel();
-            AddMainLogEntry("処理のキャンセルが要求されました");
-        }
-
-        // VLMログの更新
-        private void UpdateVLMLog(object sender, string log)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                // ログエントリの数が最大数を超えた場合、古いエントリを削除
-                var lines = VLMLogTextBox.Text.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-                if (lines.Length >= MaxLogEntries)
-                {
-                    VLMLogTextBox.Text = string.Join(Environment.NewLine, lines.Take(MaxLogEntries - 1));
-                }
-                
-                // 新しいログを上に追加
-                VLMLogTextBox.Text = log + Environment.NewLine + VLMLogTextBox.Text;
-            });
-        }
-
         // 左ペイン: フォルダ選択と画像リスト表示
         private void SelectFolder_Click(object sender, RoutedEventArgs e)
+        {
+            SelectFolder();
+        }
+
+        private void SelectFolder()
         {
             var dialog = new CommonOpenFileDialog
             {
@@ -451,7 +222,7 @@ namespace tagmane
                 AddMainLogEntry($"フォルダを選択しました: {dialog.FileName}");
                 AddMainLogEntry("Undo/Redoスタックをクリアしました。");
             }
-        }    
+        }
 
         // 画像リストの更新
         private void UpdateImageList()
@@ -945,11 +716,29 @@ namespace tagmane
 
         private void SaveTagsButton_Click(object sender, RoutedEventArgs e)
         {
-            foreach (var imageInfo in _imageInfos)
+            SaveAllTags();
+        }
+
+        private void SaveAllTags()
+        {
+            if (_imageInfos == null || _imageInfos.Count == 0)
             {
-                SaveTagsToFile(imageInfo);
+                AddMainLogEntry("対象の画像がありません。");
+                return;
             }
-            MessageBox.Show("すべての画像のタグを保存しまた。", "保存完了", MessageBoxButton.OK, MessageBoxImage.Information);
+            var result = MessageBox.Show("すべての画像のタグを保存しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (result == MessageBoxResult.Yes)
+            {
+                foreach (var imageInfo in _imageInfos)
+                {
+                    SaveTagsToFile(imageInfo);
+                }
+                MessageBox.Show("すべての画像のタグを保存しました。", "保存完了", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                AddMainLogEntry("タグの保存がキャンセルされました。");
+            }
         }
 
         private void SaveTagsToFile(ImageInfo imageInfo)
@@ -1235,6 +1024,255 @@ namespace tagmane
                     filterButton.ToolTip = "フィルタリング: OR";
                     break;
             }
+        }
+
+        private async void InitializeVLMPredictor()
+        {
+            AddDebugLogEntry("InitializeVLMPredictor");
+            _vlmPredictor = new VLMPredictor();
+            _vlmPredictor.LogUpdated += UpdateVLMLog; // イベントリスナーを再追加
+        }
+
+        private async void LoadVLMModel(string modelName)
+        {
+            try
+            {
+                AddMainLogEntry($"VLMモデル '{modelName}' の読み込みを開始します。");
+                await _vlmPredictor.LoadModel(modelName);
+                AddMainLogEntry($"VLMモデル '{modelName}' の読み込みが完了しました。");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"VLMモデルの読み込みに失敗しました: {ex.Message}");
+                AddMainLogEntry($"VLMモデルの読み込みに失敗しました: {ex.Message}");
+            }
+        }
+
+        // private void UpdateVLMTagsDisplay(string generalTags, Dictionary<string, float> rating, Dictionary<string, float> characters, Dictionary<string, float> allTags)
+        // {
+        //     // UIを更新して結果を表示する
+        //     // 例: ListBoxやTextBlockに結果を表示する
+        //     AddMainLogEntry($"VLM推論結果: {generalTags}");
+        // }
+
+        // VLM推論を実行するボタンのクリックイベントハンドラ
+        private async void VLMPredictButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // ボタンを無効化して、処理中であることを示す
+                VLMPredictButton.IsEnabled = false;
+
+                // キャンセルトークンソースを作成
+                _cts = new CancellationTokenSource();
+                
+                // 選択された画像を取得
+                var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+                if (selectedImage == null)
+                {
+                    AddMainLogEntry("画像が選択されていません。");
+                    return;
+                }
+
+                // 非同期でPredictVLMTagsを呼び出す
+                var predictedTags = await PredictVLMTagsAsync(selectedImage, _cts.Token);
+                
+                if (selectedImage != null && predictedTags.Any())
+                {
+                    // 既存のタグと重複しないタグを抽出
+                    var newTags = predictedTags.Except(selectedImage.Tags).ToList();
+                    
+                    if (newTags.Any())
+                    {
+                        // 新しいタグを追加するアクションを作成
+                        var action = new TagGroupAction
+                        {
+                            Image = selectedImage,
+                            TagInfos = newTags.Select(tag => new TagPositionInfo { Tag = tag, Position = selectedImage.Tags.Count }).ToList(),
+                            IsAdd = true,
+                            DoAction = () =>
+                            {
+                                foreach (var tagInfo in newTags)
+                                {
+                                    selectedImage.Tags.Add(tagInfo);
+                                }
+                                AddMainLogEntry($"VLM推論により{newTags.Count}個の新しいタグを追加しました");
+                                UpdateTagListView();
+                                UpdateAllTags();
+                            },
+                            UndoAction = () =>
+                            {
+                                for (int i = 0; i < newTags.Count; i++)
+                                {
+                                    selectedImage.Tags.RemoveAt(selectedImage.Tags.Count - 1);
+                                }
+                                AddMainLogEntry($"VLM推論により追加された{newTags.Count}個のタグを削除しました");
+                                UpdateTagListView();
+                                UpdateAllTags();
+                            },
+                            Description = $"VLM推論により{newTags.Count}個のタグを追加"
+                        };
+
+                        // アクションを実行し、Undoスタックに追加
+                        action.DoAction();
+                        _undoStack.Push(action);
+                        _redoStack.Clear();
+                        UpdateButtonStates();
+                    }
+                    else
+                    {
+                        AddMainLogEntry("VLM推論により新しいタグは見つかりませんでした");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // エラーメッセージをログに記録
+                AddMainLogEntry($"VLM推論中にエラーが発生しました: {ex.Message}");
+                MessageBox.Show($"エラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                // 処理が完了したらボタンを再度有効化
+                VLMPredictButton.IsEnabled = true;
+            }
+        }
+
+        // すべての画像にVLM推論でタグを追加するメソッド
+        private async void VLMPredictAllButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("対象画像がありません。");
+                return;
+            }
+            try
+            {
+                // ボタンを無効化して、処理中であることを示す
+                VLMPredictAllButton.IsEnabled = false;
+                
+                // キャンセルトークンソースを作成
+                _cts = new CancellationTokenSource();
+                
+                AddMainLogEntry("すべての画像に対してVLM推論を開始します");
+
+                var batchSize = 1; // バッチサイズを設定
+                var totalImages = _imageInfos.Count;
+                var processedImages = 0;
+
+                for (int i = 0; i < _imageInfos.Count; i += batchSize)
+                {
+                    var batch = _imageInfos.Skip(i).Take(batchSize).ToList();
+                    var batchTasks = batch.Select(async imageInfo =>
+                    {
+                        try
+                        {
+                            var predictedTags = await PredictVLMTagsAsync(imageInfo, _cts.Token);
+                            var newTags = predictedTags.Except(imageInfo.Tags).ToList();
+                            if (newTags.Any())
+                            {
+                                var action = CreateAddTagsAction(imageInfo, newTags);
+                                action.DoAction();
+                                _undoStack.Push(action);
+                            }
+                            
+                            Interlocked.Increment(ref processedImages);
+                            UpdateProgressBar((double)processedImages / totalImages);
+                            
+                            AddMainLogEntry($"{imageInfo.ImagePath}のVLM推論が完了しました");
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            AddMainLogEntry("処理がキャンセルされました");
+                        }
+                        catch (Exception ex)
+                        {
+                            AddMainLogEntry($"{imageInfo.ImagePath}のVLM推論中にエラーが発生しました: {ex.Message}");
+                        }
+                    });
+
+                    await Task.WhenAll(batchTasks);
+
+                    if (_cts.Token.IsCancellationRequested)
+                        break;
+                }
+
+                AddMainLogEntry("すべての画像に対するVLM推論が完了しました");
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"VLM推論中にエラーが発生しました: {ex.Message}");
+                MessageBox.Show($"エラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                // 処理が完了したらボタンを再度有効化
+                VLMPredictAllButton.IsEnabled = true;
+                UpdateProgressBar(0);
+            }
+        }
+
+        // PredictVLMTagsAsyncメソッドを修正して、予測されたタグのリストを返すようにします
+        private async Task<List<string>> PredictVLMTagsAsync(ImageInfo imageInfo, CancellationToken cancellationToken)
+        {
+            AddMainLogEntry("VLM推論を開始します");
+
+            try
+            {
+                float generalThreshold = 0.35f;
+                float characterThreshold = 0.85f;
+                
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    generalThreshold = (float)GeneralThresholdSlider.Value;
+                    characterThreshold = (float)CharacterThresholdSlider.Value;
+                });
+
+                var (generalTags, rating, characters, allTags) = await Task.Run(() => _vlmPredictor.Predict(
+                    new BitmapImage(new Uri(imageInfo.ImagePath)),
+                    generalThreshold, // generalThresh
+                    false, // generalMcutEnabled
+                    characterThreshold, // characterThresh
+                    false  // characterMcutEnabled
+                ), cancellationToken);
+
+                // 結果を表示または処理する
+                await Dispatcher.InvokeAsync(() => AddMainLogEntry($"VLM推論結果: {generalTags}"));
+
+                // generalTagsとcharactersを結合して返す
+                var predictedTags = generalTags.Split(',').Select(t => t.Trim()).ToList();
+                predictedTags.AddRange(characters.Keys);
+                return predictedTags;
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"VLM推論中にエラーが発生しました: {ex.Message}");
+                throw;
+            }
+        }
+
+        // キャンセルボタンのクリックイベントハンドラ
+        // private void CancelButton_Click(object sender, RoutedEventArgs e)
+        // {
+        //     _cts?.Cancel();
+        //     AddMainLogEntry("処理のキャンセルが要求されました");
+        // }
+
+        // VLMログの更新
+        private void UpdateVLMLog(object sender, string log)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                // ログエントリの数が最大数を超えた場合、古いエントリを削除
+                var lines = VLMLogTextBox.Text.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
+                if (lines.Length >= MaxLogEntries)
+                {
+                    VLMLogTextBox.Text = string.Join(Environment.NewLine, lines.Take(MaxLogEntries - 1));
+                }
+                
+                // 新しいログを上に追加
+                VLMLogTextBox.Text = log + Environment.NewLine + VLMLogTextBox.Text;
+            });
         }
     }
 }

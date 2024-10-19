@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:tagmane"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
+        Title="MainWindow" Height="750" Width="1200">
     <Window.Resources>
         <SolidColorBrush x:Key="SelectedTagBrush" Color="#E0FFE0"/>
     </Window.Resources>
@@ -27,7 +27,7 @@
                         <Image Source="/icon/open.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="フォルダを選択"/>
+                        <TextBlock Text="フォルダを選択(Ctrl+O)"/>
                     </Button.ToolTip>
                 </Button>
                 <Button Click="SaveTagsButton_Click">
@@ -35,7 +35,7 @@
                         <Image Source="/icon/save.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="現在のタグ状態を保存"/>
+                        <TextBlock Text="現在のタグ状態を保存(Ctrl+S)"/>
                     </Button.ToolTip>
                 </Button>
             </StackPanel>
