@@ -62,7 +62,9 @@ namespace tagmane
             AddLogEntry($"辞書ダウンロードパス: {tagsPath}");
             AddLogEntry($"モデルダウンロードパス: {modelPath}");
 
-            if (!File.Exists(tagsPath) || !File.Exists(modelPath))
+            bool needsDownload = !File.Exists(tagsPath) || !File.Exists(modelPath) || !VerifyFileIntegrity(modelPath);
+
+            if (needsDownload)
             {
                 await DownloadFileWithRetry(client, $"https://huggingface.co/{modelRepo}/resolve/main/{LABEL_FILENAME}", tagsPath);
                 var progress = new Progress<double>(p => Application.Current.Dispatcher.Invoke(() => ((MainWindow)Application.Current.MainWindow).ProgressBar.Value = p * 100));

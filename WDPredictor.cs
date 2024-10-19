@@ -33,8 +33,12 @@ namespace tagmane
         public event EventHandler<string> LogUpdated;
 
         private List<string> _vlmLogEntries = new List<string>();
+
         private void AddLogEntry(string message)
         {
+            // デバッグのため警告メッセージを表示
+            // MessageBox.Show($"WDPredictor からのデバッグメッセージ: {message}");
+            
             lock (_vlmLogEntries)
             {
                 string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";

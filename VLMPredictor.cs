@@ -19,23 +19,17 @@ namespace tagmane
     {
         private object _currentPredictor;
 
-        public event EventHandler<string> LogUpdated
-        {
-            add
-            {
-                if (_currentPredictor is WDPredictor wdPredictor)
-                    wdPredictor.LogUpdated += value;
-                else if (_currentPredictor is JoyPredictor joyPredictor)
-                    joyPredictor.LogUpdated += value;
-            }
-            remove
-            {
-                if (_currentPredictor is WDPredictor wdPredictor)
-                    wdPredictor.LogUpdated -= value;
-                else if (_currentPredictor is JoyPredictor joyPredictor)
-                    joyPredictor.LogUpdated -= value;
-            }
-        }
+        public event EventHandler<string> LogUpdated;
+
+        // private void OnLogUpdated(string log)
+        // {
+        //     Dispatcher.Invoke(() =>
+        //     {
+        //         LogUpdated?.Invoke(this, log);
+        //     });
+        //     // デバッグのため警告メッセージを表示
+        //     MessageBox.Show($"VLMPredictor からのデバッグメッセージ: {log}");
+        // }
 
         public async Task LoadModel(string modelRepo)
         {
@@ -49,6 +43,7 @@ namespace tagmane
                 _currentPredictor = new WDPredictor();
                 await ((WDPredictor)_currentPredictor).LoadModel(modelRepo);
             }
+            // _currentPredictor.LogUpdated += (sender, log) => OnLogUpdated(log);
         }
 
         public (string, Dictionary<string, float>, Dictionary<string, float>, Dictionary<string, float>) Predict(
