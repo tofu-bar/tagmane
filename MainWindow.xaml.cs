@@ -841,14 +841,8 @@ namespace tagmane
                     if (tagsToRemove.Count > 0)
                     {
                         removedTags[imageInfo] = tagsToRemove;
-                        foreach (var tagInfo in tagsToRemove.OrderByDescending(t => t.Position))
-                        {
-                            imageInfo.Tags.RemoveAt(tagInfo.Position);
-                        }
                     }
                 }
-
-                AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを削除しました。");
 
                 if (removedTags.Count > 0)
                 {
