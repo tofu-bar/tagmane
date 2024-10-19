@@ -1284,113 +1284,102 @@ namespace tagmane
 
             if (addToAllTags)
             {
-                AddTagToAllImages(newTag);
+                if (_imageInfos == null || _imageInfos.Count == 0)
+                {
+                    AddMainLogEntry("対象の画像がありません。");
+                    return;
+                }
+
+                var addedToImages = new List<ImageInfo>();
+
+                foreach (var imageInfo in _imageInfos)
+                {
+                    if (!imageInfo.Tags.Contains(newTag))
+                    {
+                        imageInfo.Tags.Add(newTag);
+                        addedToImages.Add(imageInfo);
+                    }
+                }
+
+                if (addedToImages.Count > 0)
+                {
+                    var action = new TagGroupAction
+                    {
+                        DoAction = () =>
+                        {
+                            AddMainLogEntry($"タグ '{newTag}' を {addedToImages.Count} 個の画像に追加しました。");
+                            UpdateAllTags();
+                        },
+                        UndoAction = () =>
+                        {
+                            foreach (var imageInfo in addedToImages)
+                            {
+                                imageInfo.Tags.Remove(newTag);
+                            }
+                            AddMainLogEntry($"タグ '{newTag}' の追加を {addedToImages.Count} 個の画像から取り消しました。");
+                            UpdateAllTags();
+                        },
+                        Description = $"タグ '{newTag}' を {addedToImages.Count} 個の画像に追加"
+                    };
+
+                    _undoStack.Push(action);
+                    _redoStack.Clear();
+                    UpdateButtonStates();
+                    action.DoAction();
+                }
+                else
+                {
+                    AddMainLogEntry($"タグ '{newTag}' は既にすべての画像に存在します。");
+                }
             }
             else
             {
-                AddTagToCurrentImage(newTag);
+                var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+                if (selectedImage == null)
+                {
+                    AddMainLogEntry("画像が選択されていません。");
+                    return;
+                }
+
+                if (!selectedImage.Tags.Contains(newTag))
+                {
+                    var action = new TagAction
+                    {
+                        Image = selectedImage,
+                        TagInfo = new TagPositionInfo { Tag = newTag, Position = selectedImage.Tags.Count },
+                        IsAdd = true,
+                        DoAction = () =>
+                        {
+                            selectedImage.Tags.Add(newTag);
+                            AddMainLogEntry($"タグ '{newTag}' を追加しました。");
+                            UpdateTagListView();
+                            UpdateAllTags();
+                        },
+                        UndoAction = () =>
+                        {
+                            selectedImage.Tags.Remove(newTag);
+                            AddMainLogEntry($"タグ '{newTag}' の追加を取り消しました。");
+                            UpdateTagListView();
+                            UpdateAllTags();
+                        },
+                        Description = $"タグ '{newTag}' を追加"
+                    };
+
+                    action.DoAction();
+                    _undoStack.Push(action);
+                    _redoStack.Clear();
+                    UpdateButtonStates();
+                }
+                else
+                {
+                    AddMainLogEntry($"タグ '{newTag}' は既に存在します。");
+                }
             }
 
             SearchTextBox.Clear();
             UpdateSearchedTags();
         }
-
-        // 個別タグに追加 使いまわし可能
-        private void AddTagToCurrentImage(string newTag)
-        {
-            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
-            if (selectedImage == null)
-            {
-                AddMainLogEntry("画像が選択されていません。");
-                return;
-            }
-
-            if (!selectedImage.Tags.Contains(newTag))
-            {
-                var action = new TagAction
-                {
-                    Image = selectedImage,
-                    TagInfo = new TagPositionInfo { Tag = newTag, Position = selectedImage.Tags.Count },
-                    IsAdd = true,
-                    DoAction = () =>
-                    {
-                        selectedImage.Tags.Add(newTag);
-                        AddMainLogEntry($"タグ '{newTag}' を追加しました。");
-                        UpdateTagListView();
-                        UpdateAllTags();
-                    },
-                    UndoAction = () =>
-                    {
-                        selectedImage.Tags.Remove(newTag);
-                        AddMainLogEntry($"タグ '{newTag}' の追加を取り消しました。");
-                        UpdateTagListView();
-                        UpdateAllTags();
-                    },
-                    Description = $"タグ '{newTag}' を追加"
-                };
-
-                action.DoAction();
-                _undoStack.Push(action);
-                _redoStack.Clear();
-                UpdateButtonStates();
-            }
-            else
-            {
-                AddMainLogEntry($"タグ '{newTag}' は既に存在します。");
-            }
-        }
-
-        // 全画像に追加 使いまわし可能
-        private void AddTagToAllImages(string newTag)
-        {
-            if (_imageInfos == null || _imageInfos.Count == 0)
-            {
-                AddMainLogEntry("対象の画像がありません。");
-                return;
-            }
-
-            var addedToImages = new List<ImageInfo>();
-
-            foreach (var imageInfo in _imageInfos)
-            {
-                if (!imageInfo.Tags.Contains(newTag))
-                {
-                    imageInfo.Tags.Add(newTag);
-                    addedToImages.Add(imageInfo);
-                }
-            }
-
-            if (addedToImages.Count > 0)
-            {
-                var action = new TagGroupAction
-                {
-                    DoAction = () =>
-                    {
-                        AddMainLogEntry($"タグ '{newTag}' を {addedToImages.Count} 個の画像に追加しました。");
-                        UpdateAllTags();
-                    },
-                    UndoAction = () =>
-                    {
-                        foreach (var imageInfo in addedToImages)
-                        {
-                            imageInfo.Tags.Remove(newTag);
-                        }
-                        AddMainLogEntry($"タグ '{newTag}' の追加を {addedToImages.Count} 個の画像から取り消しました。");
-                        UpdateAllTags();
-                    },
-                    Description = $"タグ '{newTag}' を {addedToImages.Count} 個の画像に追加"
-                };
-
-                _undoStack.Push(action);
-                _redoStack.Clear();
-                UpdateButtonStates();
-                action.DoAction();
-            }
-            else
-            {
-                AddMainLogEntry($"タグ '{newTag}' は既にすべての画像に存在します。");
-            }
-        }
+        
         private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             UpdateSearchedTags();
