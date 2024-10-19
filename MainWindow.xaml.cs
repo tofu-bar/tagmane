@@ -513,42 +513,18 @@ namespace tagmane
             }
         }
 
-            // if (_isUpdatingSelection) return;
-
-            // _isUpdatingSelection = true;
-            // try
-            // {
-            //     foreach (string removedTag in e.RemovedItems)
-            //     {
-            //         _selectedTags.Remove(removedTag);
-            //     }
-
-            //     foreach (string addedTag in e.AddedItems)
-            //     {
-            //         _selectedTags.Add(addedTag);
-            //     }
-
-            //     UpdateAllTagsListView();
-            //     UpdateSelectedTagsListBox();
-            // }
-            // finally
-            // {
-            //     _isUpdatingSelection = false;
-            // }
-        // }
-
-        // タグの選択状態更新
-        // private void UpdateTagListViewSelection(IEnumerable<string> selectedTags)
-        // {
-        //     TagListView.SelectedItems.Clear();
-        //     foreach (var tag in TagListView.Items)
-        //     {
-        //         if (selectedTags.Contains(tag as string))
-        //         {
-        //             TagListView.SelectedItems.Add(tag);
-        //         }
-        //     }
-        // }
+        // 個別タグリストの選択解除
+        private void DeselectTagButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedTags = TagListView.SelectedItems.Cast<string>().ToList();
+            foreach (var tag in selectedTags)
+            {
+                _selectedTags.Remove(tag);
+            }
+            UpdateTagListView();
+            UpdateAllTagsListView();
+            UpdateSelectedTagsListBox();
+        }
 
         // 右ペイン2: 全タグリストの表示、選択、ソート
         // 全タグリストビューの更新
@@ -612,6 +588,15 @@ namespace tagmane
             {
                 _isUpdatingSelection = false;
             }
+        }
+
+        // 個別タグリストの選択解除
+        private void DeselectAllTagsButton_Click(object sender, RoutedEventArgs e)
+        {
+            _selectedTags.Clear();
+            UpdateTagListView();
+            UpdateAllTagsListView();
+            UpdateSelectedTagsListBox();
         }
 
         // 全タグリストの選択状態を更新

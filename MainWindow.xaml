@@ -51,8 +51,22 @@
                 <RowDefinition Height="Auto"/> <!-- オプション欄用に新しい行を追加 -->
             </Grid.RowDefinitions>
             <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center">
-                <Button x:Name="UndoButton" Content="←" Background="Green" Foreground="White" Width="30" Height="30" Margin="5" Click="UndoButton_Click"/>
-                <Button x:Name="RedoButton" Content="→" Background="Green" Foreground="White" Width="30" Height="30" Margin="5" Click="RedoButton_Click"/>
+                <Button x:Name="UndoButton" Click="UndoButton_Click">
+                    <Button.Content>
+                        <Image Source="/icon/undo.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="元に戻す"/>
+                    </Button.ToolTip>
+                </Button>
+                <Button x:Name="RedoButton" Click="RedoButton_Click">
+                    <Button.Content>
+                        <Image Source="/icon/redo.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="やり直し"/>
+                    </Button.ToolTip>
+                </Button>
             </StackPanel>
             <Image x:Name="SelectedImage" Grid.Row="1" Stretch="Uniform"/>
             <TextBox x:Name="AssociatedText" Grid.Row="2" IsReadOnly="True" TextWrapping="Wrap"/>
@@ -103,6 +117,14 @@
                         <TextBlock Text="タグを削除"/>
                     </Button.ToolTip>
                 </Button>
+                <Button x:Name="DeselectTagButton" Click="DeselectTagButton_Click">
+                    <Button.Content>
+                        <Image Source="/icon/deselect.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="選択されているタグを解除"/>
+                    </Button.ToolTip>
+                </Button>
                 <Button x:Name="VLMPredictButton" Click="VLMPredictButton_Click">
                     <Button.Content>
                         <Image Source="/icon/vlm.png" Width="32" Height="32"/>
@@ -150,6 +172,14 @@
                     </Button.Content>
                     <Button.ToolTip>
                         <TextBlock Text="すべてのタグを削除"/>
+                    </Button.ToolTip>
+                </Button>
+                <Button x:Name="DeselectAllTagsButton" Click="DeselectAllTagsButton_Click">
+                    <Button.Content>
+                        <Image Source="/icon/deselect.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="選択されているタグをすべて解除"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="VLMPredictAllButton" Click="VLMPredictAllButton_Click">

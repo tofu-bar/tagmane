@@ -11,15 +11,22 @@
     <None Remove="icon\add.png" />
     <None Remove="icon\addm.png" />
     <None Remove="icon\and.png" />
+    <None Remove="icon\deselect.png" />
     <None Remove="icon\erasem.png" />
     <None Remove="icon\erase.png" />
+    <None Remove="icon\florence.png" />
     <None Remove="icon\open.png" />
     <None Remove="icon\or.png" />
+    <None Remove="icon\plus.png" />
     <None Remove="icon\redo.png" />
     <None Remove="icon\save.png" />
     <None Remove="icon\search.png" />
     <None Remove="icon\undo.png" />
     <None Remove="icon\vlm.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="icon\florence.png" />
   </ItemGroup>
 
   <ItemGroup>
@@ -50,10 +57,12 @@
     <Resource Include="icon\add.png" />
     <Resource Include="icon\addm.png" />
     <Resource Include="icon\and.png" />
+    <Resource Include="icon\deselect.png" />
     <Resource Include="icon\erasem.png" />
     <Resource Include="icon\erase.png" />
     <Resource Include="icon\open.png" />
     <Resource Include="icon\or.png" />
+    <Resource Include="icon\plus.png" />
     <Resource Include="icon\redo.png" />
     <Resource Include="icon\save.png" />
     <Resource Include="icon\search.png" />
