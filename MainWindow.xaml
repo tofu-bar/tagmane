@@ -255,6 +255,7 @@
 
             <!-- プログレスバー -->
             <ProgressBar x:Name="ProgressBar" Grid.Row="0" Height="20" Margin="5" Minimum="0" Maximum="100" Value="0"/>
+            
             <!-- 検索バーとボタン -->
             <Grid Grid.Row="1" Margin="5">
                 <Grid.ColumnDefinitions>
@@ -262,8 +263,8 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBox x:Name="SearchTextBox" Grid.Column="0" Height="20" VerticalAlignment="Center"/>
-                <Button x:Name="AddTextboxinputButton" Grid.Column="1">
+                <TextBox x:Name="SearchTextBox" Grid.Column="0" Height="20" VerticalAlignment="Center" TextChanged="SearchTextBox_TextChanged"/>
+                <Button x:Name="AddTextboxinputButton" Grid.Column="1" Click="AddTextboxinputButton_Click">
                     <Button.Content>
                         <Image Source="/icon/add.png" Width="32" Height="32"/>
                     </Button.Content>
@@ -271,7 +272,7 @@
                         <TextBlock Text="個別タグに追加"/>
                     </Button.ToolTip>
                 </Button>
-                <Button x:Name="AddAllTextboxinputButton" Grid.Column="2">
+                <Button x:Name="AddAllTextboxinputButton" Grid.Column="2" Click="AddAllTextboxinputButton_Click">
                     <Button.Content>
                         <Image Source="/icon/addm.png" Width="32" Height="32"/>
                     </Button.Content>
@@ -282,7 +283,25 @@
             </Grid>
 
             <!-- 検索されたタグのリストボックス -->
-            <ListBox x:Name="SearchedTagsListBox" Grid.Row="2" Margin="5" MaxHeight="100" VerticalScrollBarVisibility="Auto"/>
+            <ListBox x:Name="SearchedTagsListBox" Grid.Row="2" Height="100" SelectionChanged="SearchedTagsListBox_SelectionChanged" SelectionMode="Multiple" 
+                      ItemsSource="{Binding SearchedTags}">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="{StaticResource SelectedTagBrush}"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}"/>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
 
             <!-- デバッグログの表示領域-->
             <TextBox x:Name="DebugLogTextBox" Grid.Row="3" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>

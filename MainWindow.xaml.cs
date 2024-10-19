@@ -186,7 +186,7 @@ namespace tagmane
         {
             Dispatcher.Invoke(() =>
             {
-                // ���ログレスバーの更新処理
+                // ログレスバーの更新処理
                 // ProgressBarコントロールがUIに追加されていることを前提としています
                 ProgressBar.Value = progress * 100;
             });
@@ -385,6 +385,7 @@ namespace tagmane
             UpdateTagListView();
             UpdateAllTagsListView();
             UpdateSelectedTagsListBox();
+            UpdateSearchedTags();
         }
 
         // 全タグリストの選択状態を更新
@@ -522,7 +523,7 @@ namespace tagmane
                             // UpdateTagListView();
                             UpdateAllTags();
                         },
-                        Description = $"{addedTags.Count}個のタグ��追加"
+                        Description = $"{addedTags.Count}個のタグ追加"
                     };
 
                     action.DoAction();
@@ -851,24 +852,8 @@ namespace tagmane
                             _redoStack.Clear();
                             UpdateButtonStates();
                         }
-                        else
-                        {
-                            AddDebugLogEntry("選択された画像がありません。");
-                        }
-                    }
-                    else
-                    {
-                        AddDebugLogEntry("無効なソースまたはターゲットインデックス、または同じ位置にドロップされました。");
                     }
                 }
-                else
-                {
-                    AddDebugLogEntry("ターゲットアイテムが無効です。");
-                }
-            }
-            else
-            {
-                AddDebugLogEntry("ドラッグデータが無効です。");
             }
         }
         private void TagListView_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -891,6 +876,7 @@ namespace tagmane
                     UpdateTagListView();
                     UpdateAllTagsListView();
                     UpdateSelectedTagsListBox();
+                    UpdateSearchedTags();
                 }
             }
             _draggedItem = null;
@@ -1273,6 +1259,191 @@ namespace tagmane
                 // 新しいログを上に追加
                 VLMLogTextBox.Text = log + Environment.NewLine + VLMLogTextBox.Text;
             });
+        }
+
+        private void AddTextboxinputButton_Click(object sender, RoutedEventArgs e)
+        {
+            AddTagFromTextBox(false);
+        }
+
+        private void AddAllTextboxinputButton_Click(object sender, RoutedEventArgs e)
+        {
+            AddTagFromTextBox(true);
+        }
+
+        private void AddTagFromTextBox(bool addToAllTags)
+        {
+            string newTag = SearchTextBox.Text.Trim();
+            if (string.IsNullOrEmpty(newTag))
+            {
+                AddMainLogEntry("タグを入力してください。");
+                return;
+            }
+
+            if (addToAllTags)
+            {
+                AddTagToAllImages(newTag);
+            }
+            else
+            {
+                AddTagToCurrentImage(newTag);
+            }
+
+            SearchTextBox.Clear();
+            UpdateSearchedTags();
+        }
+
+        // 個別タグに追加 使いまわし可能
+        private void AddTagToCurrentImage(string newTag)
+        {
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage == null)
+            {
+                AddMainLogEntry("画像が選択されていません。");
+                return;
+            }
+
+            if (!selectedImage.Tags.Contains(newTag))
+            {
+                var action = new TagAction
+                {
+                    Image = selectedImage,
+                    TagInfo = new TagPositionInfo { Tag = newTag, Position = selectedImage.Tags.Count },
+                    IsAdd = true,
+                    DoAction = () =>
+                    {
+                        selectedImage.Tags.Add(newTag);
+                        AddMainLogEntry($"タグ '{newTag}' を追加しました。");
+                        UpdateTagListView();
+                        UpdateAllTags();
+                    },
+                    UndoAction = () =>
+                    {
+                        selectedImage.Tags.Remove(newTag);
+                        AddMainLogEntry($"タグ '{newTag}' の追加を取り消しました。");
+                        UpdateTagListView();
+                        UpdateAllTags();
+                    },
+                    Description = $"タグ '{newTag}' を追加"
+                };
+
+                action.DoAction();
+                _undoStack.Push(action);
+                _redoStack.Clear();
+                UpdateButtonStates();
+            }
+            else
+            {
+                AddMainLogEntry($"タグ '{newTag}' は既に存在します。");
+            }
+        }
+
+        // 全画像に追加 使いまわし可能
+        private void AddTagToAllImages(string newTag)
+        {
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("対象の画像がありません。");
+                return;
+            }
+
+            var addedToImages = new List<ImageInfo>();
+
+            foreach (var imageInfo in _imageInfos)
+            {
+                if (!imageInfo.Tags.Contains(newTag))
+                {
+                    imageInfo.Tags.Add(newTag);
+                    addedToImages.Add(imageInfo);
+                }
+            }
+
+            if (addedToImages.Count > 0)
+            {
+                var action = new TagGroupAction
+                {
+                    DoAction = () =>
+                    {
+                        AddMainLogEntry($"タグ '{newTag}' を {addedToImages.Count} 個の画像に追加しました。");
+                        UpdateAllTags();
+                    },
+                    UndoAction = () =>
+                    {
+                        foreach (var imageInfo in addedToImages)
+                        {
+                            imageInfo.Tags.Remove(newTag);
+                        }
+                        AddMainLogEntry($"タグ '{newTag}' の追加を {addedToImages.Count} 個の画像から取り消しました。");
+                        UpdateAllTags();
+                    },
+                    Description = $"タグ '{newTag}' を {addedToImages.Count} 個の画像に追加"
+                };
+
+                _undoStack.Push(action);
+                _redoStack.Clear();
+                UpdateButtonStates();
+                action.DoAction();
+            }
+            else
+            {
+                AddMainLogEntry($"タグ '{newTag}' は既にすべての画像に存在します。");
+            }
+        }
+
+        private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            UpdateSearchedTags();
+        }
+        private void UpdateSearchedTags()
+        {
+            AddDebugLogEntry("UpdateSearchedTags");
+            AddDebugLogEntry($"SearchTextBox.Text: {SearchTextBox.Text}");
+
+            string searchText = SearchTextBox.Text.ToLower();
+            if (!string.IsNullOrEmpty(searchText))
+            {
+                var matchingTags = _allTags.Keys
+                    .Where(tag => tag.ToLower().Contains(searchText))
+                    .OrderBy(tag => tag)
+                    .ToList();
+
+                AddDebugLogEntry($"matchingTags: {string.Join(", ", matchingTags)}");
+
+                SearchedTagsListBox.SelectionChanged -= SearchedTagsListBox_SelectionChanged;
+                SearchedTagsListBox.ItemsSource = matchingTags;
+                SearchedTagsListBox.SelectedItems.Clear();
+
+                var tagsToSelect = matchingTags.Where(tag => _selectedTags.Contains(tag)).ToList();
+                foreach (var tag in tagsToSelect)
+                {
+                    SearchedTagsListBox.SelectedItems.Add(tag);
+                }
+                SearchedTagsListBox.SelectionChanged += SearchedTagsListBox_SelectionChanged;
+            }
+            else
+            {
+                SearchedTagsListBox.ItemsSource = null;
+            }
+        }    
+
+        private void SearchedTagsListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            AddDebugLogEntry("SearchedTagsListBox_SelectionChanged");
+            if (_isUpdatingSelection) return;
+            
+            foreach (string tag in e.RemovedItems)
+            {
+                _selectedTags.Remove(tag);
+            }
+
+            foreach (string tag in e.AddedItems)
+            {
+                _selectedTags.Add(tag);
+            }
+
+            UpdateTagListView();
+            UpdateAllTagsListView();
+            UpdateSelectedTagsListBox();
         }
     }
 }
