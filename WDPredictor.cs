@@ -52,6 +52,8 @@ namespace tagmane
             }
         }
 
+        private bool _isModelLoaded = false;
+
         public async Task LoadModel(string modelRepo)
         {
             AddLogEntry($"リポジトリからモデルを読み込みます: {modelRepo}");
@@ -68,6 +70,8 @@ namespace tagmane
             _model = new InferenceSession(modelPath);
             _modelTargetSize = _model.InputMetadata.First().Value.Dimensions[2];
             AddLogEntry($"モデルの読み込みが完了しました。ターゲットサイズ: {_modelTargetSize}");
+            _isModelLoaded = true;
+            AddLogEntry("モデルの読み込みが完了しました。");
         }
 
         private async Task<(string, string)> DownloadModel(string modelRepo)
@@ -212,6 +216,13 @@ namespace tagmane
             float characterThresh,
             bool characterMcutEnabled)
         {
+            if (!_isModelLoaded)
+            {
+                // throw new InvalidOperationException("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
+                AddLogEntry("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
+                return ("", new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
+            }
+
             AddLogEntry("VLMログ：推論を開始します");
             AddLogEntry($"generalThresh: {generalThresh}");
             AddLogEntry($"generalMcutEnabled: {generalMcutEnabled}");

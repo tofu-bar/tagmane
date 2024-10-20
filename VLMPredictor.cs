@@ -18,6 +18,7 @@ namespace tagmane
     public class VLMPredictor
     {
         private object _currentPredictor;
+        private bool _isModelLoaded = false;
 
         public event EventHandler<string> LogUpdated;
 
@@ -43,7 +44,7 @@ namespace tagmane
                 _currentPredictor = new WDPredictor();
                 await ((WDPredictor)_currentPredictor).LoadModel(modelRepo);
             }
-            // _currentPredictor.LogUpdated += (sender, log) => OnLogUpdated(log);
+            _isModelLoaded = true;
         }
 
         public (string, Dictionary<string, float>, Dictionary<string, float>, Dictionary<string, float>) Predict(
@@ -53,6 +54,13 @@ namespace tagmane
             float characterThresh,
             bool characterMcutEnabled)
         {
+            if (!_isModelLoaded)
+            {
+                // throw new InvalidOperationException("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
+                // AddLogEntry("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
+                return ("", new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
+            }
+
             if (_currentPredictor is WDPredictor wdPredictor)
                 return wdPredictor.Predict(image, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled);
             else if (_currentPredictor is JoyPredictor joyPredictor)

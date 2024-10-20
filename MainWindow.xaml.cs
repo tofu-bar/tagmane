@@ -203,7 +203,7 @@ namespace tagmane
             var dialog = new CommonOpenFileDialog
             {
                 IsFolderPicker = true,
-                Title = "フォルダを選択してください"
+                Title = "フォルダを��択してください"
             };
 
             if (dialog.ShowDialog() == CommonFileDialogResult.Ok)
@@ -1152,6 +1152,11 @@ namespace tagmane
 
                 AddMainLogEntry("すべての画像に対するVLM推論が完了しました");
             }
+            catch (InvalidOperationException ex)
+            {
+                AddMainLogEntry($"VLM推論エラー: {ex.Message}");
+                MessageBox.Show(ex.Message, "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
             catch (Exception ex)
             {
                 AddMainLogEntry($"VLM推論中にエラーが発生しました: {ex.Message}");
@@ -1180,7 +1185,6 @@ namespace tagmane
                     generalThreshold = (float)GeneralThresholdSlider.Value;
                     characterThreshold = (float)CharacterThresholdSlider.Value;
                 });
-
                 var (generalTags, rating, characters, allTags) = await Task.Run(() => _vlmPredictor.Predict(
                     new BitmapImage(new Uri(imageInfo.ImagePath)),
                     generalThreshold, // generalThresh
@@ -1191,6 +1195,9 @@ namespace tagmane
 
                 // 結果を表示または処理する
                 await Dispatcher.InvokeAsync(() => AddMainLogEntry($"VLM推論結果: {generalTags}"));
+
+                // generalTagsが空の場合は空のリストを返す
+                if (string.IsNullOrWhiteSpace(generalTags)) { return new List<string>(); }
 
                 // generalTagsとcharactersを結合して返す
                 var predictedTags = generalTags.Split(',').Select(t => t.Trim()).ToList();

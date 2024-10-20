@@ -33,6 +33,8 @@ namespace tagmane
             LogUpdated?.Invoke(this, $"JoyPredictor: {message}");
         }
 
+        private bool _isModelLoaded = false;
+
         public async Task LoadModel(string modelRepo)
         {
             AddLogEntry($"リポジトリからモデルを読み込みます: {modelRepo}");
@@ -43,6 +45,8 @@ namespace tagmane
                 _session = new InferenceSession(modelPath);
                 _tags = File.ReadAllLines(tagsPath).Where(line => !string.IsNullOrWhiteSpace(line)).ToList();
                 AddLogEntry("モデルが正常に読み込まれました。");
+                _isModelLoaded = true;
+                AddLogEntry("モデルの読み込みが完了しました。");
             }
             catch (Exception ex)
             {
@@ -159,6 +163,13 @@ namespace tagmane
             BitmapImage image,
             float generalThresh)
         {
+            if (!_isModelLoaded)
+            {
+                // throw new InvalidOperationException("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
+                AddLogEntry("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
+                return ("", new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
+            }
+
             AddLogEntry("推論を開始します");
             AddLogEntry($"generalThresh: {generalThresh}");
 
