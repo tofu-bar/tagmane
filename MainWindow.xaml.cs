@@ -328,6 +328,25 @@ namespace tagmane
                     _isUpdatingSelection = false;
                 }
             }
+            else
+            {
+                try 
+                {
+                    _isUpdatingSelection = true;
+                    SelectedImage.Source = null;
+                    AssociatedText.Text = "";
+                    UpdateUIAfterSelectionChange();
+                    AddMainLogEntry("画像はnullです");
+                }
+                catch (Exception ex)
+                {
+                    AddMainLogEntry($"画像の選択解除中にエラーが発生しました: {ex.Message}");
+                }
+                finally
+                {
+                    _isUpdatingSelection = false;
+                }
+            }
         }
 
         // 右ペイン1: 現在の画像のタグリスト表示と選択
@@ -650,73 +669,78 @@ namespace tagmane
                 AddMainLogEntry("対象の画像がありません。");
                 return;
             }
-            var result = MessageBox.Show("選択したタグをすべての画像から削除しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (result == MessageBoxResult.Yes)
+            if (ConfirmCheckBox.IsChecked == true)
             {
-                var selectedTags = AllTagsListView.SelectedItems.Cast<dynamic>().Select(item => item.Tag as string).ToList();
-                var removedTags = new Dictionary<ImageInfo, List<TagPositionInfo>>();
-
-                foreach (var imageInfo in _imageInfos)
+                var result = MessageBox.Show("選択したタグをすべての画像から削除しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (result != MessageBoxResult.Yes)
                 {
-                    var tagsToRemove = imageInfo.Tags
-                        .Select((tag, index) => new { Tag = tag, Index = index })
-                        .Where(item => selectedTags.Contains(item.Tag))
-                        .Select(item => new TagPositionInfo { Tag = item.Tag, Position = item.Index })
-                        .ToList();
-
-                    if (tagsToRemove.Count > 0)
-                    {
-                        removedTags[imageInfo] = tagsToRemove;
-                    }
+                    AddMainLogEntry("タグの削除がキャンセルされました。");
+                    return;
                 }
+            }
+            var selectedTags = AllTagsListView.SelectedItems.Cast<dynamic>().Select(item => item.Tag as string).ToList();
+            var removedTags = new Dictionary<ImageInfo, List<TagPositionInfo>>();
 
-                if (removedTags.Count > 0)
+            foreach (var imageInfo in _imageInfos)
+            {
+                var tagsToRemove = imageInfo.Tags
+                    .Select((tag, index) => new { Tag = tag, Index = index })
+                    .Where(item => selectedTags.Contains(item.Tag))
+                    .Select(item => new TagPositionInfo { Tag = item.Tag, Position = item.Index })
+                    .ToList();
+
+                if (tagsToRemove.Count > 0)
                 {
-                    var action = new TagGroupAction
+                    removedTags[imageInfo] = tagsToRemove;
+                }
+            }
+
+            if (removedTags.Count > 0)
+            {
+                var action = new TagGroupAction
+                {
+                    DoAction = () =>
                     {
-                        DoAction = () =>
+                        foreach (var kvp in removedTags)
                         {
-                            foreach (var kvp in removedTags)
+                            foreach (var tagInfo in kvp.Value.OrderByDescending(t => t.Position))
                             {
-                                foreach (var tagInfo in kvp.Value.OrderByDescending(t => t.Position))
+                                //テスト中
+                                if (tagInfo.Position < kvp.Key.Tags.Count)
                                 {
-                                    //テスト中
-                                    if (tagInfo.Position < kvp.Key.Tags.Count)
-                                    {
-                                        kvp.Key.Tags.RemoveAt(tagInfo.Position);
-                                    }
-                                    else
-                                    {
-                                        AddMainLogEntry($"タグの削除に失敗しました: インデックス {tagInfo.Position} が範囲外です。対象画像: {kvp.Key.ImagePath}、タグ: {tagInfo.Tag}");
-                                    }
+                                    kvp.Key.Tags.RemoveAt(tagInfo.Position);
+                                }
+                                else
+                                {
+                                    AddMainLogEntry($"タグの削除に失敗しました: インデックス {tagInfo.Position} が範囲外です。対象画像: {kvp.Key.ImagePath}、タグ: {tagInfo.Tag}");
                                 }
                             }
-                            foreach (var tag in selectedTags)
-                            {
-                                _selectedTags.Remove(tag);
-                            }
-                            AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを削除しました。");
-                            UpdateUIAfterImageInfosChange();
-                        },
-                        UndoAction = () =>
+                        }
+                        foreach (var tag in selectedTags)
                         {
-                            foreach (var kvp in removedTags)
+                            _selectedTags.Remove(tag);
+                        }
+                        AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを削除しました。");
+                        UpdateUIAfterImageInfosChange();
+                    },
+                    UndoAction = () =>
+                    {
+                        foreach (var kvp in removedTags)
+                        {
+                            foreach (var tagInfo in kvp.Value)
                             {
-                                foreach (var tagInfo in kvp.Value)
-                                {
-                                    kvp.Key.Tags.Insert(tagInfo.Position, tagInfo.Tag);
-                                }
+                                kvp.Key.Tags.Insert(tagInfo.Position, tagInfo.Tag);
                             }
-                            AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを復元しました。");
-                            UpdateUIAfterImageInfosChange();
-                        },
-                        Description = $"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを全画像から削除"
-                    };
-                    _undoStack.Push(action);
-                    _redoStack.Clear();
-                    action.DoAction();
-                    UpdateButtonStates();
-                }
+                        }
+                        AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを復元しました。");
+                        UpdateUIAfterImageInfosChange();
+                    },
+                    Description = $"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを全画像から削除"
+                };
+                _undoStack.Push(action);
+                _redoStack.Clear();
+                action.DoAction();
+                UpdateButtonStates();
             }
         }
 
@@ -726,7 +750,7 @@ namespace tagmane
             RedoButton.IsEnabled = _redoStack.Count > 0;
         }
 
-        // デバッ��ログを追加するメソッド
+        // デバッログを追加するメソッド
         private void AddDebugLogEntry(string message)
         {
             string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
@@ -779,25 +803,26 @@ namespace tagmane
                 AddMainLogEntry("対象の画像がありません。");
                 return;
             }
-            var result = MessageBox.Show("すべての画像のタグを保存しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (result == MessageBoxResult.Yes)
+            if (ConfirmCheckBox.IsChecked == true)
             {
-                foreach (var imageInfo in _imageInfos)
+                var result = MessageBox.Show("すべての画像のタグを保存しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (result != MessageBoxResult.Yes)
                 {
-                    SaveTagsToFile(imageInfo);
-                    imageInfo.AssociatedText = string.Join(", ", imageInfo.Tags);
-                }
-                MessageBox.Show("すべての画像のタグを保存しました。", "保存完了", MessageBoxButton.OK, MessageBoxImage.Information);
-                
-                // 中央ペインの更新
-                if (ImageListBox.SelectedItem is ImageInfo selectedImage)
-                {
-                    AssociatedText.Text = selectedImage.AssociatedText;
+                    AddMainLogEntry("タグの保存がキャンセルされました。");
+                    return;
                 }
             }
-            else
+            foreach (var imageInfo in _imageInfos)
             {
-                AddMainLogEntry("タグの保存がキャンセルされました。");
+                SaveTagsToFile(imageInfo);
+                imageInfo.AssociatedText = string.Join(", ", imageInfo.Tags);
+            }
+            MessageBox.Show("すべての画像のタグを保存しました。", "保存完了", MessageBoxButton.OK, MessageBoxImage.Information);
+            
+            // 中央ペインの更新
+            if (ImageListBox.SelectedItem is ImageInfo selectedImage)
+            {
+                AssociatedText.Text = selectedImage.AssociatedText;
             }
         }
 
@@ -1181,6 +1206,15 @@ namespace tagmane
             {
                 AddMainLogEntry("対象画像がありません。");
                 return;
+            }
+            if (ConfirmCheckBox.IsChecked == true)
+            {
+                var result = MessageBox.Show("すべての画像に対してVLM推論を実行しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (result != MessageBoxResult.Yes)
+                {
+                    AddMainLogEntry("VLM推論がキャンセルされました。");
+                    return;
+                }
             }
             try
             {
@@ -1795,6 +1829,78 @@ namespace tagmane
             {
                 return new BitmapImage(new Uri(imagePath));
             }
+        }
+
+        private async void DeleteSelectedImageAndTags_Click(object sender, RoutedEventArgs e)
+        {
+        //     var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+        //     if (selectedImage == null)
+        //     {
+        //         AddMainLogEntry("画像が選択されていません。");
+        //         return;
+        //     }
+
+        //     if (ConfirmCheckBox.IsChecked == true)
+        //     {
+        //         var result = MessageBox.Show($"選択された画像 '{System.IO.Path.GetFileName(selectedImage.ImagePath)}' とそのタグを削除しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        //         if (result != MessageBoxResult.Yes)
+        //         {
+        //             AddMainLogEntry("削除がキャンセルされました。");
+        //             return;
+        //         }
+        //     }
+
+        //     try
+        //     {
+        //         // ImageListBoxの選択をクリア
+        //         ImageListBox.SelectedItem = null;
+
+        //         // SelectedImageのSourceを解放
+        //         if (SelectedImage.Source is BitmapImage bitmapImage)
+        //         {
+        //             bitmapImage.StreamSource?.Dispose();
+        //             bitmapImage.UriSource = null;
+        //         }
+        //         SelectedImage.Source = null;
+        //         AssociatedText.Text = "";
+        //         AddMainLogEntry("画像を選択していない状態にしました");
+
+        //         string imagePath = selectedImage.ImagePath;
+
+        //         _imageInfos.Remove(selectedImage);
+        //         _originalImageInfos.Remove(selectedImage);
+
+        //         // GCを強制的に実行してリソースを解放
+        //         GC.Collect();
+        //         GC.WaitForPendingFinalizers();
+
+        //         // ファイル操作を遅延させる
+        //         await Task.Delay(100);
+
+        //         if (File.Exists(imagePath))
+        //         {
+        //             File.Delete(imagePath);
+        //         }
+        //         string textFilePath = System.IO.Path.ChangeExtension(imagePath, ".txt");
+        //         if (File.Exists(textFilePath))
+        //         {
+        //             File.Delete(textFilePath);
+        //         }
+
+        //         // Undo/Redoスタックをクリア
+        //         _undoStack.Clear();
+        //         _redoStack.Clear();
+
+        //         UpdateUIAfterImageInfosChange();
+        //         UpdateButtonStates();
+        //         AddMainLogEntry($"画像 '{System.IO.Path.GetFileName(selectedImage.ImagePath)}' とそのタグを削除しました。");
+        //         AddMainLogEntry("Undo/Redoスタックをクリアしました。");
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         MessageBox.Show($"画像の削除中にエラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+        //         AddMainLogEntry($"画像の削除中にエラーが発生: {ex.Message}");
+        //     }
         }
     }
 

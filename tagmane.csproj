@@ -23,6 +23,7 @@
     <None Remove="icon\save.png" />
     <None Remove="icon\search.png" />
     <None Remove="icon\sort.png" />
+    <None Remove="icon\trash.png" />
     <None Remove="icon\undo.png" />
     <None Remove="icon\vlm.png" />
     <None Remove="tagcount\Artist.json" />
@@ -82,6 +83,7 @@
     <Resource Include="icon\save.png" />
     <Resource Include="icon\search.png" />
     <Resource Include="icon\sort.png" />
+    <Resource Include="icon\trash.png" />
     <Resource Include="icon\undo.png" />
     <Resource Include="icon\vlm.png" />
     <Content Include="tagcount\Artist.json">

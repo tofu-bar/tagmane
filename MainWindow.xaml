@@ -39,7 +39,16 @@
                             <TextBlock Text="現在のタグ状態を保存(Ctrl+S)"/>
                         </Button.ToolTip>
                     </Button>
+                    <Button Click="DeleteSelectedImageAndTags_Click">
+                        <Button.Content>
+                            <Image Source="/icon/trash.png" Width="32" Height="32"/>
+                        </Button.Content>
+                        <Button.ToolTip>
+                            <TextBlock Text="選択中の画像とタグを削除"/>
+                        </Button.ToolTip>
+                    </Button>
                 </StackPanel>
+                <CheckBox x:Name="ConfirmCheckBox" Content="操作時に確認する？" IsChecked="True" Margin="0,5,0,0"/>
                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                     <TextBlock Text="webp DLL:" VerticalAlignment="Center" Margin="0,0,5,0"/>
                     <TextBox x:Name="WebPDllPathTextBox" IsReadOnly="True" Width="200" VerticalAlignment="Center"/>
