@@ -1221,9 +1221,9 @@ namespace tagmane
         // VLMログの更新
         private void UpdateVLMLog(object sender, string log)
         {
-            AddDebugLogEntry("UpdateVLMLog");
             Dispatcher.Invoke(() =>
             {
+                AddDebugLogEntry("UpdateVLMLog");
                 // ログエントリの数が最大数を超えた場合、古いエントリを削除
                 var lines = VLMLogTextBox.Text.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
                 if (lines.Length >= MaxLogEntries)

@@ -31,24 +31,10 @@ namespace tagmane
         public ObservableCollection<string> VLMLogEntries { get; } = new ObservableCollection<string>();
         public event EventHandler<string> LogUpdated;
 
-        private List<string> _wdLogEntries = new List<string>();
-
         private void AddLogEntry(string message)
         {
-            // デバッグのため警告メッセージを表示
-            // MessageBox.Show($"WDPredictor からのデバッグメッセージ: {message}");
-            
-            lock (_wdLogEntries)
-            {
-                string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
-                _wdLogEntries.Insert(0, logMessage);
-                while (_wdLogEntries.Count > MaxLogEntries)
-                {
-                    _wdLogEntries.RemoveAt(_wdLogEntries.Count - 1);
-                }
-                
-                LogUpdated?.Invoke(this, $"WDPredictor: {logMessage}");
-            }
+            string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
+            LogUpdated?.Invoke(this, $"WDPredictor: {logMessage}");
         }
 
         private bool _isModelLoaded = false;

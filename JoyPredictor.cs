@@ -27,22 +27,11 @@ namespace tagmane
         private const string MODEL_REPO = "fancyfeast/joytag";
 
         public event EventHandler<string> LogUpdated;
-
-        private const int MaxLogEntries = 20;
-        private List<string> _joyLogEntries = new List<string>();
-
+        
         private void AddLogEntry(string message)
         {
-            lock (_joyLogEntries)
-            {
-                string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
-                _joyLogEntries.Insert(0, logMessage);
-                while (_joyLogEntries.Count > MaxLogEntries)
-                {
-                    _joyLogEntries.RemoveAt(_joyLogEntries.Count - 1);
-                }
-                LogUpdated?.Invoke(this, $"JoyPredictor: {logMessage}");
-            }
+            string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
+            LogUpdated?.Invoke(this, $"JoyPredictor: {logMessage}");
         }
 
         private bool _isModelLoaded = false;
