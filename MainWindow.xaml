@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:tagmane"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         mc:Ignorable="d"
-        Title="MainWindow" Height="750" Width="1200">
+        Title="MainWindow" Height="900" Width="1600">
     <Window.Resources>
         <SolidColorBrush x:Key="SelectedTagBrush" Color="#E0FFE0"/>
     </Window.Resources>
@@ -85,14 +85,14 @@
                         <ComboBox x:Name="VLMModelComboBox" Width="200" SelectionChanged="VLMModelComboBox_SelectionChanged"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="General Threshold:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                        <TextBlock Text="General:" VerticalAlignment="Center" Margin="0,0,5,0"/>
                         <Slider x:Name="GeneralThresholdSlider" Width="150" Minimum="0" Maximum="1" Value="0.35" 
                                 TickFrequency="0.05" IsSnapToTickEnabled="True" ValueChanged="GeneralThresholdSlider_ValueChanged"/>
                         <TextBlock x:Name="GeneralThresholdValue" Text="{Binding ElementName=GeneralThresholdSlider, Path=Value, StringFormat={}{0:F2}}" 
                                    VerticalAlignment="Center" Margin="5,0,0,0"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="Character Threshold:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                        <TextBlock Text="Character:" VerticalAlignment="Center" Margin="0,0,5,0"/>
                         <Slider x:Name="CharacterThresholdSlider" Width="150" Minimum="0" Maximum="1" Value="0.85" 
                                 TickFrequency="0.05" IsSnapToTickEnabled="True" ValueChanged="CharacterThresholdSlider_ValueChanged"/>
                         <TextBlock x:Name="CharacterThresholdValue" Text="{Binding ElementName=CharacterThresholdSlider, Path=Value, StringFormat={}{0:F2}}" 
@@ -104,7 +104,58 @@
                 </StackPanel>
                 
                 <!-- 右側のタグカテゴリリストビュー -->
-                <ListView x:Name="TagCategoryListView" Grid.Column="1" Margin="5,0,0,0"/>
+                <Grid Grid.Row="2" Grid.Column="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ListView x:Name="TagCategoryListView" Grid.Column="0" Margin="5,0,0,0">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding OrderType}" Value="Prefix">
+                                        <Setter Property="Background" Value="LightBlue"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding OrderType}" Value="Suffix">
+                                        <Setter Property="Background" Value="LightPink"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="カテゴリ" DisplayMemberBinding="{Binding Name}" Width="120"/>
+                                <GridViewColumn Header="順序" Width="auto">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding OrderType}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding OrderType}" Value="Prefix">
+                                                                <Setter Property="Text" Value="Prefix"/>
+                                                                <Setter Property="Foreground" Value="Blue"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding OrderType}" Value="Suffix">
+                                                                <Setter Property="Text" Value="Suffix"/>
+                                                                <Setter Property="Foreground" Value="Red"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                    <StackPanel Grid.Column="1" Orientation="Vertical">
+                        <Button Content="先頭に追加" Click="MoveToPrefix_Click" Margin="5"/>
+                        <Button Content="末尾に追加" Click="MoveToSuffix_Click" Margin="5"/>
+                        <Button Content="順序から削除" Click="RemoveFromOrders_Click" Margin="5"/>
+                    </StackPanel>
+                </Grid>
             </Grid>
         </Grid>
 
@@ -167,7 +218,7 @@
                 </ListView.ItemContainerStyle>
                 <ListView.View>
                     <GridView>
-                        <GridViewColumn Header="タグ" DisplayMemberBinding="{Binding}" Width="Auto"/>
+                        <GridViewColumn Header="タグ" DisplayMemberBinding="{Binding}" Width="150"/>
                     </GridView>
                 </ListView.View>
             </ListView>
@@ -227,8 +278,8 @@
                 </ListView.ItemContainerStyle>
                 <ListView.View>
                     <GridView>
-                        <GridViewColumn Header="タグ" DisplayMemberBinding="{Binding Tag}" Width="120"/>
-                        <GridViewColumn Header="数" Width="70">
+                        <GridViewColumn Header="タグ" DisplayMemberBinding="{Binding Tag}" Width="150"/>
+                        <GridViewColumn Header="Count" Width="60">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal">
@@ -255,7 +306,7 @@
             </ListView>
         </Grid>
 
-        <!-- 右ペイン3: ログ、動作処理リスト、選択されたタグ -->
+        <!-- 右ペイン3: ログ、動作処理リス、選択されたタグ -->
         <Grid Grid.Column="4">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>  <!-- プログレスバー用 -->

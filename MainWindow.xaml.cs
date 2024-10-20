@@ -65,8 +65,10 @@ namespace tagmane
         private Dictionary<string, TagCategory> _tagCategories;
         private Dictionary<string, TagCategory> _defaultTagCategories;
         private Dictionary<string, TagCategory> _customTagCategories;
-        private ObservableCollection<string> _tagCategoryNames;
+        private ObservableCollection<CategoryItem> _tagCategoryNames;
         private bool _useCustomCategories = true;
+        private List<string> _prefixOrder;
+        private List<string> _suffixOrder;
 
         // インターフェースを追加
         private interface ITagAction
@@ -141,8 +143,11 @@ namespace tagmane
                 _tagCategories = new Dictionary<string, TagCategory>();
                 _defaultTagCategories = new Dictionary<string, TagCategory>();
                 _customTagCategories = new Dictionary<string, TagCategory>();
-                _tagCategoryNames = new ObservableCollection<string>();
+                _tagCategoryNames = new ObservableCollection<CategoryItem>();
                 TagCategoryListView.ItemsSource = _tagCategoryNames;
+
+                _prefixOrder = new List<string>();
+                _suffixOrder = new List<string>();
 
                 LoadTagCategories();
             }
@@ -1125,7 +1130,7 @@ namespace tagmane
                 // キャンセルトークンソースを作成
                 _cts = new CancellationTokenSource();
                 
-                AddMainLogEntry("すべての画像に対してVLM推論を開始します");
+                AddMainLogEntry("すべての画像に対してVLM推を開始します");
 
                 var batchSize = 1; // バッチサイズを設定
                 var totalImages = _imageInfos.Count;
@@ -1546,14 +1551,28 @@ namespace tagmane
 
         private void UpdateTagCategoryListView()
         {
-            if (_tagCategoryNames == null) { return; }
-            _tagCategoryNames.Clear();
-
-            foreach (var category in _tagCategories.Keys)
+            var allCategories = _tagCategories.Keys.ToList();
+            if (!allCategories.Contains("Unknown"))
             {
-                _tagCategoryNames.Add(category);
+                allCategories.Add("Unknown");
             }
-            _tagCategoryNames.Add("Unknown");
+
+            var orderedCategories = _prefixOrder.Concat(_suffixOrder).ToList();
+            var remainingCategories = allCategories.Except(orderedCategories).ToList();
+            
+            _tagCategoryNames.Clear();
+            foreach (var category in _prefixOrder)
+            {
+                _tagCategoryNames.Add(new CategoryItem { Name = category, OrderType = "Prefix" });
+            }
+            foreach (var category in remainingCategories)
+            {
+                _tagCategoryNames.Add(new CategoryItem { Name = category, OrderType = "" });
+            }
+            foreach (var category in _suffixOrder)
+            {
+                _tagCategoryNames.Add(new CategoryItem { Name = category, OrderType = "Suffix" });
+            }
         }
 
         private void UseCustomCategoriesCheckBox_Checked(object sender, RoutedEventArgs e)
@@ -1586,11 +1605,90 @@ namespace tagmane
 
             return "Unknown";
         }
+
+        private void MoveToPrefix_Click(object sender, RoutedEventArgs e)
+        {
+            if (TagCategoryListView.SelectedItem is CategoryItem selectedCategory)
+            {
+                _prefixOrder.Remove(selectedCategory.Name);
+                _suffixOrder.Remove(selectedCategory.Name);
+                _prefixOrder.Add(selectedCategory.Name);
+                UpdateTagCategoryListView();
+                ReorderTagsForCurrentImage();
+            }
+        }
+
+        private void MoveToSuffix_Click(object sender, RoutedEventArgs e)
+        {
+            if (TagCategoryListView.SelectedItem is CategoryItem selectedCategory)
+            {
+                _prefixOrder.Remove(selectedCategory.Name);
+                _suffixOrder.Remove(selectedCategory.Name);
+                _suffixOrder.Add(selectedCategory.Name);
+                UpdateTagCategoryListView();
+                ReorderTagsForCurrentImage();
+            }
+        }
+
+        private void RemoveFromOrders_Click(object sender, RoutedEventArgs e)
+        {
+            if (TagCategoryListView.SelectedItem is CategoryItem selectedCategory)
+            {
+                _prefixOrder.Remove(selectedCategory.Name);
+                _suffixOrder.Remove(selectedCategory.Name);
+                UpdateTagCategoryListView();
+                ReorderTagsForCurrentImage();
+            }
+        }
+
+        private void ReorderTagsForCurrentImage()
+        {
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage == null) return;
+
+            var prefixTags = new List<string>();
+            var suffixTags = new List<string>();
+            var remainingTags = new List<string>(selectedImage.Tags);
+
+            // Process prefix categories
+            foreach (var category in _prefixOrder)
+            {
+                if (_tagCategories.TryGetValue(category, out var tagCategory))
+                {
+                    var categoryTags = remainingTags.Where(tag => tagCategory.Tags.ContainsKey(tag)).ToList();
+                    prefixTags.AddRange(categoryTags);
+                    remainingTags.RemoveAll(tag => categoryTags.Contains(tag));
+                }
+            }
+
+            // Process suffix categories
+            foreach (var category in _suffixOrder.AsEnumerable().Reverse())
+            {
+                if (_tagCategories.TryGetValue(category, out var tagCategory))
+                {
+                    var categoryTags = remainingTags.Where(tag => tagCategory.Tags.ContainsKey(tag)).ToList();
+                    suffixTags.InsertRange(0, categoryTags);
+                    remainingTags.RemoveAll(tag => categoryTags.Contains(tag));
+                }
+            }
+
+            // Combine all tags
+            var orderedTags = prefixTags.Concat(remainingTags).Concat(suffixTags).ToList();
+
+            selectedImage.Tags = orderedTags;
+            UpdateTagListView();
+        }
     }
 
     public class TagCategory
     {
         [JsonPropertyName("0")]
         public Dictionary<string, int> Tags { get; set; }
+    }
+
+    public class CategoryItem
+    {
+        public string Name { get; set; }
+        public string OrderType { get; set; } // "Prefix", "Suffix", or ""
     }
 }
