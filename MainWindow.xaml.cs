@@ -65,6 +65,7 @@ namespace tagmane
         private Dictionary<string, TagCategory> _tagCategories;
         private Dictionary<string, TagCategory> _defaultTagCategories;
         private Dictionary<string, TagCategory> _customTagCategories;
+        private ObservableCollection<string> _tagCategoryNames;
         private bool _useCustomCategories = true;
 
         // インターフェースを追加
@@ -140,6 +141,8 @@ namespace tagmane
                 _tagCategories = new Dictionary<string, TagCategory>();
                 _defaultTagCategories = new Dictionary<string, TagCategory>();
                 _customTagCategories = new Dictionary<string, TagCategory>();
+                _tagCategoryNames = new ObservableCollection<string>();
+                TagCategoryListView.ItemsSource = _tagCategoryNames;
 
                 LoadTagCategories();
             }
@@ -1519,14 +1522,8 @@ namespace tagmane
 
         private void UpdateTagCategories()
         {
-            if (_tagCategories == null)
-            {
-                _tagCategories = new Dictionary<string, TagCategory>();
-            }
-            else
-            {
-                _tagCategories.Clear();
-            }
+            if (_tagCategories == null) { return; }
+            _tagCategories.Clear();
 
             if (_defaultTagCategories != null)
             {
@@ -1543,6 +1540,20 @@ namespace tagmane
                     _tagCategories[category.Key] = category.Value;
                 }
             }
+
+            UpdateTagCategoryListView();
+        }
+
+        private void UpdateTagCategoryListView()
+        {
+            if (_tagCategoryNames == null) { return; }
+            _tagCategoryNames.Clear();
+
+            foreach (var category in _tagCategories.Keys)
+            {
+                _tagCategoryNames.Add(category);
+            }
+            _tagCategoryNames.Add("Unknown");
         }
 
         private void UseCustomCategoriesCheckBox_Checked(object sender, RoutedEventArgs e)
