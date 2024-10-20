@@ -203,7 +203,7 @@ namespace tagmane
             var dialog = new CommonOpenFileDialog
             {
                 IsFolderPicker = true,
-                Title = "フォルダを��択してください"
+                Title = "フォルダを選択してください"
             };
 
             if (dialog.ShowDialog() == CommonFileDialogResult.Ok)
@@ -992,7 +992,7 @@ namespace tagmane
         {
             AddDebugLogEntry("InitializeVLMPredictor");
             _vlmPredictor = new VLMPredictor();
-            _vlmPredictor.LogUpdated += UpdateVLMLog; // イベントリスナーを再追加
+            _vlmPredictor.LogUpdated += UpdateVLMLog;
         }
 
         private async void LoadVLMModel(string modelName)

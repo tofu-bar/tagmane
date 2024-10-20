@@ -22,29 +22,26 @@ namespace tagmane
 
         public event EventHandler<string> LogUpdated;
 
-        // private void OnLogUpdated(string log)
-        // {
-        //     Dispatcher.Invoke(() =>
-        //     {
-        //         LogUpdated?.Invoke(this, log);
-        //     });
-        //     // デバッグのため警告メッセージを表示
-        //     MessageBox.Show($"VLMPredictor からのデバッグメッセージ: {log}");
-        // }
-
         public async Task LoadModel(string modelRepo)
         {
             if (modelRepo.Contains("joytag"))
             {
                 _currentPredictor = new JoyPredictor();
+                ((JoyPredictor)_currentPredictor).LogUpdated += OnPredictorLogUpdated;
                 await ((JoyPredictor)_currentPredictor).LoadModel(modelRepo);
             }
             else
             {
                 _currentPredictor = new WDPredictor();
+                ((WDPredictor)_currentPredictor).LogUpdated += OnPredictorLogUpdated;
                 await ((WDPredictor)_currentPredictor).LoadModel(modelRepo);
             }
             _isModelLoaded = true;
+        }
+
+        private void OnPredictorLogUpdated(object sender, string message)
+        {
+            LogUpdated?.Invoke(this, message);
         }
 
         public (string, Dictionary<string, float>, Dictionary<string, float>, Dictionary<string, float>) Predict(

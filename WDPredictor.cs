@@ -29,26 +29,25 @@ namespace tagmane
         private const string LABEL_FILENAME = "selected_tags.csv";
 
         public ObservableCollection<string> VLMLogEntries { get; } = new ObservableCollection<string>();
-
         public event EventHandler<string> LogUpdated;
 
-        private List<string> _vlmLogEntries = new List<string>();
+        private List<string> _wdLogEntries = new List<string>();
 
         private void AddLogEntry(string message)
         {
             // デバッグのため警告メッセージを表示
             // MessageBox.Show($"WDPredictor からのデバッグメッセージ: {message}");
             
-            lock (_vlmLogEntries)
+            lock (_wdLogEntries)
             {
                 string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
-                _vlmLogEntries.Insert(0, logMessage);
-                while (_vlmLogEntries.Count > MaxLogEntries)
+                _wdLogEntries.Insert(0, logMessage);
+                while (_wdLogEntries.Count > MaxLogEntries)
                 {
-                    _vlmLogEntries.RemoveAt(_vlmLogEntries.Count - 1);
+                    _wdLogEntries.RemoveAt(_wdLogEntries.Count - 1);
                 }
                 
-                LogUpdated?.Invoke(this, logMessage);
+                LogUpdated?.Invoke(this, $"WDPredictor: {logMessage}");
             }
         }
 
@@ -151,6 +150,12 @@ namespace tagmane
                 }
                 catch (Exception ex)
                 {
+                    if (File.Exists(filePath))
+                    {
+                        File.Delete(filePath);
+                        AddLogEntry($"ダウンロードが失敗したため、不完全なファイルを削除しました: {filePath}");
+                    }
+
                     if (i == maxRetries - 1)
                         throw new Exception($"{maxRetries}回の試行後、ファイルのダウンロードに失敗しました: {ex.Message}");
                     AddLogEntry($"ダウンロード試行 {i + 1} 回目が失敗しました。再試行します...");
