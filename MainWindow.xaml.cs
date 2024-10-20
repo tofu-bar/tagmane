@@ -1590,7 +1590,6 @@ namespace tagmane
                 _suffixOrder.Remove(selectedCategory.Name);
                 _prefixOrder.Add(selectedCategory.Name);
                 UpdateTagCategoryListView();
-                ReorderTagsForCurrentImage();
             }
         }
 
@@ -1602,7 +1601,6 @@ namespace tagmane
                 _suffixOrder.Remove(selectedCategory.Name);
                 _suffixOrder.Add(selectedCategory.Name);
                 UpdateTagCategoryListView();
-                ReorderTagsForCurrentImage();
             }
         }
 
@@ -1613,46 +1611,7 @@ namespace tagmane
                 _prefixOrder.Remove(selectedCategory.Name);
                 _suffixOrder.Remove(selectedCategory.Name);
                 UpdateTagCategoryListView();
-                ReorderTagsForCurrentImage();
             }
-        }
-
-        private void ReorderTagsForCurrentImage()
-        {
-            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
-            if (selectedImage == null) return;
-
-            var prefixTags = new List<string>();
-            var suffixTags = new List<string>();
-            var remainingTags = new List<string>(selectedImage.Tags);
-
-            // Process prefix categories
-            foreach (var category in _prefixOrder)
-            {
-                if (_tagCategories.TryGetValue(category, out var tagCategory))
-                {
-                    var categoryTags = remainingTags.Where(tag => tagCategory.Tags.ContainsKey(tag)).ToList();
-                    prefixTags.AddRange(categoryTags);
-                    remainingTags.RemoveAll(tag => categoryTags.Contains(tag));
-                }
-            }
-
-            // Process suffix categories
-            foreach (var category in _suffixOrder.AsEnumerable().Reverse())
-            {
-                if (_tagCategories.TryGetValue(category, out var tagCategory))
-                {
-                    var categoryTags = remainingTags.Where(tag => tagCategory.Tags.ContainsKey(tag)).ToList();
-                    suffixTags.InsertRange(0, categoryTags);
-                    remainingTags.RemoveAll(tag => categoryTags.Contains(tag));
-                }
-            }
-
-            // Combine all tags
-            var orderedTags = prefixTags.Concat(remainingTags).Concat(suffixTags).ToList();
-
-            selectedImage.Tags = orderedTags;
-            UpdateUIAfterImageInfosChange();
         }
 
         private void SortByCategoryButton_Click(object sender, RoutedEventArgs e)
