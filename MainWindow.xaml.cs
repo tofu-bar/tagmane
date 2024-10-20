@@ -1432,30 +1432,6 @@ namespace tagmane
             UpdateUIAfterSelectionChange();
         }
 
-        private void UpdateUIAfterImageInfosChange()
-        {
-            if (_imageInfos == null) { return; }
-            UpdateImageList();
-            if (_allTags == null) { return; }
-            UpdateCurrentTags();
-            UpdateAllTags();
-            UpdateTagListView();
-            UpdateAllTagsListView();
-            UpdateSelectedTagsListBox();
-            UpdateFilteredTagsListBox();
-            UpdateSearchedTagsListView();
-        }
-
-        private void UpdateUIAfterSelectionChange()
-        {
-            if (_imageInfos == null || _allTags == null) { return; }
-            UpdateCurrentTags();
-            UpdateTagListView();
-            UpdateAllTagsListView();
-            UpdateSelectedTagsListBox();
-            UpdateSearchedTagsListView();
-        }
-
         private void LoadTagCategories()
         {
             string[] defaultCategoryFiles = {
@@ -1676,7 +1652,117 @@ namespace tagmane
             var orderedTags = prefixTags.Concat(remainingTags).Concat(suffixTags).ToList();
 
             selectedImage.Tags = orderedTags;
+            UpdateUIAfterImageInfosChange();
+        }
+
+        private void SortByCategoryButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage != null)
+            {
+                SortImageTagsByCategory(selectedImage);
+                UpdateUIAfterImageInfosChange();
+            }
+        }
+        private void SortByCategoryAllButton_Click(object sender, RoutedEventArgs e)
+        {
+            foreach (var image in _imageInfos)
+            {
+                SortImageTagsByCategory(image);
+            }
+            UpdateUIAfterImageInfosChange();
+        }
+
+        private void SortImageTagsByCategory(ImageInfo image)
+        {
+            var prefixTags = new List<string>();
+            var suffixTags = new List<string>();
+            var remainingTags = new List<string>(image.Tags);
+
+            var tagMoves = new List<TagPositionInfo>();
+
+            // Prefix tags
+            foreach (var category in _prefixOrder)
+            {
+                var categoryTags = remainingTags.Where(tag => GetTagCategory(tag) == category).ToList();
+                foreach (var tag in categoryTags)
+                {
+                    int sourceIndex = image.Tags.IndexOf(tag);
+                    int targetIndex = prefixTags.Count;
+                    tagMoves.Add(new TagPositionInfo { Tag = tag, Position = sourceIndex });
+                    tagMoves.Add(new TagPositionInfo { Tag = tag, Position = targetIndex });
+                }
+                prefixTags.AddRange(categoryTags);
+                remainingTags.RemoveAll(tag => categoryTags.Contains(tag));
+            }
+
+            // Suffix tags
+            foreach (var category in _suffixOrder.AsEnumerable().Reverse())
+            {
+                var categoryTags = remainingTags.Where(tag => GetTagCategory(tag) == category).ToList();
+                foreach (var tag in categoryTags)
+                {
+                    int sourceIndex = image.Tags.IndexOf(tag);
+                    int targetIndex = prefixTags.Count + remainingTags.Count;
+                    tagMoves.Add(new TagPositionInfo { Tag = tag, Position = sourceIndex });
+                    tagMoves.Add(new TagPositionInfo { Tag = tag, Position = targetIndex });
+                }
+                suffixTags.InsertRange(0, categoryTags);
+                remainingTags.RemoveAll(tag => categoryTags.Contains(tag));
+            }
+
+            var newTags = prefixTags.Concat(remainingTags).Concat(suffixTags).ToList();
+
+            var action = new TagGroupAction
+            {
+                Image = image,
+                TagInfos = tagMoves,
+                IsAdd = false,
+                DoAction = () =>
+                {
+                    image.Tags = newTags;
+                    UpdateUIAfterImageInfosChange();
+                    AddMainLogEntry($"画像 '{image.ImagePath}' のタグをカテゴリ順に並び替えました");
+                },
+                UndoAction = () =>
+                {
+                    image.Tags = new List<string>(image.Tags);
+                    UpdateUIAfterImageInfosChange();
+                    AddMainLogEntry($"画像 '{image.ImagePath}' のタグの並び替えを元に戻しました");
+                },
+                Description = $"画像 '{image.ImagePath}' のタグをカテゴリ順に並び替え"
+            };
+
+            action.DoAction();
+            _undoStack.Push(action);
+            _redoStack.Clear();
+            UpdateButtonStates();
+
+            UpdateUIAfterImageInfosChange();
+        }
+
+        private void UpdateUIAfterImageInfosChange()
+        {
+            if (_imageInfos == null) { return; }
+            UpdateImageList();
+            if (_allTags == null) { return; }
+            UpdateCurrentTags();
+            UpdateAllTags();
             UpdateTagListView();
+            UpdateAllTagsListView();
+            UpdateSelectedTagsListBox();
+            UpdateFilteredTagsListBox();
+            UpdateSearchedTagsListView();
+        }
+
+        private void UpdateUIAfterSelectionChange()
+        {
+            if (_imageInfos == null || _allTags == null) { return; }
+            UpdateCurrentTags();
+            UpdateTagListView();
+            UpdateAllTagsListView();
+            UpdateSelectedTagsListBox();
+            UpdateSearchedTagsListView();
         }
     }
 
@@ -1691,4 +1777,5 @@ namespace tagmane
         public string Name { get; set; }
         public string OrderType { get; set; } // "Prefix", "Suffix", or ""
     }
+
 }

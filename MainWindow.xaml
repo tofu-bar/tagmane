@@ -190,6 +190,14 @@
                         <TextBlock Text="選択されているタグを解除"/>
                     </Button.ToolTip>
                 </Button>
+                <Button x:Name="SortByCategoryButton" Click="SortByCategoryButton_Click">
+                    <Button.Content>
+                        <Image Source="/icon/sort.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="カテゴリ順に並び替え"/>
+                    </Button.ToolTip>
+                </Button>
                 <Button x:Name="VLMPredictButton" Click="VLMPredictButton_Click">
                     <Button.Content>
                         <Image Source="/icon/vlm.png" Width="32" Height="32"/>
@@ -245,6 +253,14 @@
                     </Button.Content>
                     <Button.ToolTip>
                         <TextBlock Text="選択されているタグをすべて解除"/>
+                    </Button.ToolTip>
+                </Button>
+                <Button x:Name="SortByCategoryAllButton" Click="SortByCategoryAllButton_Click">
+                    <Button.Content>
+                        <Image Source="/icon/sort.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="すべての画像をカテゴリ順に並び替え"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="VLMPredictAllButton" Click="VLMPredictAllButton_Click">
