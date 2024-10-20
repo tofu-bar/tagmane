@@ -7,7 +7,7 @@ namespace tagmane
 {
     public class FileExplorer
     {
-        private readonly string[] _imageExtensions = { ".jpg", ".jpeg", ".png", ".gif", ".bmp" };
+        private readonly string[] _imageExtensions = { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp" };
 
         public List<ImageInfo> GetImageInfos(string folderPath)
         {

@@ -110,6 +110,9 @@ namespace tagmane
         private FilterMode _currentFilterMode = FilterMode.Off;
         private enum FilterMode { Off, And, Or }
 
+        private string _webpDllPath;
+        private WebPHandler _webPHandler;
+
         public MainWindow()
         {
             try
@@ -130,12 +133,8 @@ namespace tagmane
 
                 InitializeVLMPredictor();
 
-                // VLMモデルのコンボボックスを初期化
-                VLMModelComboBox.ItemsSource = _vlmModels.Select(m => m.Name);
-                VLMModelComboBox.SelectedIndex = 0;
-
-                // デフォルトのthresholdを設定
-                UpdateThresholds(_vlmModels[0].GeneralThreshold, DefaultCharacterThreshold);
+                //各種設定を読み込む
+                LoadSettings();
 
                 Tags = new ObservableCollection<string>();
                 TagListView.ItemsSource = Tags;
@@ -170,6 +169,58 @@ namespace tagmane
                 SaveAllTags();
                 e.Handled = true;
             }
+        }
+
+        private void SelectWebPDllButton_Click(object sender, RoutedEventArgs e)
+        {
+            var openFileDialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "DLLファイル (*.dll)|*.dll",
+                Title = "WebP.dllを選択してください"
+            };
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                _webpDllPath = openFileDialog.FileName;
+                WebPDllPathTextBox.Text = _webpDllPath;
+                SaveSettings();
+            }
+        }
+
+        private void LoadSettings()
+        {
+            _webpDllPath = Properties.Settings.Default.WebPDllPath;
+            WebPDllPathTextBox.Text = _webpDllPath;
+            _webPHandler = new WebPHandler(_webpDllPath);
+
+            // VLMモデルの設定を読み込む
+            string savedModel = Properties.Settings.Default.SelectedVLMModel;
+            VLMModelComboBox.ItemsSource = _vlmModels.Select(m => m.Name);
+            if (!string.IsNullOrEmpty(savedModel) && _vlmModels.Any(m => m.Name == savedModel)) 
+            { 
+                VLMModelComboBox.SelectedIndex = _vlmModels.FindIndex(m => m.Name == savedModel);
+            }
+            else { VLMModelComboBox.SelectedIndex = 0; }
+            UpdateThresholds(_vlmModels[VLMModelComboBox.SelectedIndex].GeneralThreshold, DefaultCharacterThreshold);
+
+            AddMainLogEntry("設定を復元しました。");
+        }
+
+        private void SaveSettings()
+        {
+            Properties.Settings.Default.WebPDllPath = _webpDllPath;
+            
+            // 選択されたVLMモデルを保存
+            if (VLMModelComboBox.SelectedItem is string selectedModel) { Properties.Settings.Default.SelectedVLMModel = selectedModel; }
+            
+            Properties.Settings.Default.Save();
+            AddMainLogEntry("設定を保存しました。");
+        }
+
+        protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {
+            SaveSettings();
+            base.OnClosing(e);
         }
 
         private TagGroupAction CreateAddTagsAction(ImageInfo imageInfo, List<string> newTags)
@@ -260,7 +311,7 @@ namespace tagmane
                 try
                 {
                     _isUpdatingSelection = true;
-                    SelectedImage.Source = new BitmapImage(new Uri(selectedImage.ImagePath));
+                    SelectedImage.Source = LoadImage(selectedImage.ImagePath);
                     AssociatedText.Text = selectedImage.AssociatedText;
                     _currentImageTags = new HashSet<string>(selectedImage.Tags);
                     
@@ -675,7 +726,7 @@ namespace tagmane
             RedoButton.IsEnabled = _redoStack.Count > 0;
         }
 
-        // デバッグログを追加するメソッド
+        // デバッ��ログを追加するメソッド
         private void AddDebugLogEntry(string message)
         {
             string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
@@ -721,7 +772,6 @@ namespace tagmane
         {
             SaveAllTags();
         }
-
         private void SaveAllTags()
         {
             if (_imageInfos == null || _imageInfos.Count == 0)
@@ -735,8 +785,15 @@ namespace tagmane
                 foreach (var imageInfo in _imageInfos)
                 {
                     SaveTagsToFile(imageInfo);
+                    imageInfo.AssociatedText = string.Join(", ", imageInfo.Tags);
                 }
                 MessageBox.Show("すべての画像のタグを保存しました。", "保存完了", MessageBoxButton.OK, MessageBoxImage.Information);
+                
+                // 中央ペインの更新
+                if (ImageListBox.SelectedItem is ImageInfo selectedImage)
+                {
+                    AssociatedText.Text = selectedImage.AssociatedText;
+                }
             }
             else
             {
@@ -941,6 +998,9 @@ namespace tagmane
                 var modelInfo = _vlmModels.First(m => m.Name == selectedModel);
                 UpdateThresholds(modelInfo.GeneralThreshold, DefaultCharacterThreshold);
                 LoadVLMModel(selectedModel);
+                
+                // 設定を保存
+                SaveSettings();
             }
         }
 
@@ -1722,6 +1782,19 @@ namespace tagmane
             UpdateAllTagsListView();
             UpdateSelectedTagsListBox();
             UpdateSearchedTagsListView();
+        }
+
+        private BitmapSource LoadImage(string imagePath)
+        {
+            string extension = Path.GetExtension(imagePath).ToLower();
+            if (extension == ".webp")
+            {
+                return _webPHandler.LoadWebPImage(imagePath);
+            }
+            else
+            {
+                return new BitmapImage(new Uri(imagePath));
+            }
         }
     }
 
