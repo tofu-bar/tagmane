@@ -16,6 +16,9 @@ using System.Windows.Shapes;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Threading;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Path = System.IO.Path;
 
 namespace tagmane
 {
@@ -59,6 +62,7 @@ namespace tagmane
         };
 
         private const double DefaultCharacterThreshold = 0.85;
+        private Dictionary<string, TagCategory> _tagCategories;
 
         // インターフェースを追加
         private interface ITagAction
@@ -129,6 +133,9 @@ namespace tagmane
 
                 Tags = new ObservableCollection<string>();
                 TagListView.ItemsSource = Tags;
+
+                _tagCategories = new Dictionary<string, TagCategory>();
+                LoadTagCategories();
             }
             catch (Exception ex)
             {
@@ -325,7 +332,8 @@ namespace tagmane
                     Tag = kvp.Key,
                     Count = kvp.Value,
                     IsSelected = _selectedTags.Contains(kvp.Key),
-                    IsCurrentImageTag = _currentImageTags.Contains(kvp.Key)
+                    IsCurrentImageTag = _currentImageTags.Contains(kvp.Key),
+                    Category = GetTagCategory(kvp.Key)
                 })
                 .OrderByDescending(item => item.IsSelected)
                 .ThenByDescending(item => item.Count)
@@ -1429,5 +1437,77 @@ namespace tagmane
             UpdateSelectedTagsListBox();
             UpdateSearchedTagsListView();
         }
+
+        private void LoadTagCategories()
+        {
+            string[] categoryFiles = {
+                "tagcount/General.json",
+                "tagcount/Copyright.json",
+                "tagcount/Artist.json",
+                "tagcount/Character.json",
+                "tagcount_custom/ParsonCounts.json",
+                "tagcount_custom/Face.json"
+            };
+
+            string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+
+            foreach (var file in categoryFiles)
+            {
+                try
+                {
+                    string fullPath = Path.Combine(baseDirectory, file);
+                    if (!File.Exists(fullPath))
+                    {
+                        AddMainLogEntry($"ファイルが見つかりません: {fullPath}");
+                        continue;
+                    }
+
+                    string jsonContent = File.ReadAllText(fullPath);
+                    var tagDictionary = JsonSerializer.Deserialize<Dictionary<string, int>>(jsonContent);
+                    
+                    if (tagDictionary == null)
+                    {
+                        AddMainLogEntry($"{file}の読み込み中にエラーが発生しました: デシリアライズ結果がnullです。");
+                        continue;
+                    }
+
+                    string categoryName = Path.GetFileNameWithoutExtension(file);
+                    
+                    // タグ名のアンダースコアをスペースに置換
+                    var updatedTags = new Dictionary<string, int>();
+                    foreach (var tag in tagDictionary)
+                    {
+                        string updatedTagName = tag.Key.Replace('_', ' ');
+                        updatedTags[updatedTagName] = tag.Value;
+                    }
+
+                    _tagCategories[categoryName] = new TagCategory { Tags = updatedTags };
+
+                    AddMainLogEntry($"{categoryName}カテゴリのタグを読み込みました。タグ数: {updatedTags.Count}");
+                }
+                catch (Exception ex)
+                {
+                    AddMainLogEntry($"{file}の読み込み中にエラーが発生しました: {ex.Message}");
+                }
+            }
+        }
+
+        private string GetTagCategory(string tag)
+        {
+            foreach (var category in _tagCategories)
+            {
+                if (category.Value.Tags.ContainsKey(tag))
+                {
+                    return category.Key;
+                }
+            }
+            return "Unknown";
+        }
+    }
+
+    public class TagCategory
+    {
+        [JsonPropertyName("0")]
+        public Dictionary<string, int> Tags { get; set; }
     }
 }

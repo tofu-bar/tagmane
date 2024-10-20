@@ -235,6 +235,7 @@
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
+                        <GridViewColumn Header="カテゴリ" DisplayMemberBinding="{Binding Category}" Width="80"/>
                     </GridView>
                 </ListView.View>
             </ListView>

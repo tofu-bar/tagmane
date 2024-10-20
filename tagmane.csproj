@@ -24,6 +24,13 @@
     <None Remove="icon\search.png" />
     <None Remove="icon\undo.png" />
     <None Remove="icon\vlm.png" />
+    <None Remove="tagcount\Artist.json" />
+    <None Remove="tagcount\Character.json" />
+    <None Remove="tagcount\Copyright.json" />
+    <None Remove="tagcount\General.json" />
+    <None Remove="tagcount\Meta.json" />
+    <None Remove="tagcount_custom\Face.json" />
+    <None Remove="tagcount_custom\ParsonCounts.json" />
   </ItemGroup>
 
   <ItemGroup>
@@ -70,6 +77,27 @@
     <Resource Include="icon\search.png" />
     <Resource Include="icon\undo.png" />
     <Resource Include="icon\vlm.png" />
+    <Content Include="tagcount\Artist.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="tagcount\Character.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="tagcount\Copyright.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="tagcount\General.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="tagcount\Meta.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="tagcount_custom\Face.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="tagcount_custom\ParsonCounts.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>
