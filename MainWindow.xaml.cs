@@ -306,6 +306,14 @@ namespace tagmane
         {
             if (_isUpdatingSelection) return;
 
+            // 画像の更新前に表示委を解除し、メモリを解放する
+            SelectedImage.Source = null;
+            AssociatedText.Text = "";
+
+            // ガベージコレクタを強制的に実行してメモリを解放する
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
             if (ImageListBox.SelectedItem is ImageInfo selectedImage)
             {
                 try
@@ -322,25 +330,6 @@ namespace tagmane
                 catch (Exception ex)
                 {
                     AddMainLogEntry($"画像の読み込み中にエラーが発生しました: {ex.Message}");
-                }
-                finally
-                {
-                    _isUpdatingSelection = false;
-                }
-            }
-            else
-            {
-                try 
-                {
-                    _isUpdatingSelection = true;
-                    SelectedImage.Source = null;
-                    AssociatedText.Text = "";
-                    UpdateUIAfterSelectionChange();
-                    AddMainLogEntry("画像はnullです");
-                }
-                catch (Exception ex)
-                {
-                    AddMainLogEntry($"画像の選択解除中にエラーが発生しました: {ex.Message}");
                 }
                 finally
                 {
@@ -1827,80 +1816,71 @@ namespace tagmane
             }
             else
             {
-                return new BitmapImage(new Uri(imagePath));
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.UriSource = new Uri(imagePath);
+                bitmap.EndInit();
+                bitmap.Freeze();
+                return bitmap;
             }
         }
 
         private async void DeleteSelectedImageAndTags_Click(object sender, RoutedEventArgs e)
         {
-        //     var selectedImage = ImageListBox.SelectedItem as ImageInfo;
-        //     if (selectedImage == null)
-        //     {
-        //         AddMainLogEntry("画像が選択されていません。");
-        //         return;
-        //     }
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage == null)
+            {
+                AddMainLogEntry("画像が選択されていません。");
+                return;
+            }
 
-        //     if (ConfirmCheckBox.IsChecked == true)
-        //     {
-        //         var result = MessageBox.Show($"選択された画像 '{System.IO.Path.GetFileName(selectedImage.ImagePath)}' とそのタグを削除しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        //         if (result != MessageBoxResult.Yes)
-        //         {
-        //             AddMainLogEntry("削除がキャンセルされました。");
-        //             return;
-        //         }
-        //     }
+            if (ConfirmCheckBox.IsChecked == true)
+            {
+                var result = MessageBox.Show($"選択された画像 '{System.IO.Path.GetFileName(selectedImage.ImagePath)}' とそのタグを削除しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (result != MessageBoxResult.Yes)
+                {
+                    AddMainLogEntry("削除がキャンセルされました。");
+                    return;
+                }
+            }
 
-        //     try
-        //     {
-        //         // ImageListBoxの選択をクリア
-        //         ImageListBox.SelectedItem = null;
+            try
+            {
+                // ImageListBoxの選択をクリア
+                ImageListBox.SelectedItem = null;
+                
+                _imageInfos.Remove(selectedImage);
+                _originalImageInfos.Remove(selectedImage);
 
-        //         // SelectedImageのSourceを解放
-        //         if (SelectedImage.Source is BitmapImage bitmapImage)
-        //         {
-        //             bitmapImage.StreamSource?.Dispose();
-        //             bitmapImage.UriSource = null;
-        //         }
-        //         SelectedImage.Source = null;
-        //         AssociatedText.Text = "";
-        //         AddMainLogEntry("画像を選択していない状態にしました");
+                // GCを強制的に実行してリソースを解放
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
 
-        //         string imagePath = selectedImage.ImagePath;
+                if (File.Exists(selectedImage.ImagePath))
+                {
+                    File.Delete(selectedImage.ImagePath);
+                }
+                string textFilePath = System.IO.Path.ChangeExtension(selectedImage.ImagePath, ".txt");
+                if (File.Exists(textFilePath))
+                {
+                    File.Delete(textFilePath);
+                }
 
-        //         _imageInfos.Remove(selectedImage);
-        //         _originalImageInfos.Remove(selectedImage);
+                // Undo/Redoスタックをクリア
+                _undoStack.Clear();
+                _redoStack.Clear();
 
-        //         // GCを強制的に実行してリソースを解放
-        //         GC.Collect();
-        //         GC.WaitForPendingFinalizers();
-
-        //         // ファイル操作を遅延させる
-        //         await Task.Delay(100);
-
-        //         if (File.Exists(imagePath))
-        //         {
-        //             File.Delete(imagePath);
-        //         }
-        //         string textFilePath = System.IO.Path.ChangeExtension(imagePath, ".txt");
-        //         if (File.Exists(textFilePath))
-        //         {
-        //             File.Delete(textFilePath);
-        //         }
-
-        //         // Undo/Redoスタックをクリア
-        //         _undoStack.Clear();
-        //         _redoStack.Clear();
-
-        //         UpdateUIAfterImageInfosChange();
-        //         UpdateButtonStates();
-        //         AddMainLogEntry($"画像 '{System.IO.Path.GetFileName(selectedImage.ImagePath)}' とそのタグを削除しました。");
-        //         AddMainLogEntry("Undo/Redoスタックをクリアしました。");
-        //     }
-        //     catch (Exception ex)
-        //     {
-        //         MessageBox.Show($"画像の削除中にエラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
-        //         AddMainLogEntry($"画像の削除中にエラーが発生: {ex.Message}");
-        //     }
+                UpdateUIAfterImageInfosChange();
+                UpdateButtonStates();
+                AddMainLogEntry($"画像 '{System.IO.Path.GetFileName(selectedImage.ImagePath)}' とそのタグを削除しました。");
+                AddMainLogEntry("Undo/Redoスタックをクリアしました。");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"画像の削除中にエラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                AddMainLogEntry($"画像の削除中にエラーが発生: {ex.Message}");
+            }
         }
     }
 
