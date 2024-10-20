@@ -63,6 +63,9 @@ namespace tagmane
 
         private const double DefaultCharacterThreshold = 0.85;
         private Dictionary<string, TagCategory> _tagCategories;
+        private Dictionary<string, TagCategory> _defaultTagCategories;
+        private Dictionary<string, TagCategory> _customTagCategories;
+        private bool _useCustomCategories = true;
 
         // インターフェースを追加
         private interface ITagAction
@@ -135,6 +138,9 @@ namespace tagmane
                 TagListView.ItemsSource = Tags;
 
                 _tagCategories = new Dictionary<string, TagCategory>();
+                _defaultTagCategories = new Dictionary<string, TagCategory>();
+                _customTagCategories = new Dictionary<string, TagCategory>();
+
                 LoadTagCategories();
             }
             catch (Exception ex)
@@ -400,6 +406,7 @@ namespace tagmane
         // 全タグの更新
         private void UpdateAllTags()
         {
+            if (_allTags == null) { _allTags = new Dictionary<string, int>(); }
             _allTags.Clear();
             foreach (var imageInfo in _imageInfos)
             {
@@ -1419,7 +1426,9 @@ namespace tagmane
 
         private void UpdateUIAfterImageInfosChange()
         {
+            if (_imageInfos == null) { return; }
             UpdateImageList();
+            if (_allTags == null) { return; }
             UpdateCurrentTags();
             UpdateAllTags();
             UpdateTagListView();
@@ -1431,6 +1440,7 @@ namespace tagmane
 
         private void UpdateUIAfterSelectionChange()
         {
+            if (_imageInfos == null || _allTags == null) { return; }
             UpdateCurrentTags();
             UpdateTagListView();
             UpdateAllTagsListView();
@@ -1440,18 +1450,31 @@ namespace tagmane
 
         private void LoadTagCategories()
         {
-            string[] categoryFiles = {
+            string[] defaultCategoryFiles = {
                 "tagcount/General.json",
                 "tagcount/Copyright.json",
                 "tagcount/Artist.json",
                 "tagcount/Character.json",
+                "tagcount/Meta.json"
+            };
+
+            string[] customCategoryFiles = {
                 "tagcount_custom/ParsonCounts.json",
                 "tagcount_custom/Face.json"
             };
 
+            _defaultTagCategories = LoadCategoriesFromFiles(defaultCategoryFiles);
+            _customTagCategories = LoadCategoriesFromFiles(customCategoryFiles);
+
+            UpdateTagCategories();
+        }
+
+        private Dictionary<string, TagCategory> LoadCategoriesFromFiles(string[] files)
+        {
+            var categories = new Dictionary<string, TagCategory>();
             string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
-            foreach (var file in categoryFiles)
+            foreach (var file in files)
             {
                 try
                 {
@@ -1481,7 +1504,7 @@ namespace tagmane
                         updatedTags[updatedTagName] = tag.Value;
                     }
 
-                    _tagCategories[categoryName] = new TagCategory { Tags = updatedTags };
+                    categories[categoryName] = new TagCategory { Tags = updatedTags };
 
                     AddMainLogEntry($"{categoryName}カテゴリのタグを読み込みました。タグ数: {updatedTags.Count}");
                 }
@@ -1490,17 +1513,66 @@ namespace tagmane
                     AddMainLogEntry($"{file}の読み込み中にエラーが発生しました: {ex.Message}");
                 }
             }
+
+            return categories;
+        }
+
+        private void UpdateTagCategories()
+        {
+            if (_tagCategories == null)
+            {
+                _tagCategories = new Dictionary<string, TagCategory>();
+            }
+            else
+            {
+                _tagCategories.Clear();
+            }
+
+            if (_defaultTagCategories != null)
+            {
+                foreach (var category in _defaultTagCategories)
+                {
+                    _tagCategories[category.Key] = category.Value;
+                }
+            }
+
+            if (_useCustomCategories && _customTagCategories != null)
+            {
+                foreach (var category in _customTagCategories)
+                {
+                    _tagCategories[category.Key] = category.Value;
+                }
+            }
+        }
+
+        private void UseCustomCategoriesCheckBox_Checked(object sender, RoutedEventArgs e)
+        {
+            _useCustomCategories = UseCustomCategoriesCheckBox.IsChecked ?? false;
+            UpdateTagCategories();
+            UpdateUIAfterImageInfosChange();
         }
 
         private string GetTagCategory(string tag)
         {
-            foreach (var category in _tagCategories)
+            if (_useCustomCategories)
+            {
+                foreach (var category in _customTagCategories)
+                {
+                    if (category.Value.Tags.ContainsKey(tag))
+                    {
+                        return category.Key;
+                    }
+                }
+            }
+
+            foreach (var category in _defaultTagCategories)
             {
                 if (category.Value.Tags.ContainsKey(tag))
                 {
                     return category.Key;
                 }
             }
+
             return "Unknown";
         }
     }

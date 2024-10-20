@@ -72,7 +72,7 @@
             <TextBox x:Name="AssociatedText" Grid.Row="2" IsReadOnly="True" TextWrapping="Wrap"/>
             
             <!-- オプション欄 -->
-            <StackPanel Grid.Row="3" Margin="5">
+            <StackPanel Grid.Row="4" Margin="5">
                 <StackPanel Orientation="Horizontal" Margin="0,5">
                     <TextBlock Text="VLMモデル:" VerticalAlignment="Center" Margin="0,0,5,0"/>
                     <ComboBox x:Name="VLMModelComboBox" Width="200" SelectionChanged="VLMModelComboBox_SelectionChanged"/>
@@ -90,6 +90,9 @@
                             TickFrequency="0.05" IsSnapToTickEnabled="True" ValueChanged="CharacterThresholdSlider_ValueChanged"/>
                     <TextBlock x:Name="CharacterThresholdValue" Text="{Binding ElementName=CharacterThresholdSlider, Path=Value, StringFormat={}{0:F2}}" 
                                VerticalAlignment="Center" Margin="5,0,0,0"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,5">
+                    <CheckBox x:Name="UseCustomCategoriesCheckBox" Content="ユーザーカスタムカテゴリを使用" IsChecked="True" Checked="UseCustomCategoriesCheckBox_Checked" Unchecked="UseCustomCategoriesCheckBox_Checked" />
                 </StackPanel>
             </StackPanel>
         </Grid>
