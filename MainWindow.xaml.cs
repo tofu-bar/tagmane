@@ -942,6 +942,12 @@ namespace tagmane
             }
         }
 
+        // ボタンエリア:特殊処理
+        private void ReplaceTagButton_Click(object sender, RoutedEventArgs e)
+        {
+            AddDebugLogEntry("ReplaceTagButton_Click");
+        }
+
         // 右ペイン3: ユーザー入力タグの追加
         private void AddTextboxinputButton_Click(object sender, RoutedEventArgs e)
         {
