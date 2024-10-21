@@ -278,7 +278,7 @@
                         <Image Source="/icon/erasem.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="すべてのタグを削除"/>
+                        <TextBlock Text="選択しているタグを全画像から削除"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="DeselectAllTagsButton" Click="DeselectAllTagsButton_Click">

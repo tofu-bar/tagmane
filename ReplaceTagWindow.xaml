@@ -1,0 +1,41 @@
+<Window x:Class="tagmane.ReplaceTagWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="タグ置換" Height="300" Width="400">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Label Grid.Row="0" Grid.Column="0" Content="置換元タグ:"/>
+        <ComboBox Grid.Row="0" Grid.Column="1" x:Name="SourceTagComboBox" IsEditable="True"/>
+
+        <Label Grid.Row="1" Grid.Column="0" Content="置換先タグ:"/>
+        <TextBox Grid.Row="1" Grid.Column="1" x:Name="DestinationTagTextBox"/>
+
+        <CheckBox Grid.Row="2" Grid.Column="1" x:Name="UseRegexCheckBox" Content="正規表現を使用" Margin="0,5,0,0"/>
+        <CheckBox Grid.Row="3" Grid.Column="1" x:Name="UsePartialMatchCheckBox" Content="部分一致" Margin="0,5,0,0"/>
+        <CheckBox Grid.Row="4" Grid.Column="1" x:Name="ApplyToAllCheckBox" Content="全ての画像に適用" Margin="0,5,0,0"/>
+
+        <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" Margin="0,10,0,0">
+            <Button x:Name="InsertAnyCharButton" Content="任意の文字" Click="InsertRegexPattern" Margin="0,0,5,0"/>
+            <Button x:Name="InsertDigitButton" Content="数字" Click="InsertRegexPattern" Margin="0,0,5,0"/>
+            <Button x:Name="InsertWordCharButton" Content="単語文字" Click="InsertRegexPattern" Margin="0,0,5,0"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="6" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+            <Button Content="実行" Click="ExecuteButton_Click" Width="75" Margin="0,0,10,0"/>
+            <Button Content="キャンセル" Click="CancelButton_Click" Width="75"/>
+        </StackPanel>
+    </Grid>
+</Window>

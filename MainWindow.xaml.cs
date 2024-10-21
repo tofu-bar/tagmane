@@ -19,6 +19,7 @@ using System.Threading;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Path = System.IO.Path;
+using System.Text.RegularExpressions;
 
 namespace tagmane
 {
@@ -946,6 +947,139 @@ namespace tagmane
         private void ReplaceTagButton_Click(object sender, RoutedEventArgs e)
         {
             AddDebugLogEntry("ReplaceTagButton_Click");
+            var replaceTagWindow = new ReplaceTagWindow(_allTags.Keys.ToList());
+            replaceTagWindow.Owner = this;
+            if (replaceTagWindow.ShowDialog() == true)
+            {
+                ReplaceTag(
+                    replaceTagWindow.SourceTag,
+                    replaceTagWindow.DestinationTag,
+                    replaceTagWindow.UseRegex,
+                    replaceTagWindow.UsePartialMatch,
+                    replaceTagWindow.ApplyToAll
+                );
+            }
+        }
+
+        private void ReplaceTag(string sourceTag, string destinationTag, bool useRegex, bool usePartialMatch, bool applyToAll)
+        {
+            var targetImages = applyToAll ? _imageInfos : new List<ImageInfo> { ImageListBox.SelectedItem as ImageInfo };
+            if (targetImages == null || !targetImages.Any())
+            {
+                AddMainLogEntry("対象の画像がありません。");
+                return;
+            }
+
+            var replacedTags = new Dictionary<ImageInfo, List<(string OldTag, string NewTag)>>();
+
+            foreach (var image in targetImages)
+            {
+                var tagsToReplace = new List<(string OldTag, string NewTag)>();
+
+                for (int i = 0; i < image.Tags.Count; i++)
+                {
+                    string currentTag = image.Tags[i];
+                    bool matchFound = false;
+
+                    if (useRegex)
+                    {
+                        try
+                        {
+                            var regex = new Regex(sourceTag);
+                            if (regex.IsMatch(currentTag))
+                            {
+                                string newTag = regex.Replace(currentTag, destinationTag);
+                                if (newTag != currentTag)
+                                {
+                                    tagsToReplace.Add((currentTag, newTag));
+                                    matchFound = true;
+                                }
+                            }
+                        }
+                        catch (ArgumentException ex)
+                        {
+                            AddMainLogEntry($"無効な正規表現: {ex.Message}");
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        if (usePartialMatch)
+                        {
+                            if (currentTag.Contains(sourceTag))
+                            {
+                                string newTag = currentTag.Replace(sourceTag, destinationTag);
+                                tagsToReplace.Add((currentTag, newTag));
+                                matchFound = true;
+                            }
+                        }
+                        else
+                        {
+                            if (currentTag == sourceTag)
+                            {
+                                tagsToReplace.Add((currentTag, destinationTag));
+                                matchFound = true;
+                            }
+                        }
+                    }
+
+                    if (matchFound)
+                    {
+                        replacedTags[image] = tagsToReplace;
+                    }
+                }
+            }
+
+            if (replacedTags.Any())
+            {
+                var action = new TagGroupAction
+                {
+                    DoAction = () =>
+                    {
+                        foreach (var kvp in replacedTags)
+                        {
+                            var image = kvp.Key;
+                            foreach (var (oldTag, newTag) in kvp.Value)
+                            {
+                                int index = image.Tags.IndexOf(oldTag);
+                                if (index != -1)
+                                {
+                                    image.Tags[index] = newTag;
+                                }
+                            }
+                        }
+                        AddMainLogEntry($"{replacedTags.Sum(kvp => kvp.Value.Count)}個のタグを置換しました。");
+                        UpdateUIAfterImageInfosChange();
+                    },
+                    UndoAction = () =>
+                    {
+                        foreach (var kvp in replacedTags)
+                        {
+                            var image = kvp.Key;
+                            foreach (var (oldTag, newTag) in kvp.Value)
+                            {
+                                int index = image.Tags.IndexOf(newTag);
+                                if (index != -1)
+                                {
+                                    image.Tags[index] = oldTag;
+                                }
+                            }
+                        }
+                        AddMainLogEntry($"{replacedTags.Sum(kvp => kvp.Value.Count)}個のタグの置換を元に戻しました。");
+                        UpdateUIAfterImageInfosChange();
+                    },
+                    Description = $"{replacedTags.Sum(kvp => kvp.Value.Count)}個のタグを置換"
+                };
+
+                action.DoAction();
+                _undoStack.Push(action);
+                _redoStack.Clear();
+                UpdateButtonStates();
+            }
+            else
+            {
+                AddMainLogEntry("置換対象のタグが見つかりませんでした。");
+            }
         }
 
         // 右ペイン3: ユーザー入力タグの追加
