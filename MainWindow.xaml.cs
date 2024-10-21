@@ -123,6 +123,18 @@ namespace tagmane
             void ITagAction.UndoAction() => UndoAction();
         }
 
+        private class TagCategory
+        {
+            [JsonPropertyName("0")]
+            public Dictionary<string, int> Tags { get; set; }
+        }
+
+        private class CategoryItem
+        {
+            public string Name { get; set; }
+            public string OrderType { get; set; } // "Prefix", "Suffix", or ""
+        }
+
         public ObservableCollection<string> Tags { get; set; }    
         private FilterMode _currentFilterMode = FilterMode.Off;
         private enum FilterMode { Off, And, Or }
@@ -2012,17 +2024,4 @@ namespace tagmane
         ここまでタグカテゴリ関連メソッド
         */
     }
-
-    public class TagCategory
-    {
-        [JsonPropertyName("0")]
-        public Dictionary<string, int> Tags { get; set; }
-    }
-
-    public class CategoryItem
-    {
-        public string Name { get; set; }
-        public string OrderType { get; set; } // "Prefix", "Suffix", or ""
-    }
-
 }
