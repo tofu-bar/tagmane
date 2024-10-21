@@ -11,6 +11,7 @@
     <None Remove="icon\add.png" />
     <None Remove="icon\addm.png" />
     <None Remove="icon\and.png" />
+    <None Remove="icon\cancel.png" />
     <None Remove="icon\deselect.png" />
     <None Remove="icon\erasem.png" />
     <None Remove="icon\erase.png" />
@@ -36,6 +37,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="icon\cancel.png" />
     <Resource Include="icon\filter.png" />
     <Resource Include="icon\florence.png" />
   </ItemGroup>

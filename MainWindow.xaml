@@ -22,32 +22,49 @@
         <!-- 左ペイン -->
         <DockPanel Grid.Column="0">
             <StackPanel DockPanel.Dock="Top" Orientation="Vertical">
-                <StackPanel Orientation="Horizontal">
-                    <Button Click="SelectFolder_Click">
-                        <Button.Content>
-                            <Image Source="/icon/open.png" Width="32" Height="32"/>
-                        </Button.Content>
-                        <Button.ToolTip>
-                            <TextBlock Text="フォルダを選択(Ctrl+O)"/>
-                        </Button.ToolTip>
-                    </Button>
-                    <Button Click="SaveTagsButton_Click">
-                        <Button.Content>
-                            <Image Source="/icon/save.png" Width="32" Height="32"/>
-                        </Button.Content>
-                        <Button.ToolTip>
-                            <TextBlock Text="現在のタグ状態を保存(Ctrl+S)"/>
-                        </Button.ToolTip>
-                    </Button>
-                    <Button Click="DeleteSelectedImageAndTags_Click">
-                        <Button.Content>
-                            <Image Source="/icon/trash.png" Width="32" Height="32"/>
-                        </Button.Content>
-                        <Button.ToolTip>
-                            <TextBlock Text="選択中の画像とタグを削除"/>
-                        </Button.ToolTip>
-                    </Button>
-                </StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal">
+                        <Button Click="SelectFolder_Click">
+                            <Button.Content>
+                                <Image Source="/icon/open.png" Width="32" Height="32"/>
+                            </Button.Content>
+                            <Button.ToolTip>
+                                <TextBlock Text="フォルダを選択(Ctrl+O)"/>
+                            </Button.ToolTip>
+                        </Button>
+                        <Button Click="SaveTagsButton_Click">
+                            <Button.Content>
+                                <Image Source="/icon/save.png" Width="32" Height="32"/>
+                            </Button.Content>
+                            <Button.ToolTip>
+                                <TextBlock Text="現在のタグ状態を保存(Ctrl+S)"/>
+                            </Button.ToolTip>
+                        </Button>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Click="DeleteSelectedImageAndTags_Click">
+                            <Button.Content>
+                                <Image Source="/icon/trash.png" Width="32" Height="32"/>
+                            </Button.Content>
+                            <Button.ToolTip>
+                                <TextBlock Text="選択中の画像とタグを削除"/>
+                            </Button.ToolTip>
+                        </Button>
+                        <Button Click="CancelButton_Click">
+                            <Button.Content>
+                                <Image Source="/icon/cancel.png" Width="32" Height="32"/>
+                            </Button.Content>
+                            <Button.ToolTip>
+                                <TextBlock Text="キャンセル"/>
+                            </Button.ToolTip>
+                        </Button>
+                    </StackPanel>
+                </Grid>
                 <CheckBox x:Name="ConfirmCheckBox" Content="操作時に確認する？" IsChecked="True" Margin="0,5,0,0"/>
                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                     <TextBlock Text="webp DLL:" VerticalAlignment="Center" Margin="0,0,5,0"/>
