@@ -956,12 +956,13 @@ namespace tagmane
                     replaceTagWindow.DestinationTag,
                     replaceTagWindow.UseRegex,
                     replaceTagWindow.UsePartialMatch,
-                    replaceTagWindow.ApplyToAll
+                    replaceTagWindow.ApplyToAll,
+                    replaceTagWindow.ReplaceProbability
                 );
             }
         }
 
-        private void ReplaceTag(string sourceTag, string destinationTag, bool useRegex, bool usePartialMatch, bool applyToAll)
+        private void ReplaceTag(string sourceTag, string destinationTag, bool useRegex, bool usePartialMatch, bool applyToAll, double replaceProbability)
         {
             var targetImages = applyToAll ? _imageInfos : new List<ImageInfo> { ImageListBox.SelectedItem as ImageInfo };
             if (targetImages == null || !targetImages.Any())
@@ -971,6 +972,7 @@ namespace tagmane
             }
 
             var replacedTags = new Dictionary<ImageInfo, List<(string OldTag, string NewTag)>>();
+            var random = new Random();
 
             foreach (var image in targetImages)
             {
@@ -989,7 +991,7 @@ namespace tagmane
                             if (regex.IsMatch(currentTag))
                             {
                                 string newTag = regex.Replace(currentTag, destinationTag);
-                                if (newTag != currentTag)
+                                if (newTag != currentTag && random.NextDouble() < replaceProbability)
                                 {
                                     tagsToReplace.Add((currentTag, newTag));
                                     matchFound = true;
@@ -1006,7 +1008,7 @@ namespace tagmane
                     {
                         if (usePartialMatch)
                         {
-                            if (currentTag.Contains(sourceTag))
+                            if (currentTag.Contains(sourceTag) && random.NextDouble() < replaceProbability)
                             {
                                 string newTag = currentTag.Replace(sourceTag, destinationTag);
                                 tagsToReplace.Add((currentTag, newTag));
@@ -1015,7 +1017,7 @@ namespace tagmane
                         }
                         else
                         {
-                            if (currentTag == sourceTag)
+                            if (currentTag == sourceTag && random.NextDouble() < replaceProbability)
                             {
                                 tagsToReplace.Add((currentTag, destinationTag));
                                 matchFound = true;

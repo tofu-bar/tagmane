@@ -13,6 +13,7 @@ namespace tagmane
         public bool UseRegex => UseRegexCheckBox.IsChecked ?? false;
         public bool UsePartialMatch => UsePartialMatchCheckBox.IsChecked ?? false;
         public bool ApplyToAll => ApplyToAllCheckBox.IsChecked ?? false;
+        public double ReplaceProbability => ReplaceProbabilitySlider.Value / 100.0;
 
         public ReplaceTagWindow(List<string> allTags)
         {
