@@ -79,6 +79,7 @@ namespace tagmane
         private Dictionary<string, TagCategory> _tagCategories;
         private Dictionary<string, TagCategory> _defaultTagCategories;
         private Dictionary<string, TagCategory> _customTagCategories;
+        private Dictionary<string, TagCategory> _userAddedTagCategories;
         private ObservableCollection<CategoryItem> _tagCategoryNames;
         private bool _useCustomCategories = true;
         private List<string> _prefixOrder;
@@ -1128,12 +1129,21 @@ namespace tagmane
 
         private void AddTagFromTextBox(bool addToAllTags)
         {
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("対象の画像がありません。");
+                return;
+            }
+
             string newTag = SearchTextBox.Text.Trim();
             if (string.IsNullOrEmpty(newTag))
             {
                 AddMainLogEntry("タグを入力してください。");
                 return;
             }
+
+            // 新しいタグをUserAddedカテゴリに追加
+            AddTagToUserAddedCategory(newTag);
 
             if (addToAllTags)
             {
@@ -1226,7 +1236,7 @@ namespace tagmane
             SearchTextBox.Clear();
             UpdateSearchedTagsListView();
         }
-        
+
         private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             UpdateSearchedTagsListView();
@@ -1962,6 +1972,42 @@ namespace tagmane
             return categories;
         }
 
+        private void AddTagToUserAddedCategory(string newTag)
+        {
+            const string userAddedCategoryName = "UserAdded";
+
+            // 新しいタグが他のカテゴリに属しているか確認
+            foreach (var category in _tagCategories)
+            {
+                if (category.Value?.Tags != null && category.Value.Tags.ContainsKey(newTag))
+                {
+                    // 既知のカテゴリのカウントを増やす
+                    category.Value.Tags[newTag]++;
+                    return;
+                }
+            }
+
+            // UserAddedカテゴリが存在しない場合、新しく作成
+            if (_userAddedTagCategories == null)
+            {
+                _userAddedTagCategories = new Dictionary<string, TagCategory>();
+            }
+
+            if (!_userAddedTagCategories.ContainsKey(userAddedCategoryName))
+            {
+                _userAddedTagCategories[userAddedCategoryName] = new TagCategory { Tags = new Dictionary<string, int>() };
+            }
+
+            if (_userAddedTagCategories[userAddedCategoryName].Tags == null)
+            {
+                _userAddedTagCategories[userAddedCategoryName].Tags = new Dictionary<string, int>();
+            }
+
+            _userAddedTagCategories[userAddedCategoryName].Tags[newTag] = 1;
+
+            UpdateTagCategories();
+        }
+
         private void UpdateTagCategories()
         {
             if (_tagCategories == null) { return; }
@@ -1978,6 +2024,14 @@ namespace tagmane
             if (_useCustomCategories && _customTagCategories != null)
             {
                 foreach (var category in _customTagCategories)
+                {
+                    _tagCategories[category.Key] = category.Value;
+                }
+            }
+
+            if (_userAddedTagCategories != null)
+            {
+                foreach (var category in _userAddedTagCategories)
                 {
                     _tagCategories[category.Key] = category.Value;
                 }
@@ -2016,7 +2070,7 @@ namespace tagmane
         {
             _useCustomCategories = UseCustomCategoriesCheckBox.IsChecked ?? false;
             UpdateTagCategories();
-            UpdateUIAfterImageInfosChange();
+            UpdateUIAfterTagsChange();
         }
 
         private string GetTagCategory(string tag)
@@ -2037,6 +2091,17 @@ namespace tagmane
                 if (category.Value.Tags.ContainsKey(tag))
                 {
                     return category.Key;
+                }
+            }
+
+            if (_userAddedTagCategories != null)
+            {
+                foreach (var category in _userAddedTagCategories)
+                {
+                    if (category.Value.Tags.ContainsKey(tag))
+                    {
+                        return category.Key;
+                    }
                 }
             }
 
@@ -2131,7 +2196,6 @@ namespace tagmane
             }
             catch (OperationCanceledException)
             {
-                _isAsyncProcessing = false;
                 AddMainLogEntry("タグの並び替えがキャンセルされました。");
             }
             finally
