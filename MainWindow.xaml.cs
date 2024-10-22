@@ -1232,6 +1232,16 @@ namespace tagmane
             UpdateSearchedTagsListView();
         }
 
+        private void SearchTargetComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            UpdateSearchedTagsListView();
+        }
+
+        private void SearchOptionComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            UpdateSearchedTagsListView();
+        }
+
         private void UpdateSearchedTagsListView()
         {
             AddDebugLogEntry("UpdateSearchedTagsListView");
@@ -1242,9 +1252,47 @@ namespace tagmane
 
             if (!string.IsNullOrEmpty(searchText))
             {
-                var matchingTags = _allTags.Keys
-                    .Where(tag => tag.ToLower().Contains(searchText))
+                IEnumerable<string> searchSource;
+                switch (SearchTargetComboBox.SelectedIndex)
+                {
+                    case 0: // AllTags
+                        searchSource = _allTags.Keys;
+                        break;
+                    case 1: // OriginalImageTags
+                        searchSource = _imageInfos.SelectMany(info => info.Tags).Distinct();
+                        break;
+                    case 2: // BooruTags
+                        searchSource = _tagCategories.Values
+                            .SelectMany(category => category.Tags.Keys)
+                            .Distinct();
+                        break;
+                    default:
+                        searchSource = Enumerable.Empty<string>();
+                        break;
+                }
+
+                Func<string, bool> matchPredicate;
+                switch (SearchOptionComboBox.SelectedIndex)
+                {
+                    case 0: // Partial Match
+                        matchPredicate = tag => tag.ToLower().Contains(searchText);
+                        break;
+                    case 1: // Prefix Match
+                        matchPredicate = tag => tag.ToLower().StartsWith(searchText);
+                        break;
+                    case 2: // Phrase Match
+                        var searchPhrases = searchText.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                        matchPredicate = tag => searchPhrases.All(phrase => tag.ToLower().Contains(phrase));
+                        break;
+                    default:
+                        matchPredicate = _ => false;
+                        break;
+                }
+
+                var matchingTags = searchSource
+                    .Where(matchPredicate)
                     .OrderBy(tag => tag)
+                    .Take(100)
                     .ToList();
 
                 AddDebugLogEntry($"matchingTags: {string.Join(", ", matchingTags)}");
@@ -1256,6 +1304,11 @@ namespace tagmane
                 foreach (var tag in tagsToSelect)
                 {
                     SearchedTagsListView.SelectedItems.Add(tag);
+                }
+
+                if (matchingTags.Count == 100)
+                {
+                    AddMainLogEntry("検索結果が100件を超えています。最初の100件のみ表示しています。");
                 }
             }
             else
@@ -1740,15 +1793,15 @@ namespace tagmane
                             
                             Interlocked.Increment(ref processedImages);
 
-                            Dispatcher.Invoke(() =>
-                            {                                
-                                if ((DateTime.Now - lastUpdateTime).TotalSeconds >= 1)
+                            if ((DateTime.Now - lastUpdateTime).TotalSeconds >= 1)
+                            {
+                                Dispatcher.Invoke(() =>
                                 {
                                     UpdateProgressBar((double)processedImages / totalImages);
                                     UpdateUIAfterTagsChange();
-                                    lastUpdateTime = DateTime.Now;
-                                }
-                            });
+                                });
+                                lastUpdateTime = DateTime.Now;
+                            }
                             
                             AddMainLogEntry($"{imageInfo.ImagePath}のVLM推論が完了しました");
                         }
@@ -2061,16 +2114,15 @@ namespace tagmane
                             SortImageTagsByCategory(_imageInfos[j]);
                         });
 
-                        Dispatcher.Invoke(() =>
+                        if ((DateTime.Now - lastUpdateTime).TotalSeconds >= 1)
                         {
-                            ProgressBar.Value = (end) * 100 / totalImages;
-                            
-                            if ((DateTime.Now - lastUpdateTime).TotalSeconds >= 1)
+                            Dispatcher.Invoke(() =>
                             {
+                                ProgressBar.Value = (end) * 100 / totalImages;
                                 UpdateUIAfterTagsChange();
-                                lastUpdateTime = DateTime.Now;
-                            }
-                        });
+                            });
+                            lastUpdateTime = DateTime.Now;
+                        }
                     }
                     
                 }, _cts.Token);
@@ -2082,7 +2134,7 @@ namespace tagmane
             finally
             {
                 _isAsyncProcessing = false;
-                ProgressBar.Visibility = Visibility.Collapsed;
+                UpdateProgressBar(0);
                 UpdateUIAfterTagsChange();
             }
         }
@@ -2154,10 +2206,6 @@ namespace tagmane
             action.DoAction();
             _undoStack.Push(action);
             _redoStack.Clear();
-            // Dispatcher.Invoke(() =>
-            // {
-            //     UpdateButtonStates();
-            // });
         }
 
         /*

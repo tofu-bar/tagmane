@@ -381,6 +381,8 @@
         <Grid Grid.Column="5">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>  <!-- プログレスバー用 -->
+                <RowDefinition Height="Auto"/>  <!-- 対象選択用ドロップダウンリスト -->
+                <RowDefinition Height="Auto"/>  <!-- 検索オプション用 -->
                 <RowDefinition Height="Auto"/>  <!-- 検索バー用 -->
                 <RowDefinition Height="Auto"/>  <!-- 検索されたタグ用 -->
                 <RowDefinition Height="1*"/>    <!-- デバッグログ用 -->
@@ -393,8 +395,22 @@
             <!-- プログレスバー -->
             <ProgressBar x:Name="ProgressBar" Grid.Row="0" Height="20" Margin="5" Minimum="0" Maximum="100" Value="0"/>
             
+            <!-- 対象選択用ドロップダウンリスト -->
+            <ComboBox x:Name="SearchTargetComboBox" Grid.Row="1" Margin="5" SelectedIndex="0">
+                <ComboBoxItem Content="AllTags"/>
+                <ComboBoxItem Content="OriginalImageTags"/>
+                <ComboBoxItem Content="BooruTags"/>
+            </ComboBox>
+
+            <!-- 検索オプション -->
+            <ComboBox x:Name="SearchOptionComboBox" Grid.Row="2" Margin="5" SelectedIndex="0">
+                <ComboBoxItem x:Name="PartialMatchOption" Content="Partial Match"/>
+                <ComboBoxItem x:Name="PrefixMatchOption" Content="Prefix Match"/>
+                <ComboBoxItem x:Name="PhraseMatchOption" Content="Phrase Match"/>
+            </ComboBox>
+
             <!-- 検索バーとボタン -->
-            <Grid Grid.Row="1" Margin="5">
+            <Grid Grid.Row="3" Margin="5">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
@@ -420,7 +436,7 @@
             </Grid>
 
             <!-- 検索されたタグのリストビュー -->
-            <ListView x:Name="SearchedTagsListView" Grid.Row="2" Height="100" 
+            <ListView x:Name="SearchedTagsListView" Grid.Row="4" Height="160" 
                       SelectionMode="Multiple" SelectionChanged="SearchedTagsListView_SelectionChanged"
                       ItemsSource="{Binding SearchedTags}">
                 <ListView.ItemContainerStyle>
@@ -440,10 +456,10 @@
             </ListView>
 
             <!-- デバッグログの表示領域-->
-            <TextBox x:Name="DebugLogTextBox" Grid.Row="3" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+            <TextBox x:Name="DebugLogTextBox" Grid.Row="5" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
 
             <!-- ログ表示用のTabControl -->
-            <TabControl Grid.Row="4">
+            <TabControl Grid.Row="6">
                 <TabItem Header="メインログ">
                     <TextBox x:Name="MainLogTextBox" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
                 </TabItem>
@@ -453,7 +469,7 @@
             </TabControl>
 
             <!-- Undo/Redoのための動作処理リスト -->
-            <ListView x:Name="ActionListView" Grid.Row="5">
+            <ListView x:Name="ActionListView" Grid.Row="7">
                 <ListView.View>
                     <GridView>
                         <GridViewColumn Header="操作" DisplayMemberBinding="{Binding ActionType}"/>
@@ -463,10 +479,10 @@
             </ListView>
 
             <!-- 選択されたタグ -->
-            <ListBox x:Name="SelectedTagsListBox" Grid.Row="6" IsEnabled="False"/>
+            <ListBox x:Name="SelectedTagsListBox" Grid.Row="8" IsEnabled="False"/>
 
             <!-- フィルタリングされているタグリスト -->
-            <ListBox x:Name="FilteredTagsListBox" Grid.Row="7" IsEnabled="False"/>
+            <ListBox x:Name="FilteredTagsListBox" Grid.Row="9" IsEnabled="False"/>
         </Grid>
     </Grid>
 </Window>
