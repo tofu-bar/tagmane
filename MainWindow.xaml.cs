@@ -1274,7 +1274,7 @@ namespace tagmane
                 Func<string, bool> matchPredicate;
                 switch (SearchOptionComboBox.SelectedIndex)
                 {
-                    case 0: // Partial Match
+                    case 0: // Partial Matc
                         matchPredicate = tag => tag.ToLower().Contains(searchText);
                         break;
                     case 1: // Prefix Match
@@ -1746,6 +1746,7 @@ namespace tagmane
             if (_imageInfos == null || _imageInfos.Count == 0)
             {
                 AddMainLogEntry("対象画像がありません。");
+                _isAsyncProcessing = false;
                 return;
             }
             if (ConfirmCheckBox.IsChecked == true)
@@ -1754,6 +1755,7 @@ namespace tagmane
                 if (result != MessageBoxResult.Yes)
                 {
                     AddMainLogEntry("VLM推論がキャンセルされました。");
+                    _isAsyncProcessing = false;
                     return;
                 }
             }
@@ -2129,6 +2131,7 @@ namespace tagmane
             }
             catch (OperationCanceledException)
             {
+                _isAsyncProcessing = false;
                 AddMainLogEntry("タグの並び替えがキャンセルされました。");
             }
             finally
