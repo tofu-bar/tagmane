@@ -23,12 +23,12 @@ namespace tagmane
                     ImagePath = imagePath,
                     AssociatedText = GetAssociatedText(imagePath)
                 };
-
-                // タグの前後のスペースを除去し、空のタグを除外
+                // タグの前後のスペースを除去し、空のタグを除外し、エスケープされたかっこを元に戻す
                 imageInfo.Tags = imageInfo.AssociatedText
                     .Split(',')
                     .Select(t => t.Trim())
                     .Where(t => !string.IsNullOrWhiteSpace(t))
+                    .Select(t => t.Replace("\\(", "(").Replace("\\)", ")"))
                     .ToList();
 
                 imageInfos.Add(imageInfo);

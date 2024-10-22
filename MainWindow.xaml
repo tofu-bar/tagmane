@@ -72,6 +72,14 @@
                     <TextBox x:Name="WebPDllPathTextBox" IsReadOnly="True" Width="200" VerticalAlignment="Center"/>
                     <Button x:Name="SelectWebPDllButton" Content="開く" Margin="5,0,0,0" Click="SelectWebPDllButton_Click"/>
                 </StackPanel>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,5,0,0">
+                    <TextBlock Text="タグ保存形式:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <ComboBox x:Name="TagFormatComboBox" Width="150" SelectedIndex="0">
+                        <ComboBoxItem Content="aaaa (bbbb)"/>
+                        <ComboBoxItem Content="aaaa \(bbbb\)"/>
+                        <ComboBoxItem Content="aaaa_(bbbb)"/>
+                    </ComboBox>
+                </StackPanel>
             </StackPanel>
             <ListBox x:Name="ImageListBox" SelectionChanged="ImageListBox_SelectionChanged"/>
         </DockPanel>

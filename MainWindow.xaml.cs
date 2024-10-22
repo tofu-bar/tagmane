@@ -264,6 +264,32 @@ namespace tagmane
             }
         }
 
+        private string FormatTag(string tag)
+        {
+            var format = (TagFormatComboBox.SelectedItem as ComboBoxItem)?.Content.ToString();
+            switch (format)
+            {
+                case "aaaa \\(bbbb\\)":
+                    return tag.Replace("(", "\\(").Replace(")", "\\)");
+                case "aaaa_(bbbb)":
+                    return tag.Replace(" ", "_");
+                default:
+                    return tag;
+            }
+        }
+
+        // private void SaveTagsButton_Click(object sender, RoutedEventArgs e)
+        // {
+        //     foreach (var imageInfo in _imageInfos)
+        //     {
+        //         var formattedTags = imageInfo.Tags.Select(FormatTag);
+        //         var tagString = string.Join(", ", formattedTags);
+        //         var textPath = Path.ChangeExtension(imageInfo.ImagePath, ".txt");
+        //         File.WriteAllText(textPath, tagString);
+        //     }
+        //     MessageBox.Show("タグを保存しました。");
+        // }
+
         private TagGroupAction CreateAddTagsAction(ImageInfo imageInfo, List<string> newTags)
         {
             return new TagGroupAction
@@ -449,12 +475,12 @@ namespace tagmane
                 AssociatedText.Text = selectedImage.AssociatedText;
             }
         }
-
         // 画像のタグをファイルに保存
         private void SaveTagsToFile(ImageInfo imageInfo)
         {
             string textFilePath = System.IO.Path.ChangeExtension(imageInfo.ImagePath, ".txt");
-            string tagString = string.Join(", ", imageInfo.Tags);
+            var formattedTags = imageInfo.Tags.Select(FormatTag);
+            string tagString = string.Join(", ", formattedTags);
             
             try
             {
