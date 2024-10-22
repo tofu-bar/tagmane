@@ -41,18 +41,37 @@ namespace tagmane
             AddLogEntry($"リポジトリからモデルを読み込みます: {modelRepo}");
             var (tagsPath, modelPath) = await DownloadModel(modelRepo);
 
-            try
+            int retryCount = 0;
+            const int maxRetries = 3;
+
+            while (retryCount < maxRetries)
             {
-                _session = new InferenceSession(modelPath);
-                _tags = File.ReadAllLines(tagsPath).Where(line => !string.IsNullOrWhiteSpace(line)).ToList();
-                AddLogEntry("モデルが正常に読み込まれました。");
-                _isModelLoaded = true;
-                AddLogEntry("モデルの読み込みが完了しました。");
-            }
-            catch (Exception ex)
-            {
-                AddLogEntry($"モデルの読み込み中にエラーが発生しました: {ex.Message}");
-                throw;
+                try
+                {
+                    AddLogEntry("ONNX推論セッションを初期化しています");
+                    _session = new InferenceSession(modelPath);
+                    _tags = File.ReadAllLines(tagsPath).Where(line => !string.IsNullOrWhiteSpace(line)).ToList();
+                    AddLogEntry("モデルが正常に読み込まれました。");
+                    _isModelLoaded = true;
+                    AddLogEntry("モデルの読み込みが完了しました。");
+                    break; // 成功した場合、ループを抜ける
+                }
+                catch (Exception ex)
+                {
+                    AddLogEntry($"ONNX推論セッションの初期化に失敗しました: {ex.Message}");
+                    retryCount++;
+
+                    if (retryCount >= maxRetries)
+                    {
+                        AddLogEntry("最大再試行回数に達しました。モデルの読み込みに失敗しました。");
+                        throw;
+                    }
+
+                    AddLogEntry($"モデルの再ダウンロードを試みます。試行回数: {retryCount}");
+                    File.Delete(modelPath);
+                    AddLogEntry($"既存のモデルファイルを削除しました: {modelPath}");
+                    (tagsPath, modelPath) = await DownloadModel(modelRepo);
+                }
             }
         }
 
