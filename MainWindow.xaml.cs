@@ -2218,6 +2218,10 @@ namespace tagmane
             foreach (var category in _prefixOrder)
             {
                 var categoryTags = remainingTags.Where(tag => GetTagCategory(tag) == category).ToList();
+                if (ShuffleInCategoriesCheckBox.IsChecked == true)
+                {
+                    categoryTags = categoryTags.OrderBy(x => Guid.NewGuid()).ToList();
+                }
                 foreach (var tag in categoryTags)
                 {
                     int sourceIndex = image.Tags.IndexOf(tag);
@@ -2233,6 +2237,10 @@ namespace tagmane
             foreach (var category in _suffixOrder.AsEnumerable().Reverse())
             {
                 var categoryTags = remainingTags.Where(tag => GetTagCategory(tag) == category).ToList();
+                if (ShuffleInCategoriesCheckBox.IsChecked == true)
+                {
+                    categoryTags = categoryTags.OrderBy(x => Guid.NewGuid()).ToList();
+                }
                 foreach (var tag in categoryTags)
                 {
                     int sourceIndex = image.Tags.IndexOf(tag);
@@ -2243,6 +2251,11 @@ namespace tagmane
                 suffixTags.InsertRange(0, categoryTags);
                 remainingTags.RemoveAll(tag => categoryTags.Contains(tag));
             }
+
+            // if (ShuffleInCategoriesCheckBox.IsChecked == true)
+            // {
+            //     remainingTags = remainingTags.OrderBy(x => Guid.NewGuid()).ToList();
+            // }
 
             var newTags = prefixTags.Concat(remainingTags).Concat(suffixTags).ToList();
 

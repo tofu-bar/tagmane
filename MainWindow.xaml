@@ -144,6 +144,9 @@
                     <StackPanel Orientation="Horizontal" Margin="0,5">
                         <CheckBox x:Name="UseCustomCategoriesCheckBox" Content="ユーザーカスタムカテゴリを使用" IsChecked="True" Checked="UseCustomCategoriesCheckBox_Checked" Unchecked="UseCustomCategoriesCheckBox_Checked" />
                     </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <CheckBox x:Name="ShuffleInCategoriesCheckBox" Content="カテゴリ内でシャッフル" IsChecked="False"/>
+                    </StackPanel>
                 </StackPanel>
                 
                 <!-- 右側のタグカテゴリリストビュー -->
