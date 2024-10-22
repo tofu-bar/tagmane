@@ -209,22 +209,6 @@ namespace tagmane
             }
         }
 
-        private void SelectWebPDllButton_Click(object sender, RoutedEventArgs e)
-        {
-            var openFileDialog = new Microsoft.Win32.OpenFileDialog
-            {
-                Filter = "DLLファイル (*.dll)|*.dll",
-                Title = "WebP.dllを選択してください"
-            };
-
-            if (openFileDialog.ShowDialog() == true)
-            {
-                _webpDllPath = openFileDialog.FileName;
-                WebPDllPathTextBox.Text = _webpDllPath;
-                SaveSettings();
-            }
-        }
-
         private void LoadSettings()
         {
             _webpDllPath = Properties.Settings.Default.WebPDllPath;
@@ -313,8 +297,7 @@ namespace tagmane
         {
             Dispatcher.Invoke(() =>
             {
-                // ログレスバーの更新処理
-                // ProgressBarコントロールがUIに追加されていることを前提としています
+                // プログレスバーの更新処理
                 ProgressBar.Value = progress * 100;
             });
         }
@@ -549,6 +532,22 @@ namespace tagmane
             AddMainLogEntry("処理のキャンセルが要求されました");
         }
 
+        private void SelectWebPDllButton_Click(object sender, RoutedEventArgs e)
+        {
+            var openFileDialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "DLLファイル (*.dll)|*.dll",
+                Title = "WebP.dllを選択してください"
+            };
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                _webpDllPath = openFileDialog.FileName;
+                WebPDllPathTextBox.Text = _webpDllPath;
+                SaveSettings();
+            }
+        }
+
         // 画像リストの更新
         private void UpdateImageList()
         {
@@ -560,7 +559,7 @@ namespace tagmane
         {
             if (_isUpdatingSelection) return;
 
-            // 画像の更新前に表示委を解除し、メモリを解放する
+            // 画像の更新前に表示を解除し、メモリを解放する
             SelectedImage.Source = null;
             AssociatedText.Text = "";
 
@@ -2080,10 +2079,7 @@ namespace tagmane
             {
                 _isAsyncProcessing = false;
                 ProgressBar.Visibility = Visibility.Collapsed;
-                Dispatcher.Invoke(() =>
-                {
-                    UpdateUIAfterImageInfosChange();
-                });
+                UpdateUIAfterImageInfosChange();
             }
         }
 
