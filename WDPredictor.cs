@@ -58,9 +58,21 @@ namespace tagmane
             {
                 try
                 {
-                    AddLogEntry("ONNX推論セッションを初期化しています");
-                    _model = new InferenceSession(modelPath);
-                    break; // 成功した場合、ループを抜ける
+                    AddLogEntry("ONNX推論セッションを初期化しています（GPU使用を試みます）");
+                    var sessionOptions = new SessionOptions();
+                    try
+                    {
+                        sessionOptions.AppendExecutionProvider_CUDA();
+                        AddLogEntry("GPUを使用します");
+                    }
+                    catch (Exception ex)
+                    {
+                        AddLogEntry($"GPUの初期化に失敗しました: {ex.Message}");
+                        AddLogEntry("CPUを使用します");
+                    }
+                    sessionOptions.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+                    _model = new InferenceSession(modelPath, sessionOptions);
+                    break;
                 }
                 catch (Exception ex)
                 {
@@ -95,8 +107,8 @@ namespace tagmane
             var csvPath = Path.Combine(modelDir, LABEL_FILENAME);
             var modelPath = Path.Combine(modelDir, MODEL_FILENAME);
             AddLogEntry($"モデルファイルのダウンロードを開始します: {modelRepo}");
-            AddLogEntry($"辞書ダウンロードパス: {csvPath}");
-            AddLogEntry($"モデルダウンロードパス: {modelPath}");
+            // AddLogEntry($"辞書ダウンロードパス: {csvPath}");
+            // AddLogEntry($"モデルダウンロードパス: {modelPath}");
 
             if (!File.Exists(csvPath) || !File.Exists(modelPath))
             {
@@ -190,7 +202,7 @@ namespace tagmane
             }
             catch (Exception ex)
             {
-                AddLogEntry($"ファイルの整合性チェックに失敗しました: {ex.Message}");
+                AddLogEntry($"ファイルの整合性��ェックに失敗しました: {ex.Message}");
                 return false;
             }
         }
@@ -251,18 +263,23 @@ namespace tagmane
             var inputTensor = PrepareImage(image);
             AddLogEntry($"inputTensor: {inputTensor[0, 1, 1, 0]}");
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(_model.InputMetadata.First().Key, inputTensor) };
-            var output = _model.Run(inputs);
-            var predictions = output.First().AsEnumerable<float>().ToArray();
+            // var output = _model.Run(inputs);
+            // var predictions = output.First().AsEnumerable<float>().ToArray();
 
-            var labels = _tagNames.Zip(predictions, (name, pred) => (name, pred)).ToList();
+            // var labels = _tagNames.Zip(predictions, (name, pred) => (name, pred)).ToList();
+            using (var outputs = _model.Run(inputs))
+            {
+                var predictions = outputs.First().AsEnumerable<float>().ToArray();
+                var labels = _tagNames.Zip(predictions, (name, pred) => (name, pred)).ToList();
 
-            var rating = _ratingIndexes.Select(i => labels[i]).ToDictionary(x => x.name, x => x.pred);
-            var general = GetFilteredTags(_generalIndexes, labels, generalThresh, generalMcutEnabled);
-            var characters = GetFilteredTags(_characterIndexes, labels, characterThresh, characterMcutEnabled);
+                var rating = _ratingIndexes.Select(i => labels[i]).ToDictionary(x => x.name, x => x.pred);
+                var general = GetFilteredTags(_generalIndexes, labels, generalThresh, generalMcutEnabled);
+                var characters = GetFilteredTags(_characterIndexes, labels, characterThresh, characterMcutEnabled);
 
-            var sortedGeneralStrings = string.Join(", ", general.OrderByDescending(x => x.Value).Select(x => x.Key));
+                var sortedGeneralStrings = string.Join(", ", general.OrderByDescending(x => x.Value).Select(x => x.Key));
 
-            return (sortedGeneralStrings, rating, characters, general);
+                return (sortedGeneralStrings, rating, characters, general);
+            }
         }
 
         private DenseTensor<float> PrepareImage(BitmapImage image)
@@ -280,20 +297,24 @@ namespace tagmane
             AddLogEntry("VLMログ：画像のリサイズが完了しました");
             byte[] pixels = new byte[4 * _modelTargetSize * _modelTargetSize];
             image.CopyPixels(pixels, 4 * _modelTargetSize, 0);
-            var tensor = new DenseTensor<float>(new[] { 1, _modelTargetSize, _modelTargetSize, 3 });
+            // var tensor = new DenseTensor<float>(new[] { 1, _modelTargetSize, _modelTargetSize, 3 });
+            var tensor = new DenseTensor<float>(new[] { 1, 3, _modelTargetSize, _modelTargetSize });  // CHWフォーマットに変更
 
             for (int y = 0; y < _modelTargetSize; y++)
             {
                 for (int x = 0; x < _modelTargetSize; x++)
                 {
                     int i = (y * _modelTargetSize + x) * 4;
-                    tensor[0, y, x, 2] = pixels[i + 2];     // R
-                    tensor[0, y, x, 1] = pixels[i + 1];     // G
-                    tensor[0, y, x, 0] = pixels[i];         // B
+                    // tensor[0, y, x, 2] = pixels[i + 2];     // R
+                    // tensor[0, y, x, 1] = pixels[i + 1];     // G
+                    // tensor[0, y, x, 0] = pixels[i];         // B
+                    tensor[0, 0, y, x] = pixels[i + 2] / 255.0f;     // R
+                    tensor[0, 1, y, x] = pixels[i + 1] / 255.0f;     // G
+                    tensor[0, 2, y, x] = pixels[i] / 255.0f;         // B
                 }
             }
 
-            AddLogEntry("VLMログ：画像をテンソルに変換しました");
+            AddLogEntry("VLMログ：画像を��ンソルに変換しました");
 
             return tensor;
         }

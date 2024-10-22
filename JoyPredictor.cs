@@ -1,4 +1,5 @@
 using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -48,8 +49,20 @@ namespace tagmane
             {
                 try
                 {
-                    AddLogEntry("ONNX推論セッションを初期化しています");
-                    _session = new InferenceSession(modelPath);
+                    AddLogEntry("ONNX推論セッションを初期化しています（GPU使用を試みます）");
+                    var sessionOptions = new SessionOptions();
+                    try
+                    {
+                        sessionOptions.AppendExecutionProvider_CUDA();
+                        AddLogEntry("GPUを使用します");
+                    }
+                    catch (Exception ex)
+                    {
+                        AddLogEntry($"GPUの初期化に失敗しました: {ex.Message}");
+                        AddLogEntry("CPUを使用します");
+                    }
+                    sessionOptions.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+                    _session = new InferenceSession(modelPath, sessionOptions);
                     _tags = File.ReadAllLines(tagsPath).Where(line => !string.IsNullOrWhiteSpace(line)).ToList();
                     AddLogEntry("モデルが正常に読み込まれました。");
                     _isModelLoaded = true;
