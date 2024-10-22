@@ -927,6 +927,164 @@ namespace tagmane
             }
         }
 
+        // 全画像にタグの追加
+        private void AddAllTagsButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("対象の画像がありません。");
+                return;
+            }
+            if (ConfirmCheckBox.IsChecked == true)
+            {
+                var result = MessageBox.Show("選択したタグをすべての画像に追加しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (result != MessageBoxResult.Yes)
+                {
+                    AddMainLogEntry("タグの追加がキャンセルされました。");
+                    return;
+                }
+            }
+
+            var selectedTags = AllTagsListView.SelectedItems.Cast<dynamic>().Select(item => item.Tag as string).ToList();
+            if (selectedTags.Count == 0)
+            {
+                AddMainLogEntry("追加するタグが選択されていません。");
+                return;
+            }
+
+            var addedToImages = new List<ImageInfo>();
+
+            foreach (var imageInfo in _imageInfos)
+            {
+                bool tagsAdded = false;
+                foreach (var tag in selectedTags)
+                {
+                    if (!imageInfo.Tags.Contains(tag))
+                    {
+                        imageInfo.Tags.Add(tag);
+                        tagsAdded = true;
+                    }
+                }
+                if (tagsAdded)
+                {
+                    addedToImages.Add(imageInfo);
+                }
+            }
+
+            if (addedToImages.Count > 0)
+            {
+                var action = new TagGroupAction
+                {
+                    DoAction = () =>
+                    {
+                        AddMainLogEntry($"選択したタグを {addedToImages.Count} 個の画像に追加しました。");
+                    },
+                    UndoAction = () =>
+                    {
+                        foreach (var imageInfo in addedToImages)
+                        {
+                            foreach (var tag in selectedTags)
+                            {
+                                imageInfo.Tags.Remove(tag);
+                            }
+                        }
+                        AddMainLogEntry($"選択したタグの追加を {addedToImages.Count} 個の画像から取り消しました。");
+                    },
+                    Description = $"選択したタグを {addedToImages.Count} 個の画像に追加"
+                };
+
+                _undoStack.Push(action);
+                _redoStack.Clear();
+                UpdateUIAfterTagsChange();
+                action.DoAction();
+            }
+            else
+            {
+                AddMainLogEntry("選択したタグは既にすべての画像に存在します。");
+            }
+        }
+
+        // 全画像からタグの削除
+        private void RemoveAllTagsButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("対象の画像がありません。");
+                return;
+            }
+            if (ConfirmCheckBox.IsChecked == true)
+            {
+                var result = MessageBox.Show("選択したタグをすべての画像から削除しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (result != MessageBoxResult.Yes)
+                {
+                    AddMainLogEntry("タグの削除がキャンセルされました。");
+                    return;
+                }
+            }
+            var selectedTags = AllTagsListView.SelectedItems.Cast<dynamic>().Select(item => item.Tag as string).ToList();
+            var removedTags = new Dictionary<ImageInfo, List<TagPositionInfo>>();
+
+            foreach (var imageInfo in _imageInfos)
+            {
+                var tagsToRemove = imageInfo.Tags
+                    .Select((tag, index) => new { Tag = tag, Index = index })
+                    .Where(item => selectedTags.Contains(item.Tag))
+                    .Select(item => new TagPositionInfo { Tag = item.Tag, Position = item.Index })
+                    .ToList();
+
+                if (tagsToRemove.Count > 0)
+                {
+                    removedTags[imageInfo] = tagsToRemove;
+                }
+            }
+
+            if (removedTags.Count > 0)
+            {
+                var action = new TagGroupAction
+                {
+                    DoAction = () =>
+                    {
+                        foreach (var kvp in removedTags)
+                        {
+                            foreach (var tagInfo in kvp.Value.OrderByDescending(t => t.Position))
+                            {
+                                //テスト中
+                                if (tagInfo.Position < kvp.Key.Tags.Count)
+                                {
+                                    kvp.Key.Tags.RemoveAt(tagInfo.Position);
+                                }
+                                else
+                                {
+                                    AddMainLogEntry($"タグの削除に失敗しました: インデックス {tagInfo.Position} が範囲外です。対象画像: {kvp.Key.ImagePath}、タグ: {tagInfo.Tag}");
+                                }
+                            }
+                        }
+                        foreach (var tag in selectedTags)
+                        {
+                            _selectedTags.Remove(tag);
+                        }
+                        AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを削除しました。");
+                    },
+                    UndoAction = () =>
+                    {
+                        foreach (var kvp in removedTags)
+                        {
+                            foreach (var tagInfo in kvp.Value)
+                            {
+                                kvp.Key.Tags.Insert(tagInfo.Position, tagInfo.Tag);
+                            }
+                        }
+                        AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを復元しました。");
+                    },
+                    Description = $"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを全画像から削除"
+                };
+                _undoStack.Push(action);
+                _redoStack.Clear();
+                action.DoAction();
+                UpdateUIAfterTagsChange();
+            }
+        }
+
         // フィルタリング
         private void FilterImageButton_Click(object sender, RoutedEventArgs e)
         {
@@ -1358,87 +1516,6 @@ namespace tagmane
         private void UpdateFilteredTagsListBox()
         {
             FilteredTagsListBox.ItemsSource = _filterTags.ToList();
-        }
-
-        // 全画像からタグの削除
-        private void RemoveAllTagsButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (_imageInfos == null || _imageInfos.Count == 0)
-            {
-                AddMainLogEntry("対象の画像がありません。");
-                return;
-            }
-            if (ConfirmCheckBox.IsChecked == true)
-            {
-                var result = MessageBox.Show("選択したタグをすべての画像から削除しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                if (result != MessageBoxResult.Yes)
-                {
-                    AddMainLogEntry("タグの削除がキャンセルされました。");
-                    return;
-                }
-            }
-            var selectedTags = AllTagsListView.SelectedItems.Cast<dynamic>().Select(item => item.Tag as string).ToList();
-            var removedTags = new Dictionary<ImageInfo, List<TagPositionInfo>>();
-
-            foreach (var imageInfo in _imageInfos)
-            {
-                var tagsToRemove = imageInfo.Tags
-                    .Select((tag, index) => new { Tag = tag, Index = index })
-                    .Where(item => selectedTags.Contains(item.Tag))
-                    .Select(item => new TagPositionInfo { Tag = item.Tag, Position = item.Index })
-                    .ToList();
-
-                if (tagsToRemove.Count > 0)
-                {
-                    removedTags[imageInfo] = tagsToRemove;
-                }
-            }
-
-            if (removedTags.Count > 0)
-            {
-                var action = new TagGroupAction
-                {
-                    DoAction = () =>
-                    {
-                        foreach (var kvp in removedTags)
-                        {
-                            foreach (var tagInfo in kvp.Value.OrderByDescending(t => t.Position))
-                            {
-                                //テスト中
-                                if (tagInfo.Position < kvp.Key.Tags.Count)
-                                {
-                                    kvp.Key.Tags.RemoveAt(tagInfo.Position);
-                                }
-                                else
-                                {
-                                    AddMainLogEntry($"タグの削除に失敗しました: インデックス {tagInfo.Position} が範囲外です。対象画像: {kvp.Key.ImagePath}、タグ: {tagInfo.Tag}");
-                                }
-                            }
-                        }
-                        foreach (var tag in selectedTags)
-                        {
-                            _selectedTags.Remove(tag);
-                        }
-                        AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを削除しました。");
-                    },
-                    UndoAction = () =>
-                    {
-                        foreach (var kvp in removedTags)
-                        {
-                            foreach (var tagInfo in kvp.Value)
-                            {
-                                kvp.Key.Tags.Insert(tagInfo.Position, tagInfo.Tag);
-                            }
-                        }
-                        AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを復元しました。");
-                    },
-                    Description = $"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを全画像から削除"
-                };
-                _undoStack.Push(action);
-                _redoStack.Clear();
-                action.DoAction();
-                UpdateUIAfterTagsChange();
-            }
         }
 
         /*

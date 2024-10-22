@@ -285,6 +285,14 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center">
+                <Button x:Name="AddSelectedTagsToAllButton" Click="AddAllTagsButton_Click">
+                    <Button.Content>
+                        <Image Source="/icon/addm.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="選択しているタグを全画像に追加"/>
+                    </Button.ToolTip>
+                </Button>
                 <Button x:Name="RemoveAllTagsButton" Click="RemoveAllTagsButton_Click">
                     <Button.Content>
                         <Image Source="/icon/erasem.png" Width="32" Height="32"/>
