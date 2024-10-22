@@ -304,7 +304,6 @@ namespace tagmane
                         imageInfo.Tags.Add(tag);
                     }
                     AddMainLogEntry($"{imageInfo.ImagePath}に{newTags.Count}個のタグを追加しました");
-                    UpdateUIAfterImageInfosChange();
                 },
                 UndoAction = () =>
                 {
@@ -313,7 +312,6 @@ namespace tagmane
                         imageInfo.Tags.Remove(tag);
                     }
                     AddMainLogEntry($"{imageInfo.ImagePath}から{newTags.Count}個のタグの追加を取り消しました");
-                    UpdateUIAfterImageInfosChange();
                 },
                 Description = $"{imageInfo.ImagePath}に{newTags.Count}個のタグを追加"
             };
@@ -333,6 +331,15 @@ namespace tagmane
         {
             if (_imageInfos == null) { return; }
             UpdateImageList();
+            UpdateImageCountDisplay();
+            if (_allTags != null)
+            {
+                UpdateUIAfterTagsChange();
+            }
+        }
+
+        private void UpdateUIAfterTagsChange()
+        {
             if (_allTags == null) { return; }
             UpdateCurrentTags();
             UpdateAllTags();
@@ -341,6 +348,7 @@ namespace tagmane
             UpdateSelectedTagsListBox();
             UpdateFilteredTagsListBox();
             UpdateSearchedTagsListView();
+            UpdateButtonStates();
         }
 
         // 選択された画像の更新 (選択が変化したときのみ)
@@ -351,7 +359,6 @@ namespace tagmane
             UpdateTagListView();
             UpdateAllTagsListView();
             UpdateSelectedTagsListBox();
-            UpdateFilteredTagsListBox();
             UpdateSearchedTagsListView();
         }
 
@@ -580,6 +587,13 @@ namespace tagmane
             ImageListBox.ItemsSource = _imageInfos;
         }
 
+        private void UpdateImageCountDisplay()
+        {
+            int imageCount = _imageInfos?.Count ?? 0;
+            int originalCount = _originalImageInfos?.Count ?? 0;
+            ImageCountDisplay.Text = $"画像数: {imageCount}/{originalCount}";
+        }
+
         // 中央ペイン: 選択された画像の表示と関連テキストの表示
         private void ImageListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
@@ -625,8 +639,7 @@ namespace tagmane
                 var action = _undoStack.Pop();
                 action.UndoAction();
                 _redoStack.Push(action);
-                UpdateAllTags();
-                UpdateButtonStates();
+                UpdateUIAfterTagsChange();
                 AddActionLogItem("元に戻す", action.Description);
             }
         }
@@ -639,8 +652,7 @@ namespace tagmane
                 var action = _redoStack.Pop();
                 action.DoAction();
                 _undoStack.Push(action);
-                UpdateAllTags();
-                UpdateButtonStates();
+                UpdateUIAfterTagsChange();
                 AddActionLogItem("やり直し", action.Description);
             }
         }
@@ -744,7 +756,6 @@ namespace tagmane
                                 selectedImage.Tags.Insert(tagInfo.Position, tagInfo.Tag);
                             }
                             AddMainLogEntry($"{addedTags.Count}個のタグを追加しました");
-                            UpdateUIAfterImageInfosChange();
                         },
                         UndoAction = () =>
                         {
@@ -753,7 +764,6 @@ namespace tagmane
                                 selectedImage.Tags.RemoveAt(tagInfo.Position);
                             }
                             AddMainLogEntry($"{addedTags.Count}個のタグの追加を取り消しました");
-                            UpdateUIAfterImageInfosChange();
                         },
                         Description = $"{addedTags.Count}個のタグ追加"
                     };
@@ -761,7 +771,7 @@ namespace tagmane
                     action.DoAction();
                     _undoStack.Push(action);
                     _redoStack.Clear();
-                    UpdateButtonStates();
+                    UpdateUIAfterTagsChange();
                 }
             }
         }
@@ -799,7 +809,6 @@ namespace tagmane
                                 _selectedTags.Remove(tagInfo.Tag);
                             }
                             AddMainLogEntry($"{removedTags.Count}個のタグを削除しました");
-                            UpdateUIAfterImageInfosChange();
                         },
                         UndoAction = () =>
                         {
@@ -808,7 +817,6 @@ namespace tagmane
                                 selectedImage.Tags.Insert(tagInfo.Position, tagInfo.Tag);
                             }
                             AddMainLogEntry($"{removedTags.Count}個のタグの削除を取り消しました");
-                            UpdateUIAfterImageInfosChange();
                         },
                         Description = $"{removedTags.Count}個のタグを削除"
                     };
@@ -816,7 +824,7 @@ namespace tagmane
                     action.DoAction();
                     _undoStack.Push(action);
                     _redoStack.Clear();
-                    UpdateButtonStates();
+                    UpdateUIAfterTagsChange();
                 }
             }
         }
@@ -1076,7 +1084,6 @@ namespace tagmane
                             }
                         }
                         AddMainLogEntry($"{replacedTags.Sum(kvp => kvp.Value.Count)}個のタグを置換しました。");
-                        UpdateUIAfterImageInfosChange();
                     },
                     UndoAction = () =>
                     {
@@ -1093,7 +1100,6 @@ namespace tagmane
                             }
                         }
                         AddMainLogEntry($"{replacedTags.Sum(kvp => kvp.Value.Count)}個のタグの置換を元に戻しました。");
-                        UpdateUIAfterImageInfosChange();
                     },
                     Description = $"{replacedTags.Sum(kvp => kvp.Value.Count)}個のタグを置換"
                 };
@@ -1101,7 +1107,7 @@ namespace tagmane
                 action.DoAction();
                 _undoStack.Push(action);
                 _redoStack.Clear();
-                UpdateButtonStates();
+                UpdateUIAfterTagsChange();
             }
             else
             {
@@ -1155,7 +1161,6 @@ namespace tagmane
                         DoAction = () =>
                         {
                             AddMainLogEntry($"タグ '{newTag}' を {addedToImages.Count} 個の画像に追加しました。");
-                            UpdateUIAfterImageInfosChange();
                         },
                         UndoAction = () =>
                         {
@@ -1164,14 +1169,13 @@ namespace tagmane
                                 imageInfo.Tags.Remove(newTag);
                             }
                             AddMainLogEntry($"タグ '{newTag}' の追加を {addedToImages.Count} 個の画像から取り消しました。");
-                            UpdateUIAfterImageInfosChange();
                         },
                         Description = $"タグ '{newTag}' を {addedToImages.Count} 個の画像に追加"
                     };
 
                     _undoStack.Push(action);
                     _redoStack.Clear();
-                    UpdateButtonStates();
+                    UpdateUIAfterTagsChange();
                     action.DoAction();
                 }
                 else
@@ -1199,13 +1203,11 @@ namespace tagmane
                         {
                             selectedImage.Tags.Add(newTag);
                             AddMainLogEntry($"タグ '{newTag}' を追加しました。");
-                            UpdateUIAfterImageInfosChange();
                         },
                         UndoAction = () =>
                         {
                             selectedImage.Tags.Remove(newTag);
                             AddMainLogEntry($"タグ '{newTag}' の追加を取り消しました。");
-                            UpdateUIAfterImageInfosChange();
                         },
                         Description = $"タグ '{newTag}' を追加"
                     };
@@ -1213,7 +1215,7 @@ namespace tagmane
                     action.DoAction();
                     _undoStack.Push(action);
                     _redoStack.Clear();
-                    UpdateButtonStates();
+                    UpdateUIAfterTagsChange();
                 }
                 else
                 {
@@ -1355,7 +1357,6 @@ namespace tagmane
                             _selectedTags.Remove(tag);
                         }
                         AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを削除しました。");
-                        UpdateUIAfterImageInfosChange();
                     },
                     UndoAction = () =>
                     {
@@ -1367,14 +1368,13 @@ namespace tagmane
                             }
                         }
                         AddMainLogEntry($"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを復元しました。");
-                        UpdateUIAfterImageInfosChange();
                     },
                     Description = $"{removedTags.Sum(kvp => kvp.Value.Count)}個のタグを全画像から削除"
                 };
                 _undoStack.Push(action);
                 _redoStack.Clear();
                 action.DoAction();
-                UpdateButtonStates();
+                UpdateUIAfterTagsChange();
             }
         }
 
@@ -1457,7 +1457,6 @@ namespace tagmane
                                     string movedTag = selectedImage.Tags[sourceIndex];
                                     selectedImage.Tags.RemoveAt(sourceIndex);
                                     selectedImage.Tags.Insert(targetIndex, movedTag);
-                                    UpdateUIAfterImageInfosChange();
                                     AddMainLogEntry($"タグ '{droppedTag}' を移動しました: {sourceIndex} -> {targetIndex}");
                                 },
                                 UndoAction = () =>
@@ -1465,7 +1464,6 @@ namespace tagmane
                                     string movedTag = selectedImage.Tags[targetIndex];
                                     selectedImage.Tags.RemoveAt(targetIndex);
                                     selectedImage.Tags.Insert(sourceIndex, movedTag);
-                                    UpdateUIAfterImageInfosChange();
                                     AddMainLogEntry($"タグ '{droppedTag}' の移動を元に戻しました: {targetIndex} -> {sourceIndex}");
                                 },
                                 Description = $"タグ '{droppedTag}' を移動: {sourceIndex} -> {targetIndex}"
@@ -1474,7 +1472,7 @@ namespace tagmane
                             action.DoAction();
                             _undoStack.Push(action);
                             _redoStack.Clear();
-                            UpdateButtonStates();
+                            UpdateUIAfterTagsChange();
                         }
                     }
                 }
@@ -1649,7 +1647,6 @@ namespace tagmane
                                     selectedImage.Tags.Add(tagInfo);
                                 }
                                 AddMainLogEntry($"VLM推論により{newTags.Count}個の新しいタグを追加しました");
-                                UpdateUIAfterImageInfosChange();
                             },
                             UndoAction = () =>
                             {
@@ -1658,7 +1655,6 @@ namespace tagmane
                                     selectedImage.Tags.RemoveAt(selectedImage.Tags.Count - 1);
                                 }
                                 AddMainLogEntry($"VLM推論により追加された{newTags.Count}個のタグを削除しました");
-                                UpdateUIAfterImageInfosChange();
                             },
                             Description = $"VLM推論により{newTags.Count}個のタグを追加"
                         };
@@ -1667,7 +1663,7 @@ namespace tagmane
                         action.DoAction();
                         _undoStack.Push(action);
                         _redoStack.Clear();
-                        UpdateButtonStates();
+                        UpdateUIAfterTagsChange();
                     }
                     else
                     {
@@ -1721,9 +1717,13 @@ namespace tagmane
                 var batchSize = 1; // バッチサイズを設定
                 var totalImages = _imageInfos.Count;
                 var processedImages = 0;
+                var lastUpdateTime = DateTime.Now;
 
                 for (int i = 0; i < _imageInfos.Count; i += batchSize)
                 {
+                    if (_cts.Token.IsCancellationRequested)
+                        break;
+
                     var batch = _imageInfos.Skip(i).Take(batchSize).ToList();
                     var batchTasks = batch.Select(async imageInfo =>
                     {
@@ -1739,7 +1739,16 @@ namespace tagmane
                             }
                             
                             Interlocked.Increment(ref processedImages);
-                            UpdateProgressBar((double)processedImages / totalImages);
+
+                            Dispatcher.Invoke(() =>
+                            {                                
+                                if ((DateTime.Now - lastUpdateTime).TotalSeconds >= 1)
+                                {
+                                    UpdateProgressBar((double)processedImages / totalImages);
+                                    UpdateUIAfterTagsChange();
+                                    lastUpdateTime = DateTime.Now;
+                                }
+                            });
                             
                             AddMainLogEntry($"{imageInfo.ImagePath}のVLM推論が完了しました");
                         }
@@ -1754,9 +1763,6 @@ namespace tagmane
                     });
 
                     await Task.WhenAll(batchTasks);
-
-                    if (_cts.Token.IsCancellationRequested)
-                        break;
                 }
 
                 AddMainLogEntry("すべての画像に対するVLM推論が完了しました");
@@ -1777,6 +1783,7 @@ namespace tagmane
                 _isAsyncProcessing = false;
                 VLMPredictAllButton.IsEnabled = true;
                 UpdateProgressBar(0);
+                UpdateUIAfterTagsChange();
             }
         }
 
@@ -2020,52 +2027,10 @@ namespace tagmane
             if (selectedImage != null)
             {
                 SortImageTagsByCategory(selectedImage);
-                UpdateUIAfterImageInfosChange();
+                UpdateUIAfterTagsChange();
+                UpdateButtonStates();
             }
         }
-        
-        // すべての画像のタグをカテゴリ順に並び替え
-        // private async void SortByCategoryAllButton_Click(object sender, RoutedEventArgs e)
-        // {
-        //     if (_isAsyncProcessing) { return; }
-        //     _isAsyncProcessing = true;
-
-        //     ProgressBar.Visibility = Visibility.Visible;
-        //     ProgressBar.Value = 0;
-
-        //     _cts = new CancellationTokenSource();
-
-        //     try
-        //     {
-        //         await Task.Run(() =>
-        //         {
-        //             int totalImages = _imageInfos.Count;
-        //             for (int i = 0; i < totalImages; i++)
-        //             {
-        //                 if (_cts.Token.IsCancellationRequested)
-        //                     break;
-
-        //                 var image = _imageInfos[i];
-        //                 SortImageTagsByCategory(image);
-
-        //                 Dispatcher.Invoke(() =>
-        //                 {
-        //                     ProgressBar.Value = (i + 1) * 100 / totalImages;
-        //                 });
-        //             }
-        //         }, _cts.Token);
-        //     }
-        //     catch (OperationCanceledException)
-        //     {
-        //         AddMainLogEntry("タグの並び替えがキャンセルされました。");
-        //     }
-        //     finally
-        //     {
-        //         _isAsyncProcessing = false;
-        //         ProgressBar.Visibility = Visibility.Collapsed;
-        //         UpdateUIAfterImageInfosChange();
-        //     }
-        // }
 
         private async void SortByCategoryAllButton_Click(object sender, RoutedEventArgs e)
         {
@@ -2082,19 +2047,32 @@ namespace tagmane
                 await Task.Run(() =>
                 {
                     int totalImages = _imageInfos.Count;
-                    for (int i = 0; i < totalImages; i++)
+                    int batchSize = 100; // バッチサイズを設定
+                    var lastUpdateTime = DateTime.Now;
+
+                    for (int i = 0; i < totalImages; i += batchSize)
                     {
                         if (_cts.Token.IsCancellationRequested)
                             break;
 
-                        var image = _imageInfos[i];
-                        SortImageTagsByCategory(image);
+                        int end = Math.Min(i + batchSize, totalImages);
+                        Parallel.For(i, end, j =>
+                        {
+                            SortImageTagsByCategory(_imageInfos[j]);
+                        });
 
                         Dispatcher.Invoke(() =>
                         {
-                            ProgressBar.Value = (i + 1) * 100 / totalImages;
+                            ProgressBar.Value = (end) * 100 / totalImages;
+                            
+                            if ((DateTime.Now - lastUpdateTime).TotalSeconds >= 1)
+                            {
+                                UpdateUIAfterTagsChange();
+                                lastUpdateTime = DateTime.Now;
+                            }
                         });
                     }
+                    
                 }, _cts.Token);
             }
             catch (OperationCanceledException)
@@ -2105,7 +2083,7 @@ namespace tagmane
             {
                 _isAsyncProcessing = false;
                 ProgressBar.Visibility = Visibility.Collapsed;
-                UpdateUIAfterImageInfosChange();
+                UpdateUIAfterTagsChange();
             }
         }
 
@@ -2159,7 +2137,6 @@ namespace tagmane
                     image.Tags = newTags;
                     Dispatcher.Invoke(() =>
                     {
-                        UpdateUIAfterImageInfosChange();
                         AddMainLogEntry($"画像 '{image.ImagePath}' のタグをカテゴリ順に並び替えました");
                     });
                 },
@@ -2168,7 +2145,6 @@ namespace tagmane
                     image.Tags = new List<string>(image.Tags);
                     Dispatcher.Invoke(() =>
                     {
-                        UpdateUIAfterImageInfosChange();
                         AddMainLogEntry($"画像 '{image.ImagePath}' のタグの並び替えを元に戻しました");
                     });
                 },
@@ -2178,10 +2154,10 @@ namespace tagmane
             action.DoAction();
             _undoStack.Push(action);
             _redoStack.Clear();
-            Dispatcher.Invoke(() =>
-            {
-                UpdateButtonStates();
-            });
+            // Dispatcher.Invoke(() =>
+            // {
+            //     UpdateButtonStates();
+            // });
         }
 
         /*

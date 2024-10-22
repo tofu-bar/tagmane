@@ -80,6 +80,7 @@
                         <ComboBoxItem Content="aaaa_(bbbb)"/>
                     </ComboBox>
                 </StackPanel>
+                <TextBlock x:Name="ImageCountDisplay" DockPanel.Dock="Bottom" Text="画像数: 0/0" Margin="5"/>
             </StackPanel>
             <ListBox x:Name="ImageListBox" SelectionChanged="ImageListBox_SelectionChanged"/>
         </DockPanel>
