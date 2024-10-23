@@ -415,7 +415,14 @@
 
             <!-- プログレスバー -->
             <ProgressBar x:Name="ProgressBar" Grid.Row="0" Height="20" Margin="5" Minimum="0" Maximum="100" Value="0"/>
-            
+
+            <TextBlock x:Name="ProcessingSpeedTextBlock" 
+                    HorizontalAlignment="Right" 
+                    VerticalAlignment="Bottom" 
+                    Margin="10" 
+                    FontSize="10" 
+                    Opacity="0.7" Grid.Row="0" Grid.Column="2"/>
+
             <!-- 対象選択用ドロップダウンリスト -->
             <ComboBox x:Name="SearchTargetComboBox" Grid.Row="1" Margin="5" SelectedIndex="0">
                 <ComboBoxItem Content="AllTags"/>
