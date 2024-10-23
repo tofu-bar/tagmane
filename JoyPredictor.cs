@@ -49,11 +49,13 @@ namespace tagmane
             {
                 try
                 {
-                    AddLogEntry("ONNX推論セッションを初期化しています（GPU使用を試みます）");
+                    AddLogEntry($"ONNX推論セッションを初期化しています（GPU使用）");
                     var sessionOptions = new SessionOptions();
+                    var gpuDeviceId = 0;
+
                     try
                     {
-                        sessionOptions.AppendExecutionProvider_CUDA();
+                        sessionOptions = SessionOptions.MakeSessionOptionWithCudaProvider(gpuDeviceId);
                         AddLogEntry("GPUを使用します");
                     }
                     catch (Exception ex)
@@ -212,7 +214,17 @@ namespace tagmane
             AddLogEntry("推論を開始します");
             AddLogEntry($"generalThresh: {generalThresh}");
 
-            var inputTensor = PrepareImage(image);
+            DenseTensor<float> inputTensor;
+            try
+            {
+                inputTensor = PrepareImage(image);
+            }
+            catch (Exception ex)
+            {
+                AddLogEntry($"画像の準備中にエラーが発生しました: {ex.Message}");
+                return ("", new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
+            }
+
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("input", inputTensor) };
 
             using (var results = _session.Run(inputs))

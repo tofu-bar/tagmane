@@ -142,6 +142,16 @@
                                    VerticalAlignment="Center" Margin="5,0,0,0"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <CheckBox x:Name="UseGPUCheckBox" Content="GPUを使用して推論する" IsChecked="True" Checked="UseGPUCheckBox_Checked" Unchecked="UseGPUCheckBox_Checked"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                        <TextBlock Text="Batch Count:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                        <Slider x:Name="BatchCountSlider" Width="150" Minimum="1" Maximum="32" Value="4" 
+                                TickFrequency="1" IsSnapToTickEnabled="True"/>
+                        <TextBlock x:Name="BatchCountValue" Text="{Binding ElementName=BatchCountSlider, Path=Value, StringFormat={}{0:F0}}" 
+                                   VerticalAlignment="Center" Margin="5,0,0,0"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,5">
                         <CheckBox x:Name="UseCustomCategoriesCheckBox" Content="ユーザーカスタムカテゴリを使用" IsChecked="True" Checked="UseCustomCategoriesCheckBox_Checked" Unchecked="UseCustomCategoriesCheckBox_Checked" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,5">

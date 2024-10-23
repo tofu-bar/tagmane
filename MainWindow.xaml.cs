@@ -249,19 +249,28 @@ namespace tagmane
         private BitmapSource LoadImage(string imagePath)
         {
             string extension = Path.GetExtension(imagePath).ToLower();
-            if (extension == ".webp")
+
+            try
             {
-                return _webPHandler.LoadWebPImage(imagePath);
+                if (extension == ".webp")
+                {
+                    return _webPHandler.LoadWebPImage(imagePath);
+                }
+                else
+                {
+                    var bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.UriSource = new Uri(imagePath);
+                    bitmap.EndInit();
+                    bitmap.Freeze();
+                    return bitmap;
+                }
             }
-            else
+            catch (Exception ex)
             {
-                var bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.UriSource = new Uri(imagePath);
-                bitmap.EndInit();
-                bitmap.Freeze();
-                return bitmap;
+                AddMainLogEntry($"画像の読み込みに失敗しました: {imagePath}. エラー: {ex.Message}");
+                return null;
             }
         }
 
@@ -373,6 +382,8 @@ namespace tagmane
         // デバッグログを追加するメソッド
         private void AddDebugLogEntry(string message)
         {
+            if (_debugLogEntries == null) { return; }
+
             string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
             _debugLogEntries.Insert(0, logMessage);
             while (_debugLogEntries.Count > MaxLogEntries)
@@ -385,6 +396,8 @@ namespace tagmane
         // ログを追加するメソッド
         private void AddMainLogEntry(string message)
         {
+            if (_logEntries == null) { return; }
+
             string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
             _logEntries.Insert(0, logMessage);
             while (_logEntries.Count > MaxLogEntries)
@@ -398,6 +411,8 @@ namespace tagmane
         // アクションログを追加するメソッド
         private void AddActionLogItem(string actionType, string description)
         {
+            if (_actionLogItems == null) { return; }
+
             _actionLogItems.Insert(0, new ActionLogItem { ActionType = actionType, Description = description });
             while (_actionLogItems.Count > MaxLogEntries)
             {
@@ -1723,6 +1738,21 @@ namespace tagmane
             // 必要に応じて、この値をVLMPredictorに渡す
         }
 
+        private void UseGPUCheckBox_Checked(object sender, RoutedEventArgs e)
+        {
+            if (BatchCountSlider != null)
+            {
+                if (UseGPUCheckBox.IsChecked == true)
+                {
+                    BatchCountSlider.Value = 4;
+                }
+                else
+                {
+                    BatchCountSlider.Value = 1;
+                }
+            }
+        }
+
         private async void InitializeVLMPredictor()
         {
             AddDebugLogEntry("InitializeVLMPredictor");
@@ -1854,9 +1884,9 @@ namespace tagmane
                 // キャンセルトークンソースを作成
                 _cts = new CancellationTokenSource();
                 
-                AddMainLogEntry("すべての画像に対してVLM推を開始します");
+                AddMainLogEntry("すべての画像に対してVLM推論を開始します");
 
-                var batchSize = 1; // バッチサイズを設定
+                var batchSize = (int)BatchCountSlider.Value; // バッチサイズを設定
                 var totalImages = _imageInfos.Count;
                 var processedImages = 0;
                 var lastUpdateTime = DateTime.Now;
@@ -1881,18 +1911,8 @@ namespace tagmane
                             }
                             
                             Interlocked.Increment(ref processedImages);
-
-                            if ((DateTime.Now - lastUpdateTime).TotalSeconds >= 1)
-                            {
-                                Dispatcher.Invoke(() =>
-                                {
-                                    UpdateProgressBar((double)processedImages / totalImages);
-                                    UpdateUIAfterTagsChange();
-                                });
-                                lastUpdateTime = DateTime.Now;
-                            }
                             
-                            AddMainLogEntry($"{imageInfo.ImagePath}のVLM推論が完了しました");
+                            // AddMainLogEntry($"{imageInfo.ImagePath}のVLM推論が完了しました");
                         }
                         catch (OperationCanceledException)
                         {
@@ -1903,6 +1923,13 @@ namespace tagmane
                             AddMainLogEntry($"{imageInfo.ImagePath}のVLM推論中にエラーが発生しました: {ex.Message}");
                         }
                     });
+
+                    if ((DateTime.Now - lastUpdateTime).TotalSeconds >= 1)
+                    {
+                        UpdateProgressBar((double)processedImages / totalImages);
+                        UpdateUIAfterTagsChange();
+                        lastUpdateTime = DateTime.Now;
+                    }
 
                     await Task.WhenAll(batchTasks);
                 }
@@ -1944,13 +1971,36 @@ namespace tagmane
                     generalThreshold = (float)GeneralThresholdSlider.Value;
                     characterThreshold = (float)CharacterThresholdSlider.Value;
                 });
-                var (generalTags, rating, characters, allTags) = await Task.Run(() => _vlmPredictor.Predict(
-                    new BitmapImage(new Uri(imageInfo.ImagePath)),
-                    generalThreshold, // generalThresh
-                    false, // generalMcutEnabled
-                    characterThreshold, // characterThresh
-                    false  // characterMcutEnabled
-                ), cancellationToken);
+                
+                // var (generalTags, rating, characters, allTags) = await Task.Run(() => _vlmPredictor.Predict(
+                //     new BitmapImage(new Uri(imageInfo.ImagePath)),
+                //     generalThreshold, // generalThresh
+                //     false, // generalMcutEnabled
+                //     characterThreshold, // characterThresh
+                //     false  // characterMcutEnabled
+                // ), cancellationToken);
+
+                var (generalTags, rating, characters, allTags) = await Task.Run(() =>
+                {
+                    try
+                    {
+                        // 壊れた画像を読み込んだときに例外が発生する可能性がある部分
+                        var bitmapImage = new BitmapImage(new Uri(imageInfo.ImagePath));
+                        return _vlmPredictor.Predict(
+                            bitmapImage,
+                            generalThreshold,  // generalThresh
+                            false,             // generalMcutEnabled
+                            characterThreshold,// characterThresh
+                            false              // characterMcutEnabled
+                        );
+                    }
+                    catch (Exception ex)
+                    {
+                        // Task.Run内で例外をキャッチし、再度スローすることで外側のtry-catchに伝える
+                        // throw new InvalidOperationException($"画像の読み込み中にエラーが発生しました: {ex.Message}", ex);
+                        return (string.Empty, new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
+                    }
+                }, cancellationToken);
 
                 // 結果を表示または処理する
                 await Dispatcher.InvokeAsync(() => AddMainLogEntry($"VLM推論結果: {generalTags}"));
