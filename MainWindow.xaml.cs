@@ -20,6 +20,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Path = System.IO.Path;
 using System.Text.RegularExpressions;
+using System.Diagnostics;
 
 namespace tagmane
 {
@@ -147,6 +148,19 @@ namespace tagmane
 
         // 非同期処理のフラグ
         private bool _isAsyncProcessing = false;
+
+        // 処理速度計
+        public string ProcessingSpeed
+        {
+            get { return _processingSpeed; }
+            set
+            {
+                _processingSpeed = value;
+                Dispatcher.Invoke(() => ProcessingSpeedTextBlock.Text = value);
+            }
+        }
+
+        private string _processingSpeed = "";
 
         public MainWindow()
         {
@@ -1889,6 +1903,11 @@ namespace tagmane
                 var processedImages = 0;
                 var lastUpdateTime = DateTime.Now;
 
+                Stopwatch stopwatch = new Stopwatch();
+                stopwatch.Start();
+
+                int totalProcessed = 0;
+
                 for (int i = 0; i < _imageInfos.Count; i += batchSize)
                 {
                     if (_cts.Token.IsCancellationRequested)
@@ -1922,14 +1941,32 @@ namespace tagmane
                         }
                     });
 
-                    if ((DateTime.Now - lastUpdateTime).TotalSeconds >= 1)
+                    if (stopwatch.ElapsedMilliseconds >= 1000)
                     {
                         UpdateProgressBar((double)processedImages / totalImages);
                         UpdateUIAfterTagsChange();
                         lastUpdateTime = DateTime.Now;
+                        
+                        double imagesPerSecond = totalProcessed / (stopwatch.ElapsedMilliseconds / 1000.0);
+                        ProcessingSpeed = $"{imagesPerSecond:F2} 画像/秒";
+
+                        // リセット
+                        stopwatch.Restart();
+                        totalProcessed = 0;
                     }
 
+                    totalProcessed += Math.Min(batchSize, _imageInfos.Count - i);
+
                     await Task.WhenAll(batchTasks);
+                }
+
+                stopwatch.Stop();
+
+                // 最後の測定結果を表示（1秒未満の場合）
+                if (totalProcessed > 0)
+                {
+                    double imagesPerSecond = totalProcessed / (stopwatch.ElapsedMilliseconds / 1000.0);
+                    ProcessingSpeed = $"{imagesPerSecond:F2} 画像/秒";
                 }
 
                 AddMainLogEntry("すべての画像に対するVLM推論が完了しました");
@@ -1951,6 +1988,8 @@ namespace tagmane
                 VLMPredictAllButton.IsEnabled = true;
                 UpdateProgressBar(0);
                 UpdateUIAfterTagsChange();
+                // 処理が完了したら処理速度表示をクリア
+                ProcessingSpeed = "";
             }
         }
 

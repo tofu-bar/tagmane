@@ -263,54 +263,37 @@ namespace tagmane
         private DenseTensor<float> PrepareImage(BitmapImage image)
         {
             AddLogEntry("画像を準備しています");
-
-            int width = image.PixelWidth;
-            int height = image.PixelHeight;
-
-            if (width != ImageSize || height != ImageSize)
-            {
-                image = ResizeImage(image, ImageSize, ImageSize);
-            }
-
             var tensor = new DenseTensor<float>(new[] { 1, 3, ImageSize, ImageSize });
-            byte[] pixels = new byte[4 * ImageSize * ImageSize];
-            image.CopyPixels(pixels, 4 * ImageSize, 0);
+
+            int stride = (image.PixelWidth * image.Format.BitsPerPixel + 7) / 8;
+            byte[] pixels = new byte[stride * image.PixelHeight];
+            image.CopyPixels(pixels, stride, 0);
+            
+            int sourceWidth = image.PixelWidth;
+            int sourceHeight = image.PixelHeight;
+
+            const float rMean = 0.48145466f, gMean = 0.4578275f, bMean = 0.40821073f;
+            const float rStd = 0.26862954f, gStd = 0.26130258f, bStd = 0.27577711f;
+
+            float xRatio = (float)sourceWidth / ImageSize;
+            float yRatio = (float)sourceHeight / ImageSize;
 
             for (int y = 0; y < ImageSize; y++)
             {
+                int sourceY = (int)(y * yRatio);
                 for (int x = 0; x < ImageSize; x++)
                 {
-                    int i = (y * ImageSize + x) * 4;
-                    tensor[0, 0, y, x] = (pixels[i + 2] / 255f - 0.48145466f) / 0.26862954f; // R
-                    tensor[0, 1, y, x] = (pixels[i + 1] / 255f - 0.4578275f) / 0.26130258f;  // G
-                    tensor[0, 2, y, x] = (pixels[i] / 255f - 0.40821073f) / 0.27577711f;     // B
+                    int sourceX = (int)(x * xRatio);
+                    int sourceIndex = (sourceY * stride) + (sourceX * 4);
+
+                    tensor[0, 0, y, x] = (pixels[sourceIndex + 2] / 255f - rMean) / rStd; // R
+                    tensor[0, 1, y, x] = (pixels[sourceIndex + 1] / 255f - gMean) / gStd; // G
+                    tensor[0, 2, y, x] = (pixels[sourceIndex] / 255f - bMean) / bStd;     // B
                 }
             }
 
             AddLogEntry("画像をテンソルに変換しました");
             return tensor;
-        }
-
-        private BitmapImage ResizeImage(BitmapImage source, int width, int height)
-        {
-            var resized = new TransformedBitmap(source, new ScaleTransform(
-                (double)width / source.PixelWidth,
-                (double)height / source.PixelHeight));
-
-            var result = new BitmapImage();
-            using (var ms = new MemoryStream())
-            {
-                var encoder = new PngBitmapEncoder();
-                encoder.Frames.Add(BitmapFrame.Create(resized));
-                encoder.Save(ms);
-                ms.Seek(0, SeekOrigin.Begin);
-                result.BeginInit();
-                result.CacheOption = BitmapCacheOption.OnLoad;
-                result.StreamSource = ms;
-                result.EndInit();
-            }
-
-            return result;
         }
 
         private float Sigmoid(float x)

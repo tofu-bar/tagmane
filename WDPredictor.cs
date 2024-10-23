@@ -285,49 +285,37 @@ namespace tagmane
                 return (sortedGeneralStrings, rating, characters, general);
             }
     }
-
         private DenseTensor<float> PrepareImage(BitmapImage image)
         {
-            int width = image.PixelWidth;
-            int height = image.PixelHeight;
-
-            if (width != _modelTargetSize || height != _modelTargetSize)
-            {
-                image = ResizeImage(image, _modelTargetSize, _modelTargetSize);
-            }
-
-            // AddLogEntry("VLMログ：画像のリサイズが完了しました");
-
-            byte[] pixels = new byte[4 * _modelTargetSize * _modelTargetSize];
-            image.CopyPixels(pixels, 4 * _modelTargetSize, 0);
             var tensor = new DenseTensor<float>(new[] { 1, _modelTargetSize, _modelTargetSize, 3 });
+
+            // ソース画像のサイズを取得
+            int sourceWidth = image.PixelWidth;
+            int sourceHeight = image.PixelHeight;
+
+            // ソース画像のピクセルデータを取得
+            byte[] sourcePixels = new byte[4 * sourceWidth * sourceHeight];
+            image.CopyPixels(sourcePixels, 4 * sourceWidth, 0);
+
+            // リサイズと正規化を同時に行う
+            float xRatio = (float)sourceWidth / _modelTargetSize;
+            float yRatio = (float)sourceHeight / _modelTargetSize;
 
             for (int y = 0; y < _modelTargetSize; y++)
             {
                 for (int x = 0; x < _modelTargetSize; x++)
                 {
-                    int i = (y * _modelTargetSize + x) * 4;
-                    tensor[0, y, x, 2] = pixels[i + 2];     // R
-                    tensor[0, y, x, 1] = pixels[i + 1];     // G
-                    tensor[0, y, x, 0] = pixels[i];         // B
+                    int sourceX = (int)(x * xRatio);
+                    int sourceY = (int)(y * yRatio);
+                    int sourceIndex = (sourceY * sourceWidth + sourceX) * 4;
+
+                    tensor[0, y, x, 2] = sourcePixels[sourceIndex + 2];     // R
+                    tensor[0, y, x, 1] = sourcePixels[sourceIndex + 1];     // G
+                    tensor[0, y, x, 0] = sourcePixels[sourceIndex];         // B
                 }
             }
 
             return tensor;
-        }
-
-        private BitmapImage ResizeImage(BitmapImage image, int width, int height)
-        {
-            BitmapImage resizedImage = new BitmapImage();
-            resizedImage.BeginInit();
-            resizedImage.CacheOption = BitmapCacheOption.OnLoad;
-            resizedImage.UriSource = image.UriSource;
-            resizedImage.DecodePixelWidth = width;
-            resizedImage.DecodePixelHeight = height;
-            resizedImage.EndInit();
-            resizedImage.Freeze();
-
-            return resizedImage;
         }
 
         private BitmapSource TensorToBitmapSource(DenseTensor<float> tensor)
