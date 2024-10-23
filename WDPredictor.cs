@@ -59,18 +59,16 @@ namespace tagmane
                 try
                 {
                     AddLogEntry("ONNX推論セッションを初期化しています（GPU使用を試みます）");
-                    SessionOptions sessionOptions;
-                    int gpuDeviceId = 0;
-
+                    var sessionOptions = new SessionOptions();
+                    var gpuDeviceId = 0;
                     try
                     {
-                        sessionOptions = SessionOptions.MakeSessionOptionWithCudaProvider(gpuDeviceId);
+                        sessionOptions.AppendExecutionProvider_CUDA(gpuDeviceId);
                         AddLogEntry("GPUを使用します");
                     }
                     catch (Exception ex)
                     {
                         AddLogEntry($"GPUの初期化に失敗しました: {ex.Message}");
-                        sessionOptions = new SessionOptions();
                         AddLogEntry("CPUを使用します");
                     }
                     sessionOptions.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
