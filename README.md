@@ -81,7 +81,7 @@ Tagmaneは、画像のタグ管理を効率化するためのデスクトップ�
 
 ## ライセンス
 
-(2024/10/20追記) このプロジェクトはGNU Affero General Public License v3.0 (AGPL-3.0)の下で公開されています。詳細については、[LICENSE](LICENSE)ファイルを参照してください。
+(2024/10/20追記) このプロジェクトはGNU Affero General Public License v3.0 (AGPL-3.0)の下で公開されています。詳細については、[LICENSE](LICENSE.txt)ファイルを参照してください。
 
 ライセンスとは別になりますが、有償/商用記事での本ソフトウェアの紹介はお控えいただきますようよろしくお願いします。
 
