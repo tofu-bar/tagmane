@@ -28,6 +28,7 @@ namespace tagmane
     /// </summary>
     public partial class MainWindow : Window
     {
+        private bool _isInitializeSuccess = false;
         private FileExplorer _fileExplorer;
         private List<ImageInfo> _imageInfos;
         private List<ImageInfo> _originalImageInfos;
@@ -151,6 +152,8 @@ namespace tagmane
         {
             try
             {
+                _isInitializeSuccess = false;
+
                 InitializeComponent();
                 _fileExplorer = new FileExplorer();
                 _allTags = new Dictionary<string, int>();
@@ -183,6 +186,8 @@ namespace tagmane
                 _suffixOrder = new List<string>();
 
                 LoadTagCategories();
+
+                _isInitializeSuccess = true;
             }
             catch (Exception ex)
             {
@@ -287,18 +292,6 @@ namespace tagmane
                     return tag;
             }
         }
-
-        // private void SaveTagsButton_Click(object sender, RoutedEventArgs e)
-        // {
-        //     foreach (var imageInfo in _imageInfos)
-        //     {
-        //         var formattedTags = imageInfo.Tags.Select(FormatTag);
-        //         var tagString = string.Join(", ", formattedTags);
-        //         var textPath = Path.ChangeExtension(imageInfo.ImagePath, ".txt");
-        //         File.WriteAllText(textPath, tagString);
-        //     }
-        //     MessageBox.Show("タグを保存しました。");
-        // }
 
         private TagGroupAction CreateAddTagsAction(ImageInfo imageInfo, List<string> newTags)
         {
@@ -1751,6 +1744,11 @@ namespace tagmane
                     BatchCountSlider.Value = 1;
                 }
             }
+
+            if (_isInitializeSuccess)
+            {
+                LoadVLMModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked == true);
+            }
         }
 
         private async void InitializeVLMPredictor()
@@ -1760,12 +1758,12 @@ namespace tagmane
             _vlmPredictor.LogUpdated += UpdateVLMLog;
         }
 
-        private async void LoadVLMModel(string modelName)
+        private async void LoadVLMModel(string modelName, bool useGpu = true)
         {
             try
             {
                 AddMainLogEntry($"VLMモデル '{modelName}' の読み込みを開始します。");
-                await _vlmPredictor.LoadModel(modelName);
+                await _vlmPredictor.LoadModel(modelName, useGpu);
                 AddMainLogEntry($"VLMモデル '{modelName}' の読み込みが完了しました。");
             }
             catch (Exception ex)

@@ -37,7 +37,7 @@ namespace tagmane
 
         private bool _isModelLoaded = false;
 
-        public async Task LoadModel(string modelRepo)
+        public async Task LoadModel(string modelRepo, bool useGpu = true)
         {
             AddLogEntry($"リポジトリからモデルを読み込みます: {modelRepo}");
             var (tagsPath, modelPath) = await DownloadModel(modelRepo);
@@ -49,22 +49,29 @@ namespace tagmane
             {
                 try
                 {
-                    AddLogEntry($"ONNX推論セッションを初期化しています（GPU使用）");
                     var sessionOptions = new SessionOptions();
                     var gpuDeviceId = 0;
 
-                    try
+                    if (useGpu)
                     {
-                        // sessionOptions = SessionOptions.MakeSessionOptionWithCudaProvider(gpuDeviceId);
-                        sessionOptions.AppendExecutionProvider_CUDA(gpuDeviceId);
-                        AddLogEntry("GPUを使用します");
+                        AddLogEntry("ONNX推論セッションを初期化しています（GPU使用を試みます）");
+
+                        try
+                        {
+                            sessionOptions.AppendExecutionProvider_CUDA(gpuDeviceId);
+                            AddLogEntry("GPUを使用します");
+                        }
+                        catch (Exception ex)
+                        {
+                            AddLogEntry($"GPUの初期化に失敗しました: {ex.Message}");
+                            AddLogEntry("CPUを使用します");
+                        }
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        AddLogEntry($"GPUの初期化に失敗しました: {ex.Message}");
-                        AddLogEntry("CPUを使用します");
+                        AddLogEntry("ONNX推論セッションを初期化しています（CPU使用）");
                     }
-                    
+
                     sessionOptions.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
                     _session = new InferenceSession(modelPath, sessionOptions);
                     _tags = File.ReadAllLines(tagsPath).Where(line => !string.IsNullOrWhiteSpace(line)).ToList();

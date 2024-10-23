@@ -22,19 +22,19 @@ namespace tagmane
 
         public event EventHandler<string> LogUpdated;
 
-        public async Task LoadModel(string modelRepo)
+        public async Task LoadModel(string modelRepo, bool useGpu = true)
         {
             if (modelRepo.Contains("joytag"))
             {
                 _currentPredictor = new JoyPredictor();
                 ((JoyPredictor)_currentPredictor).LogUpdated += OnPredictorLogUpdated;
-                await ((JoyPredictor)_currentPredictor).LoadModel(modelRepo);
+                await ((JoyPredictor)_currentPredictor).LoadModel(modelRepo, useGpu);
             }
             else
             {
                 _currentPredictor = new WDPredictor();
                 ((WDPredictor)_currentPredictor).LogUpdated += OnPredictorLogUpdated;
-                await ((WDPredictor)_currentPredictor).LoadModel(modelRepo);
+                await ((WDPredictor)_currentPredictor).LoadModel(modelRepo, useGpu);
             }
             _isModelLoaded = true;
         }
