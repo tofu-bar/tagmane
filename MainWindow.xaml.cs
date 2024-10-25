@@ -31,23 +31,26 @@ namespace tagmane
     {
         private bool _isInitializeSuccess = false;
         private FileExplorer _fileExplorer;
-        private List<ImageInfo> _imageInfos;
+        private string _selectedFolderPath;
         private List<ImageInfo> _originalImageInfos;
+        private List<ImageInfo> _imageInfos;
         private Dictionary<string, int> _allTags;
         private bool _isUpdatingSelection = false;
+
         private HashSet<string> _filterTags = new HashSet<string>();
         private HashSet<string> _selectedTags = new HashSet<string>();
         private HashSet<string> _currentImageTags = new HashSet<string>();
+
         private Stack<ITagAction> _undoStack = new Stack<ITagAction>();
         private Stack<ITagAction> _redoStack = new Stack<ITagAction>();
+
         private ObservableCollection<string> _debugLogEntries;
         private ObservableCollection<string> _logEntries;
         private ObservableCollection<ActionLogItem> _actionLogItems;
         private const int MaxLogEntries = 20; // 100から20に変更
-        // private Point? _startPoint;
-        // private ListViewItem _draggedItem;
-        // private bool _isDragging = false;
+
         private VLMPredictor _vlmPredictor;
+        private bool _isLoadingVLMModel = false;
         private CancellationTokenSource _cts;
         private List<(string Name, double GeneralThreshold)> _vlmModels = new List<(string, double)> 
         {
@@ -63,6 +66,7 @@ namespace tagmane
             ("SmilingWolf/wd-v1-4-convnextv2-tagger-v2", 0.35),
             ("fancyfeast/joytag", 0.5)
         };
+        private const double DefaultCharacterThreshold = 0.85;
 
         private static readonly string[] DefaultCategoryFiles = {
             "tagcount/General.json",
@@ -71,13 +75,10 @@ namespace tagmane
             "tagcount/Character.json",
             "tagcount/Meta.json"
         };
-
         private static readonly string[] CustomCategoryFiles = {
             "tagcount_custom/ParsonCounts.json",
             "tagcount_custom/Face.json"
         };
-
-        private const double DefaultCharacterThreshold = 0.85;
         private Dictionary<string, TagCategory> _tagCategories;
         private Dictionary<string, TagCategory> _defaultTagCategories;
         private Dictionary<string, TagCategory> _customTagCategories;
@@ -94,13 +95,11 @@ namespace tagmane
             void UndoAction();
             string Description { get; }
         }
-
         private class TagPositionInfo
         {
             public string Tag { get; set; }
             public int Position { get; set; }
         }
-
         private class TagAction : ITagAction
         {
             public ImageInfo Image { get; set; }
@@ -113,7 +112,6 @@ namespace tagmane
             void ITagAction.DoAction() => DoAction();
             void ITagAction.UndoAction() => UndoAction();
         }
-
         private class TagGroupAction : ITagAction
         {
             public ImageInfo Image { get; set; }
@@ -126,13 +124,11 @@ namespace tagmane
             void ITagAction.DoAction() => DoAction();
             void ITagAction.UndoAction() => UndoAction();
         }
-
         private class TagCategory
         {
             [JsonPropertyName("0")]
             public Dictionary<string, int> Tags { get; set; }
         }
-
         private class CategoryItem
         {
             public string Name { get; set; }
@@ -454,6 +450,8 @@ namespace tagmane
 
             if (dialog.ShowDialog() == CommonFileDialogResult.Ok)
             {
+                _selectedFolderPath = dialog.FileName;
+
                 _originalImageInfos = _fileExplorer.GetImageInfos(dialog.FileName);
                 _imageInfos = _originalImageInfos;
                 
@@ -1296,6 +1294,133 @@ namespace tagmane
             }
         }
 
+        private void AddFolderNameButton_Click(object sender, RoutedEventArgs e)
+        {
+            AddDebugLogEntry("AddFolderNameButton_Click");
+
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("対象の画像がありません。");
+                return;
+            }
+
+            if (ImageListBox.SelectedItem == null)
+            {
+                AddMainLogEntry("対象の画像が選択されていません。");
+                return;
+            }
+
+            // 最大ディレクトリレベルを計算
+            int maxLevels = _imageInfos.Max(img => 
+                Path.GetDirectoryName(img.ImagePath).Split(Path.DirectorySeparatorChar).Length - 
+                _selectedFolderPath.Split(Path.DirectorySeparatorChar).Length);
+
+            var addFolderNameWindow = new AddFolderNameWindow(maxLevels);
+            addFolderNameWindow.Owner = this;
+            if (addFolderNameWindow.ShowDialog() == true)
+            {
+                AddFolderNameAsTag(
+                    addFolderNameWindow.DirectoryLevels,
+                    addFolderNameWindow.ParseCommas,
+                    addFolderNameWindow.ApplyToAll,
+                    addFolderNameWindow.AddProbability
+                );
+            }
+        }
+
+        private void AddFolderNameAsTag(int directoryLevels, bool parseCommas, bool applyToAll, double addProbability)
+        {
+            var targetImages = applyToAll ? _imageInfos : new List<ImageInfo> { ImageListBox.SelectedItem as ImageInfo };
+            if (targetImages == null || !targetImages.Any())
+            {
+                AddMainLogEntry("対象の画像がありません。");
+                return;
+            }
+
+            var addedTags = new Dictionary<ImageInfo, List<string>>();
+            var random = new Random();
+
+            foreach (var image in targetImages)
+            {
+                var imagePath = Path.GetDirectoryName(image.ImagePath);
+                var folderNames = imagePath.Split(Path.DirectorySeparatorChar)
+                                        .Skip(_selectedFolderPath.Split(Path.DirectorySeparatorChar).Length)
+                                        .Take(directoryLevels);
+
+                var tagsToAdd = new List<string>();
+
+                foreach (var folderName in folderNames)
+                {
+                    var tags = parseCommas ? folderName.Split(',') : new[] { folderName };
+                    foreach (var tag in tags)
+                    {
+                        if (random.NextDouble() < addProbability)
+                        {
+                            var processedTag = ProcessTag(tag);
+                            if (!string.IsNullOrWhiteSpace(processedTag) && !image.Tags.Contains(processedTag))
+                            {
+                                tagsToAdd.Add(processedTag);
+                            }
+                        }
+                    }
+                }
+
+                if (tagsToAdd.Any())
+                {
+                    addedTags[image] = tagsToAdd;
+                }
+            }
+
+            if (addedTags.Any())
+            {
+                var action = new TagGroupAction
+                {
+                    DoAction = () =>
+                    {
+                        foreach (var kvp in addedTags)
+                        {
+                            var image = kvp.Key;
+                            image.Tags.AddRange(kvp.Value);
+                        }
+                        AddMainLogEntry($"{addedTags.Sum(kvp => kvp.Value.Count)}個のタグを追加しました。");
+                    },
+                    UndoAction = () =>
+                    {
+                        foreach (var kvp in addedTags)
+                        {
+                            var image = kvp.Key;
+                            foreach (var tag in kvp.Value)
+                            {
+                                image.Tags.Remove(tag);
+                            }
+                        }
+                        AddMainLogEntry($"{addedTags.Sum(kvp => kvp.Value.Count)}個のタグの追加を元に戻しました。");
+                    },
+                    Description = $"{addedTags.Sum(kvp => kvp.Value.Count)}個のフォルダ名タグを追加"
+                };
+
+                action.DoAction();
+                _undoStack.Push(action);
+                _redoStack.Clear();
+                UpdateUIAfterTagsChange();
+            }
+            else
+            {
+                AddMainLogEntry("追加するタグが見つかりませんでした。");
+            }
+        }
+
+        private string ProcessTag(string tag)
+        {
+            // 先頭と末尾のスペースを削除
+            tag = tag.Trim();
+            // アンダースコアをスペースに置換
+            tag = tag.Replace('_', ' ');
+            // エスケープされたカッコを戻す
+            tag = tag.Replace("\\(", "(").Replace("\\)", ")");
+            return tag;
+        }
+
         // 右ペイン3: ユーザー入力タグの追加
         private void AddTextboxinputButton_Click(object sender, RoutedEventArgs e)
         {
@@ -1774,16 +1899,36 @@ namespace tagmane
 
         private async void LoadVLMModel(string modelName, bool useGpu = true)
         {
+            if (_isLoadingVLMModel) { return; }
+            _isLoadingVLMModel = true;
+
             try
             {
                 AddMainLogEntry($"VLMモデル '{modelName}' の読み込みを開始します。");
                 await _vlmPredictor.LoadModel(modelName, useGpu);
+                if (_vlmPredictor.IsGpuLoaded)
+                {
+                    AddMainLogEntry("GPUを使用します");
+                }
+                else
+                {
+                    if (UseGPUCheckBox.IsChecked == true) 
+                    { 
+                        AddMainLogEntry("GPUの適用に失敗しました。CPUにフォールバックします。");
+                        UseGPUCheckBox.IsChecked = false; 
+                    }
+                    AddMainLogEntry("CPUを使用します");
+                }
                 AddMainLogEntry($"VLMモデル '{modelName}' の読み込みが完了しました。");
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"VLMモデルの読み込みに失敗しました: {ex.Message}");
                 AddMainLogEntry($"VLMモデルの読み込みに失敗しました: {ex.Message}");
+            }
+            finally
+            {
+                _isLoadingVLMModel = false;
             }
         }
 

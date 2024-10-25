@@ -69,8 +69,8 @@
                 <CheckBox x:Name="ConfirmCheckBox" Content="操作時に確認する？" IsChecked="True" Margin="0,5,0,0"/>
                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                     <TextBlock Text="webp DLL:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                    <TextBox x:Name="WebPDllPathTextBox" IsReadOnly="True" Width="200" VerticalAlignment="Center"/>
-                    <Button x:Name="SelectWebPDllButton" Content="開く" Margin="5,0,0,0" Click="SelectWebPDllButton_Click"/>
+                    <TextBox x:Name="WebPDllPathTextBox" IsReadOnly="True" VerticalAlignment="Center" HorizontalAlignment="Stretch"/>
+                    <Button x:Name="SelectWebPDllButton" Content="開く" Margin="5,0,0,0" Click="SelectWebPDllButton_Click" HorizontalAlignment="Right"/>
                 </StackPanel>
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,5,0,0">
                     <TextBlock Text="タグ保存形式:" VerticalAlignment="Center" Margin="0,0,5,0"/>
@@ -146,7 +146,7 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,5">
                         <TextBlock Text="Batch Count:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                        <Slider x:Name="BatchCountSlider" Width="150" Minimum="1" Maximum="32" Value="4" 
+                        <Slider x:Name="BatchCountSlider" Width="150" Minimum="1" Maximum="256" Value="4" 
                                 TickFrequency="1" IsSnapToTickEnabled="True"/>
                         <TextBlock x:Name="BatchCountValue" Text="{Binding ElementName=BatchCountSlider, Path=Value, StringFormat={}{0:F0}}" 
                                    VerticalAlignment="Center" Margin="5,0,0,0"/>
@@ -335,14 +335,6 @@
                         <TextBlock Text="VLMですべての画像にタグを作成"/>
                     </Button.ToolTip>
                 </Button>
-                <Button x:Name="FilterImageButton" Click="FilterImageButton_Click">
-                    <Button.Content>
-                        <Image Source="/icon/filter.png" Width="32" Height="32"/>
-                    </Button.Content>
-                    <Button.ToolTip>
-                        <TextBlock Text="画像をフィルタリング"/>
-                    </Button.ToolTip>
-                </Button>   
             </StackPanel>
             <ListView x:Name="AllTagsListView" Grid.Row="1" SelectionMode="Multiple" SelectionChanged="AllTagsListView_SelectionChanged"
                       ItemsSource="{Binding AllTags}" 
@@ -388,12 +380,28 @@
 
         <!-- 新しい列：ボタン配置用 -->
         <StackPanel Grid.Column="4" Orientation="Vertical">
-            <Button x:Name="ReplaceTagButton" Click="ReplaceTagButton_Click" Margin="0,32,0,0">
+            <Button x:Name="FilterImageButton" Click="FilterImageButton_Click" Margin="0,32,0,0">
+                <Button.Content>
+                    <Image Source="/icon/filter.png" Width="32" Height="32"/>
+                </Button.Content>
+                <Button.ToolTip>
+                    <TextBlock Text="画像をフィルタリング"/>
+                </Button.ToolTip>
+            </Button>   
+            <Button x:Name="ReplaceTagButton" Click="ReplaceTagButton_Click">
                 <Button.Content>
                     <Image Source="/icon/replace.png" Width="32" Height="32"/>
                 </Button.Content>
                 <Button.ToolTip>
                     <TextBlock Text="タグの置換"/>
+                </Button.ToolTip>
+            </Button>
+            <Button x:Name="AddFolderNameButton" Click="AddFolderNameButton_Click">
+                <Button.Content>
+                    <Image Source="/icon/addfname.png" Width="32" Height="32"/>
+                </Button.Content>
+                <Button.ToolTip>
+                    <TextBlock Text="フォルダ名をタグに追加"/>
                 </Button.ToolTip>
             </Button>
         </StackPanel>

@@ -30,6 +30,7 @@ namespace tagmane
 
         public ObservableCollection<string> VLMLogEntries { get; } = new ObservableCollection<string>();
         public event EventHandler<string> LogUpdated;
+        public bool IsGpuLoaded { get; private set; }
 
         private void AddLogEntry(string message)
         {
@@ -69,16 +70,19 @@ namespace tagmane
                         {
                             sessionOptions.AppendExecutionProvider_CUDA(gpuDeviceId);
                             AddLogEntry("GPUを使用します");
+                            IsGpuLoaded = true;
                         }
                         catch (Exception ex)
                         {
                             AddLogEntry($"GPUの初期化に失敗しました: {ex.Message}");
                             AddLogEntry("CPUを使用します");
+                            IsGpuLoaded = false;
                         }
                     }
                     else
                     {
                         AddLogEntry("ONNX推論セッションを初期化しています（CPU使用）");
+                        IsGpuLoaded = false;
                     }
                     sessionOptions.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
                     _model = new InferenceSession(modelPath, sessionOptions);

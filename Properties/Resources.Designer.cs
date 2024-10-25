@@ -73,6 +73,16 @@ namespace tagmane.Properties {
         /// <summary>
         ///   型 System.Drawing.Bitmap のローカライズされたリソースを検索します。
         /// </summary>
+        internal static System.Drawing.Bitmap addfname {
+            get {
+                object obj = ResourceManager.GetObject("addfname", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   型 System.Drawing.Bitmap のローカライズされたリソースを検索します。
+        /// </summary>
         internal static System.Drawing.Bitmap addm {
             get {
                 object obj = ResourceManager.GetObject("addm", resourceCulture);
@@ -146,6 +156,16 @@ namespace tagmane.Properties {
         internal static System.Drawing.Bitmap florence {
             get {
                 object obj = ResourceManager.GetObject("florence", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   型 System.Drawing.Bitmap のローカライズされたリソースを検索します。
+        /// </summary>
+        internal static System.Drawing.Bitmap move {
+            get {
+                object obj = ResourceManager.GetObject("move", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }

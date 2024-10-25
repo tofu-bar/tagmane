@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <None Remove="icon\add.png" />
+    <None Remove="icon\addfname.png" />
     <None Remove="icon\addm.png" />
     <None Remove="icon\and.png" />
     <None Remove="icon\cancel.png" />
@@ -17,6 +18,7 @@
     <None Remove="icon\erase.png" />
     <None Remove="icon\filter.png" />
     <None Remove="icon\florence.png" />
+    <None Remove="icon\move.png" />
     <None Remove="icon\open.png" />
     <None Remove="icon\or.png" />
     <None Remove="icon\plus.png" />
@@ -38,6 +40,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="icon\addfname.png" />
     <Resource Include="icon\cancel.png" />
     <Resource Include="icon\filter.png" />
     <Resource Include="icon\florence.png" />
@@ -80,6 +83,7 @@
     <Resource Include="icon\deselect.png" />
     <Resource Include="icon\erasem.png" />
     <Resource Include="icon\erase.png" />
+    <Resource Include="icon\move.png" />
     <Resource Include="icon\open.png" />
     <Resource Include="icon\or.png" />
     <Resource Include="icon\plus.png" />
