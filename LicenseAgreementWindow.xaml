@@ -1,0 +1,34 @@
+<Window x:Class="tagmane.LicenseAgreementWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Tagmane License Agreement" Height="600" Width="800">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Tagmane ver. 1.0.1" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
+
+        <ScrollViewer Grid.Row="1">
+            <TextBlock x:Name="LicenseTextBlock" TextWrapping="Wrap"/>
+        </ScrollViewer>
+
+        <TextBlock Grid.Row="2" TextWrapping="Wrap" Margin="0,10,0,10">
+            <LineBreak/>
+            本アプリケーションの使用にあたっては、上記に加えて以下の使用条項に従う必要があります。
+            <LineBreak/>
+            ・有償・商用の記録媒体（ウェブページや雑誌など）において、本アプリケーションのコンテンツ（ソースコード・UI・生成結果など）の使用を禁じます。有償部分を含む媒体であっても、すべての利用者が無償で利用できる範囲（各種ソーシャルメディアの公開コンテンツなど）で閲覧が可能である場合は、この限りではありません。本アプリケーションの紹介等は、だれでも見られる形で行ってください。
+            <LineBreak/>
+            <LineBreak/>
+            ・今後、ライセンスおよび追加使用条項は変更される可能性があります。本ソフトウェアを使用することで、将来的なライセンス変更の可能性に同意したものとみなされます。
+        </TextBlock>
+
+        <CheckBox Grid.Row="3" x:Name="AgreementCheckBox" Content="以上のライセンスおよび追加使用条項に同意します。" Margin="0,10,0,10"/>
+
+        <Button Grid.Row="4" Content="同意して続行" Click="AgreeButton_Click" IsEnabled="{Binding IsChecked, ElementName=AgreementCheckBox}" HorizontalAlignment="Right" Padding="10,5"/>
+    </Grid>
+</Window>

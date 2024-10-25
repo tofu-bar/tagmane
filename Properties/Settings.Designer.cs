@@ -46,5 +46,17 @@ namespace tagmane.Properties {
                 this["SelectedVLMModel"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string AgreedLicenseVersion {
+            get {
+                return ((string)(this["AgreedLicenseVersion"]));
+            }
+            set {
+                this["AgreedLicenseVersion"] = value;
+            }
+        }
     }
 }

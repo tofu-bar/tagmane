@@ -29,6 +29,8 @@ namespace tagmane
     /// </summary>
     public partial class MainWindow : Window
     {
+        private string _currentVersion = "1.0.1";
+
         private bool _isInitializeSuccess = false;
         private FileExplorer _fileExplorer;
         private string _selectedFolderPath;
@@ -165,6 +167,13 @@ namespace tagmane
                 _isInitializeSuccess = false;
 
                 InitializeComponent();
+
+                if (!CheckLicenseAgreement())
+                {
+                    Close();
+                    return;
+                }
+
                 _fileExplorer = new FileExplorer();
                 _allTags = new Dictionary<string, int>();
                 _logEntries = new ObservableCollection<string>();
@@ -203,6 +212,27 @@ namespace tagmane
             {
                 MessageBox.Show($"MainWindowの初期化中にエラーが発生しました: {ex.Message}\n\nStackTrace: {ex.StackTrace}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        private bool CheckLicenseAgreement()
+        {
+            string agreedVersion = Properties.Settings.Default.AgreedLicenseVersion;
+
+            if (string.IsNullOrEmpty(agreedVersion) || agreedVersion != _currentVersion)
+            {
+                var licenseWindow = new LicenseAgreementWindow();
+                if (licenseWindow.ShowDialog() == true)
+                {
+                    Properties.Settings.Default.AgreedLicenseVersion = _currentVersion;
+                    Properties.Settings.Default.Save();
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         /*
