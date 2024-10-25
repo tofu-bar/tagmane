@@ -6,9 +6,13 @@ namespace tagmane
 {
     public partial class LicenseAgreementWindow : Window
     {
-        public LicenseAgreementWindow()
+        public string CurrentVersion { get; set; }
+
+        public LicenseAgreementWindow(string currentVersion)
         {
             InitializeComponent();
+            CurrentVersion = currentVersion;
+            DataContext = this; // バインディングのためにDataContextを設定
             LoadLicenseText();
         }
 
@@ -16,8 +20,19 @@ namespace tagmane
         {
             try
             {
-                string licenseText = File.ReadAllText("LICENSE.txt");
-                LicenseTextBlock.Text = licenseText;
+                string exePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                string exeDir = Path.GetDirectoryName(exePath);
+                string licenseFilePath = Path.Combine(exeDir, "LICENSE.txt");
+
+                if (File.Exists(licenseFilePath))
+                {
+                    string licenseText = File.ReadAllText(licenseFilePath);
+                    LicenseTextBlock.Text = licenseText;
+                }
+                else
+                {
+                    throw new FileNotFoundException("LICENSE.txtファイルが見つかりません。", licenseFilePath);
+                }
             }
             catch (Exception ex)
             {

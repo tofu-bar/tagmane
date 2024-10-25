@@ -220,7 +220,7 @@ namespace tagmane
 
             if (string.IsNullOrEmpty(agreedVersion) || agreedVersion != _currentVersion)
             {
-                var licenseWindow = new LicenseAgreementWindow();
+                var licenseWindow = new LicenseAgreementWindow(_currentVersion);
                 if (licenseWindow.ShowDialog() == true)
                 {
                     Properties.Settings.Default.AgreedLicenseVersion = _currentVersion;
