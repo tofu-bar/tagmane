@@ -26,15 +26,25 @@ namespace tagmane
                 // タグの前後のスペースを除去し、空のタグを除外し、エスケープされたかっこを元に戻す
                 imageInfo.Tags = imageInfo.AssociatedText
                     .Split(',')
-                    .Select(t => t.Trim())
+                    .Select(t => ProcessTag(t))
                     .Where(t => !string.IsNullOrWhiteSpace(t))
-                    .Select(t => t.Replace("\\(", "(").Replace("\\)", ")"))
                     .ToList();
 
                 imageInfos.Add(imageInfo);
             }
 
             return imageInfos;
+        }
+        
+        private string ProcessTag(string tag)
+        {
+            // 先頭と末尾のスペースを削除
+            tag = tag.Trim();
+            // アンダースコアをスペースに置換
+            tag = tag.Replace('_', ' ');
+            // エスケープされたカッコを戻す
+            tag = tag.Replace("\\(", "(").Replace("\\)", ")");
+            return tag;
         }
 
         private string GetAssociatedText(string imagePath)

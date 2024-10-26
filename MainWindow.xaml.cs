@@ -443,6 +443,17 @@ namespace tagmane
             }
         }
 
+        private string ProcessTag(string tag)
+        {
+            // 先頭と末尾のスペースを削除
+            tag = tag.Trim();
+            // アンダースコアをスペースに置換
+            tag = tag.Replace('_', ' ');
+            // エスケープされたカッコを戻す
+            tag = tag.Replace("\\(", "(").Replace("\\)", ")");
+            return tag;
+        }
+
         private TagGroupAction CreateAddTagsAction(ImageInfo imageInfo, List<string> newTags)
         {
             return new TagGroupAction
@@ -1820,17 +1831,6 @@ namespace tagmane
             {
                 AddMainLogEntry("追加するタグが見つかりませんでした。");
             }
-        }
-
-        private string ProcessTag(string tag)
-        {
-            // 先頭と末尾のスペースを削除
-            tag = tag.Trim();
-            // アンダースコアをスペースに置換
-            tag = tag.Replace('_', ' ');
-            // エスケープされたカッコを戻す
-            tag = tag.Replace("\\(", "(").Replace("\\)", ")");
-            return tag;
         }
 
         // 右ペイン3: ユーザー入力タグの追加
