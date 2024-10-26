@@ -7,6 +7,7 @@ namespace tagmane
     public partial class AddFolderNameWindow : Window
     {
         public int DirectoryLevels => (int)DirectoryLevelsSlider.Value;
+        public bool FromEnd => FromEndCheckBox.IsChecked ?? false;
         public bool ParseCommas => ParseCommasCheckBox.IsChecked ?? false;
         public bool ApplyToAll => ApplyToAllCheckBox.IsChecked ?? false;
         public double AddProbability => AddProbabilitySlider.Value / 100.0;
@@ -15,6 +16,7 @@ namespace tagmane
         {
             InitializeComponent();
             DirectoryLevelsSlider.Maximum = maxLevels;
+            DirectoryLevelsSlider.Value = maxLevels;
         }
 
         private void OkButton_Click(object sender, RoutedEventArgs e)

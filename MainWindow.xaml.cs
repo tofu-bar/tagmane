@@ -1744,6 +1744,7 @@ namespace tagmane
             {
                 AddFolderNameAsTag(
                     addFolderNameWindow.DirectoryLevels,
+                    addFolderNameWindow.FromEnd,
                     addFolderNameWindow.ParseCommas,
                     addFolderNameWindow.ApplyToAll,
                     addFolderNameWindow.AddProbability
@@ -1751,7 +1752,7 @@ namespace tagmane
             }
         }
 
-        private void AddFolderNameAsTag(int directoryLevels, bool parseCommas, bool applyToAll, double addProbability)
+        private void AddFolderNameAsTag(int directoryLevels, bool fromEnd, bool parseCommas, bool applyToAll, double addProbability)
         {
             var targetImages = applyToAll ? _imageInfos : new List<ImageInfo> { ImageListBox.SelectedItem as ImageInfo };
             if (targetImages == null || !targetImages.Any())
@@ -1767,8 +1768,16 @@ namespace tagmane
             {
                 var imagePath = Path.GetDirectoryName(image.ImagePath);
                 var folderNames = imagePath.Split(Path.DirectorySeparatorChar)
-                                        .Skip(_selectedFolderPath.Split(Path.DirectorySeparatorChar).Length)
-                                        .Take(directoryLevels);
+                                        .Skip(_selectedFolderPath.Split(Path.DirectorySeparatorChar).Length);
+
+                if (fromEnd)
+                {
+                    folderNames = folderNames.Reverse().Take(directoryLevels);
+                }
+                else
+                {
+                    folderNames = folderNames.Take(directoryLevels);
+                }
 
                 var tagsToAdd = new List<string>();
 
