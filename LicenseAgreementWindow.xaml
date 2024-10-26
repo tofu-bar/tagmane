@@ -10,8 +10,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-
-        <TextBlock Grid.Row="0" Text="Tagmane ver. 1.0.1" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
+        <TextBlock Grid.Row="0" Text="{Binding CurrentVersion, StringFormat='Tagmane ver. {0}'}" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
 
         <ScrollViewer Grid.Row="1">
             <TextBlock x:Name="LicenseTextBlock" TextWrapping="Wrap"/>
@@ -20,6 +19,7 @@
         <TextBlock Grid.Row="2" TextWrapping="Wrap" Margin="0,10,0,10">
             <LineBreak/>
             本アプリケーションの使用にあたっては、上記に加えて以下の使用条項に従う必要があります。
+            <LineBreak/>
             <LineBreak/>
             ・有償・商用の記録媒体（ウェブページや雑誌など）において、本アプリケーションのコンテンツ（ソースコード・UI・生成結果など）の使用を禁じます。有償部分を含む媒体であっても、すべての利用者が無償で利用できる範囲（各種ソーシャルメディアの公開コンテンツなど）で閲覧が可能である場合は、この限りではありません。本アプリケーションの紹介等は、だれでも見られる形で行ってください。
             <LineBreak/>

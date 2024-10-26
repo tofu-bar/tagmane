@@ -29,7 +29,7 @@ namespace tagmane
     /// </summary>
     public partial class MainWindow : Window
     {
-        private string _currentVersion = "1.0.1";
+        private string _currentVersion = "1.0.2";
 
         private bool _isInitializeSuccess = false;
         private FileExplorer _fileExplorer;
@@ -243,15 +243,125 @@ namespace tagmane
         protected override void OnKeyDown(KeyEventArgs e)
         {
             base.OnKeyDown(e);
-            if (e.Key == Key.O && Keyboard.Modifiers == ModifierKeys.Control)
+            if (e.Handled) return;
+
+            if (Keyboard.Modifiers == ModifierKeys.Control)
             {
-                SelectFolder();
-                e.Handled = true;
+                switch (e.Key)
+                {
+                    case Key.O:
+                        SelectFolder_Click(null, null); // フォルダを選択
+                        e.Handled = true;
+                        break;
+                    case Key.S:
+                        SaveTagsButton_Click(null, null); // 現在のタグ状態を保存
+                        e.Handled = true;
+                        break;
+                    case Key.Delete:
+                        DeleteSelectedImageAndTags_Click(null, null); // 選択中の画像とタグを削除
+                        e.Handled = true;
+                        break;
+                    case Key.Z:
+                        UndoButton_Click(null, null); // 元に戻す
+                        e.Handled = true;
+                        break;
+                    case Key.Y:
+                        RedoButton_Click(null, null); // やり直し
+                        e.Handled = true;
+                        break;
+                    case Key.T:
+                        AddTagButton_Click(null, null); // タグを追加
+                        e.Handled = true;
+                        break;
+                    case Key.D:
+                        RemoveTagButton_Click(null, null); // タグを削除
+                        e.Handled = true;
+                        break;
+                    case Key.Up:
+                        MoveTopButton_Click(null, null); // 選択しているタグをtopに移動
+                        e.Handled = true;
+                        break;
+                    case Key.Down:
+                        MoveBottomButton_Click(null, null); // 選択しているタグをbottomに移動
+                        e.Handled = true;
+                        break;
+                    case Key.E:
+                        DeselectTagButton_Click(null, null); // 選択されているタグを解除
+                        e.Handled = true;
+                        break;
+                    case Key.R:
+                        SortByCategoryButton_Click(null, null); // カテゴリ順に並び替え
+                        e.Handled = true;
+                        break;
+                    case Key.P:
+                        VLMPredictButton_Click(null, null); // VLMでタグを作成
+                        e.Handled = true;
+                        break;
+                    case Key.F:
+                        FilterImageButton_Click(null, null); // 画像をフィルタリング
+                        e.Handled = true;
+                        break;
+                    case Key.H:
+                        ReplaceTagButton_Click(null, null); // タグの置換
+                        e.Handled = true;
+                        break;
+                    case Key.Enter:
+                        AddTextboxinputButton_Click(null, null); // 個別タグに追加
+                        e.Handled = true;
+                        break;
+                }
             }
-            else if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control)
+            else if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
             {
-                SaveAllTags();
-                e.Handled = true;
+                switch (e.Key)
+                {
+                    case Key.T:
+                        AddAllTagsButton_Click(null, null); // 選択しているタグを全画像に追加
+                        e.Handled = true;
+                        break;
+                    case Key.D:
+                        RemoveAllTagsButton_Click(null, null); // 選択しているタグを全画像から削除
+                        e.Handled = true;
+                        break;
+                    case Key.Up:
+                        MoveTopAllButton_Click(null, null); // 選択しているタグを全画像でtopに移動
+                        e.Handled = true;
+                        break;
+                    case Key.Down:
+                        MoveBottomAllButton_Click(null, null); // 選択しているタグを全画像でbottomに移動
+                        e.Handled = true;
+                        break;
+                    case Key.E:
+                        DeselectAllTagsButton_Click(null, null); // 選択されているタグをすべて解除
+                        e.Handled = true;
+                        break;
+                    case Key.R:
+                        SortByCategoryAllButton_Click(null, null); // すべての画像をカテゴリ順に並び替え
+                        e.Handled = true;
+                        break;
+                    case Key.P:
+                        VLMPredictAllButton_Click(null, null); // VLMですべての画像にタグを作成
+                        e.Handled = true;
+                        break;
+                    case Key.F:
+                        AddFolderNameButton_Click(null, null); // フォルダ名をタグに追加
+                        e.Handled = true;
+                        break;
+                    case Key.Enter:
+                        AddAllTextboxinputButton_Click(null, null); // 全タグに追加
+                        e.Handled = true;
+                        break;
+                }
+            }
+            else
+            {
+                switch (e.Key)
+                {
+                    case Key.Escape:
+                        CancelButton_Click(null, null); // キャンセル
+                        e.Handled = true;
+                        break;
+                }
             }
         }
 
@@ -857,7 +967,7 @@ namespace tagmane
                             foreach (var tagInfo in removedTags.OrderByDescending(t => t.Position))
                             {
                                 selectedImage.Tags.RemoveAt(tagInfo.Position);
-                                _selectedTags.Remove(tagInfo.Tag);
+                                // _selectedTags.Remove(tagInfo.Tag);
                             }
                             AddMainLogEntry($"{removedTags.Count}個のタグを削除しました");
                         },

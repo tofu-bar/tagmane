@@ -53,7 +53,7 @@
                                 <Image Source="/icon/trash.png" Width="32" Height="32"/>
                             </Button.Content>
                             <Button.ToolTip>
-                                <TextBlock Text="選択中の画像とタグを削除"/>
+                                <TextBlock Text="選択中の画像とタグを削除(Ctrl+Del)"/>
                             </Button.ToolTip>
                         </Button>
                         <Button Click="CancelButton_Click">
@@ -61,7 +61,7 @@
                                 <Image Source="/icon/cancel.png" Width="32" Height="32"/>
                             </Button.Content>
                             <Button.ToolTip>
-                                <TextBlock Text="キャンセル"/>
+                                <TextBlock Text="キャンセル(Esc)"/>
                             </Button.ToolTip>
                         </Button>
                     </StackPanel>
@@ -99,7 +99,7 @@
                         <Image Source="/icon/undo.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="元に戻す"/>
+                        <TextBlock Text="元に戻す(Ctrl+Z)"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="RedoButton" Click="RedoButton_Click">
@@ -107,7 +107,7 @@
                         <Image Source="/icon/redo.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="やり直し"/>
+                        <TextBlock Text="やり直し(Ctrl+Y)"/>
                     </Button.ToolTip>
                 </Button>
             </StackPanel>
@@ -227,7 +227,7 @@
                         <Image Source="/icon/add.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="タグを追加"/>
+                        <TextBlock Text="タグを追加(Ctrl+T)"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="RemoveTagButton" Click="RemoveTagButton_Click">
@@ -235,7 +235,7 @@
                         <Image Source="/icon/erase.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="タグを削除"/>
+                        <TextBlock Text="タグを削除(Ctrl+D)"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="MoveTopButton" Click="MoveTopButton_Click">
@@ -243,7 +243,7 @@
                         <Image Source="/icon/up.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="選択しているタグをtopに移動"/>
+                        <TextBlock Text="選択しているタグをtopに移動(Ctrl+↑)"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="MoveBottomButton" Click="MoveBottomButton_Click">
@@ -251,7 +251,7 @@
                         <Image Source="/icon/down.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="選択しているタグをbottomに移動"/>
+                        <TextBlock Text="選択しているタグをbottomに移動(Ctrl+↓)"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="DeselectTagButton" Click="DeselectTagButton_Click">
@@ -259,7 +259,7 @@
                         <Image Source="/icon/deselect.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="選択されているタグを解除"/>
+                        <TextBlock Text="選択されているタグを解除(Ctrl+E))"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="SortByCategoryButton" Click="SortByCategoryButton_Click">
@@ -267,7 +267,7 @@
                         <Image Source="/icon/sort.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="カテゴリ順に並び替え"/>
+                        <TextBlock Text="カテゴリ順に並び替え(Ctrl+R)"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="VLMPredictButton" Click="VLMPredictButton_Click">
@@ -275,7 +275,7 @@
                         <Image Source="/icon/vlm.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="VLMでタグを作成"/>
+                        <TextBlock Text="VLMでタグを作成(Ctrl+P)"/>
                     </Button.ToolTip>
                 </Button>
             </StackPanel>
@@ -316,7 +316,7 @@
                         <Image Source="/icon/addm.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="選択しているタグを全画像に追加"/>
+                        <TextBlock Text="選択しているタグを全画像に追加(Ctrl+Shift+T)"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="RemoveAllTagsButton" Click="RemoveAllTagsButton_Click">
@@ -324,7 +324,7 @@
                         <Image Source="/icon/erasem.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="選択しているタグを全画像から削除"/>
+                        <TextBlock Text="選択しているタグを全画像から削除(Ctrl+Shift+D)"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="MoveTopAllButton" Click="MoveTopAllButton_Click">
@@ -332,7 +332,7 @@
                         <Image Source="/icon/up.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="選択しているタグを全画像でtopに移動"/>
+                        <TextBlock Text="選択しているタグを全画像でtopに移動(Ctrl+Shift+↑)"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="MoveBottomAllButton" Click="MoveBottomAllButton_Click">
@@ -340,7 +340,7 @@
                         <Image Source="/icon/down.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="選択しているタグを全画像でbottomに移動"/>
+                        <TextBlock Text="選択しているタグを全画像でbottomに移動(Ctrl+Shift+↓)"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="DeselectAllTagsButton" Click="DeselectAllTagsButton_Click">
@@ -348,7 +348,7 @@
                         <Image Source="/icon/deselect.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="選択されているタグをすべて解除"/>
+                        <TextBlock Text="選択されているタグをすべて解除(Ctrl+Shift+E)"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="SortByCategoryAllButton" Click="SortByCategoryAllButton_Click">
@@ -356,7 +356,7 @@
                         <Image Source="/icon/sort.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="すべての画像をカテゴリ順に並び替え"/>
+                        <TextBlock Text="すべての画像をカテゴリ順に並び替え(Ctrl+Shift+R)"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="VLMPredictAllButton" Click="VLMPredictAllButton_Click">
@@ -364,7 +364,7 @@
                         <Image Source="/icon/vlm.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="VLMですべての画像にタグを作成"/>
+                        <TextBlock Text="VLMですべての画像にタグを作成(Ctrl+Shift+P)"/>
                     </Button.ToolTip>
                 </Button>
             </StackPanel>
@@ -417,7 +417,7 @@
                     <Image Source="/icon/filter.png" Width="32" Height="32"/>
                 </Button.Content>
                 <Button.ToolTip>
-                    <TextBlock Text="画像をフィルタリング"/>
+                    <TextBlock Text="画像をフィルタリング(Ctrl+F)"/>
                 </Button.ToolTip>
             </Button>   
             <Button x:Name="ReplaceTagButton" Click="ReplaceTagButton_Click">
@@ -425,7 +425,7 @@
                     <Image Source="/icon/replace.png" Width="32" Height="32"/>
                 </Button.Content>
                 <Button.ToolTip>
-                    <TextBlock Text="タグの置換"/>
+                    <TextBlock Text="タグの置換(Ctrl+H)"/>
                 </Button.ToolTip>
             </Button>
             <Button x:Name="AddFolderNameButton" Click="AddFolderNameButton_Click">
@@ -433,7 +433,7 @@
                     <Image Source="/icon/addfname.png" Width="32" Height="32"/>
                 </Button.Content>
                 <Button.ToolTip>
-                    <TextBlock Text="フォルダ名をタグに追加"/>
+                    <TextBlock Text="フォルダ名をタグに追加(Ctrl+Shift+F)"/>
                 </Button.ToolTip>
             </Button>
         </StackPanel>
@@ -490,7 +490,7 @@
                         <Image Source="/icon/add.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="個別タグに追加"/>
+                        <TextBlock Text="個別タグに追加(Ctrl+Enter)"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="AddAllTextboxinputButton" Grid.Column="2" Click="AddAllTextboxinputButton_Click">
@@ -498,7 +498,7 @@
                         <Image Source="/icon/addm.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="全タグに追加"/>
+                        <TextBlock Text="全タグに追加(Ctrl+Shift+Enter)"/>
                     </Button.ToolTip>
                 </Button>
             </Grid>
