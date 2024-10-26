@@ -14,6 +14,7 @@
     <None Remove="icon\and.png" />
     <None Remove="icon\cancel.png" />
     <None Remove="icon\deselect.png" />
+    <None Remove="icon\down.png" />
     <None Remove="icon\erasem.png" />
     <None Remove="icon\erase.png" />
     <None Remove="icon\filter.png" />
@@ -29,6 +30,7 @@
     <None Remove="icon\sort.png" />
     <None Remove="icon\trash.png" />
     <None Remove="icon\undo.png" />
+    <None Remove="icon\up.png" />
     <None Remove="icon\vlm.png" />
     <None Remove="LICENSE.txt" />
     <None Remove="tagcount\Artist.json" />
@@ -43,6 +45,7 @@
   <ItemGroup>
     <Resource Include="icon\addfname.png" />
     <Resource Include="icon\cancel.png" />
+    <Resource Include="icon\down.png" />
     <Resource Include="icon\filter.png" />
     <Resource Include="icon\florence.png" />
   </ItemGroup>
@@ -95,6 +98,7 @@
     <Resource Include="icon\sort.png" />
     <Resource Include="icon\trash.png" />
     <Resource Include="icon\undo.png" />
+    <Resource Include="icon\up.png" />
     <Resource Include="icon\vlm.png" />
     <Content Include="LICENSE.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

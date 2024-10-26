@@ -11,7 +11,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="{Binding CurrentVersion, StringFormat=Tagmane ver. {0}}" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
+        <TextBlock Grid.Row="0" Text="Tagmane ver. 1.0.1" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
 
         <ScrollViewer Grid.Row="1">
             <TextBlock x:Name="LicenseTextBlock" TextWrapping="Wrap"/>

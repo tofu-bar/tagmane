@@ -136,6 +136,9 @@
   <data name="deselect" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\icon\deselect.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
+  <data name="down" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\icon\down.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
   <data name="erase" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\icon\erase.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
@@ -177,6 +180,9 @@
   </data>
   <data name="undo" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\icon\undo.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="up" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\icon\up.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
   <data name="vlm" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\icon\vlm.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>

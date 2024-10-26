@@ -238,6 +238,22 @@
                         <TextBlock Text="タグを削除"/>
                     </Button.ToolTip>
                 </Button>
+                <Button x:Name="MoveTopButton" Click="MoveTopButton_Click">
+                    <Button.Content>
+                        <Image Source="/icon/up.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="選択しているタグをtopに移動"/>
+                    </Button.ToolTip>
+                </Button>
+                <Button x:Name="MoveBottomButton" Click="MoveBottomButton_Click">
+                    <Button.Content>
+                        <Image Source="/icon/down.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="選択しているタグをbottomに移動"/>
+                    </Button.ToolTip>
+                </Button>
                 <Button x:Name="DeselectTagButton" Click="DeselectTagButton_Click">
                     <Button.Content>
                         <Image Source="/icon/deselect.png" Width="32" Height="32"/>
@@ -309,6 +325,22 @@
                     </Button.Content>
                     <Button.ToolTip>
                         <TextBlock Text="選択しているタグを全画像から削除"/>
+                    </Button.ToolTip>
+                </Button>
+                <Button x:Name="MoveTopAllButton" Click="MoveTopAllButton_Click">
+                    <Button.Content>
+                        <Image Source="/icon/up.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="選択しているタグを全画像でtopに移動"/>
+                    </Button.ToolTip>
+                </Button>
+                <Button x:Name="MoveBottomAllButton" Click="MoveBottomAllButton_Click">
+                    <Button.Content>
+                        <Image Source="/icon/down.png" Width="32" Height="32"/>
+                    </Button.Content>
+                    <Button.ToolTip>
+                        <TextBlock Text="選択しているタグを全画像でbottomに移動"/>
                     </Button.ToolTip>
                 </Button>
                 <Button x:Name="DeselectAllTagsButton" Click="DeselectAllTagsButton_Click">

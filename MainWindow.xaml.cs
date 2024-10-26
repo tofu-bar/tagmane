@@ -880,6 +880,113 @@ namespace tagmane
             }
         }
 
+        private void MoveTopButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage != null)
+            {
+                var selectedTags = TagListView.SelectedItems.Cast<string>().ToList();
+                var movedTags = new List<TagPositionInfo>();
+
+                foreach (var tag in selectedTags)
+                {
+                    int currentPosition = selectedImage.Tags.IndexOf(tag);
+                    if (currentPosition > 0)
+                    {
+                        movedTags.Add(new TagPositionInfo { Tag = tag, Position = currentPosition });
+                    }
+                }
+
+                if (movedTags.Count > 0)
+                {
+                    var action = new TagGroupAction
+                    {
+                        Image = selectedImage,
+                        TagInfos = movedTags,
+                        IsAdd = false, // 移動操作なのでfalse
+                        DoAction = () =>
+                        {
+                            foreach (var tagInfo in movedTags.OrderBy(t => t.Position))
+                            {
+                                selectedImage.Tags.RemoveAt(tagInfo.Position);
+                                selectedImage.Tags.Insert(0, tagInfo.Tag);
+                            }
+                            AddMainLogEntry($"{movedTags.Count}個のタグを先頭に移動しました");
+                        },
+                        UndoAction = () =>
+                        {
+                            foreach (var tagInfo in movedTags.OrderByDescending(t => t.Position))
+                            {
+                                selectedImage.Tags.Remove(tagInfo.Tag);
+                                selectedImage.Tags.Insert(tagInfo.Position, tagInfo.Tag);
+                            }
+                            AddMainLogEntry($"{movedTags.Count}個のタグの移動を元に戻しました");
+                        },
+                        Description = $"{movedTags.Count}個のタグを先頭に移動"
+                    };
+
+                    action.DoAction();
+                    _undoStack.Push(action);
+                    _redoStack.Clear();
+                    UpdateUIAfterTagsChange();
+                }
+            }
+        }
+
+        private void MoveBottomButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage != null)
+            {
+                var selectedTags = TagListView.SelectedItems.Cast<string>().ToList();
+                var movedTags = new List<TagPositionInfo>();
+
+                int lastIndex = selectedImage.Tags.Count - 1;
+                foreach (var tag in selectedTags)
+                {
+                    int currentPosition = selectedImage.Tags.IndexOf(tag);
+                    if (currentPosition < lastIndex)
+                    {
+                        movedTags.Add(new TagPositionInfo { Tag = tag, Position = currentPosition });
+                    }
+                }
+
+                if (movedTags.Count > 0)
+                {
+                    var action = new TagGroupAction
+                    {
+                        Image = selectedImage,
+                        TagInfos = movedTags,
+                        IsAdd = false, // 移動操作なのでfalse
+                        DoAction = () =>
+                        {
+                            foreach (var tagInfo in movedTags.OrderByDescending(t => t.Position))
+                            {
+                                selectedImage.Tags.RemoveAt(tagInfo.Position);
+                                selectedImage.Tags.Add(tagInfo.Tag);
+                            }
+                            AddMainLogEntry($"{movedTags.Count}個のタグを末尾に移動しました");
+                        },
+                        UndoAction = () =>
+                        {
+                            foreach (var tagInfo in movedTags)
+                            {
+                                selectedImage.Tags.RemoveAt(selectedImage.Tags.Count - 1);
+                                selectedImage.Tags.Insert(tagInfo.Position, tagInfo.Tag);
+                            }
+                            AddMainLogEntry($"{movedTags.Count}個のタグの移動を元に戻しました");
+                        },
+                        Description = $"{movedTags.Count}個のタグを末尾に移動"
+                    };
+
+                    action.DoAction();
+                    _undoStack.Push(action);
+                    _redoStack.Clear();
+                    UpdateUIAfterTagsChange();
+                }
+            }
+        }
+
         // 右ペイン2: 全タグリストの表示、選択、ソート
         // 全タグリストビューの更新
         private void UpdateAllTagsListView()
@@ -1132,6 +1239,171 @@ namespace tagmane
                 _redoStack.Clear();
                 action.DoAction();
                 UpdateUIAfterTagsChange();
+            }
+        }
+
+        private void MoveTopAllButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("対象の画像がありません。");
+                return;
+            }
+            if (ConfirmCheckBox.IsChecked == true)
+            {
+                var result = MessageBox.Show("選択したタグをすべての画像の先頭に移動しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (result != MessageBoxResult.Yes)
+                {
+                    AddMainLogEntry("タグの移動がキャンセルされました。");
+                    return;
+                }
+            }
+
+            var selectedTags = AllTagsListView.SelectedItems.Cast<dynamic>().Select(item => item.Tag as string).ToList();
+            if (selectedTags.Count == 0)
+            {
+                AddMainLogEntry("移動するタグが選択されていません。");
+                return;
+            }
+
+            var movedTags = new Dictionary<ImageInfo, List<TagPositionInfo>>();
+
+            foreach (var imageInfo in _imageInfos)
+            {
+                var tagsToMove = imageInfo.Tags
+                    .Select((tag, index) => new { Tag = tag, Index = index })
+                    .Where(item => selectedTags.Contains(item.Tag) && item.Index > 0)
+                    .Select(item => new TagPositionInfo { Tag = item.Tag, Position = item.Index })
+                    .ToList();
+
+                if (tagsToMove.Count > 0)
+                {
+                    movedTags[imageInfo] = tagsToMove;
+                }
+            }
+
+            if (movedTags.Count > 0)
+            {
+                var action = new TagGroupAction
+                {
+                    DoAction = () =>
+                    {
+                        foreach (var kvp in movedTags)
+                        {
+                            foreach (var tagInfo in kvp.Value.OrderBy(t => t.Position))
+                            {
+                                kvp.Key.Tags.RemoveAt(tagInfo.Position);
+                                kvp.Key.Tags.Insert(0, tagInfo.Tag);
+                            }
+                        }
+                        AddMainLogEntry($"{movedTags.Sum(kvp => kvp.Value.Count)}個のタグを先頭に移動しました。");
+                    },
+                    UndoAction = () =>
+                    {
+                        foreach (var kvp in movedTags)
+                        {
+                            foreach (var tagInfo in kvp.Value.OrderByDescending(t => t.Position))
+                            {
+                                kvp.Key.Tags.RemoveAt(0);
+                                kvp.Key.Tags.Insert(tagInfo.Position, tagInfo.Tag);
+                            }
+                        }
+                        AddMainLogEntry($"{movedTags.Sum(kvp => kvp.Value.Count)}個のタグの移動を元に戻しました。");
+                    },
+                    Description = $"{movedTags.Sum(kvp => kvp.Value.Count)}個のタグを全画像の先頭に移動"
+                };
+
+                _undoStack.Push(action);
+                _redoStack.Clear();
+                action.DoAction();
+                UpdateUIAfterTagsChange();
+            }
+            else
+            {
+                AddMainLogEntry("移動するタグがありませんでした。");
+            }
+        }
+
+        private void MoveBottomAllButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("対象の画像がありません。");
+                return;
+            }
+            if (ConfirmCheckBox.IsChecked == true)
+            {
+                var result = MessageBox.Show("選択したタグをすべての画像の末尾に移動しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (result != MessageBoxResult.Yes)
+                {
+                    AddMainLogEntry("タグの移動がキャンセルされました。");
+                    return;
+                }
+            }
+
+            var selectedTags = AllTagsListView.SelectedItems.Cast<dynamic>().Select(item => item.Tag as string).ToList();
+            if (selectedTags.Count == 0)
+            {
+                AddMainLogEntry("移動するタグが選択されていません。");
+                return;
+            }
+
+            var movedTags = new Dictionary<ImageInfo, List<TagPositionInfo>>();
+
+            foreach (var imageInfo in _imageInfos)
+            {
+                int lastIndex = imageInfo.Tags.Count - 1;
+                var tagsToMove = imageInfo.Tags
+                    .Select((tag, index) => new { Tag = tag, Index = index })
+                    .Where(item => selectedTags.Contains(item.Tag) && item.Index < lastIndex)
+                    .Select(item => new TagPositionInfo { Tag = item.Tag, Position = item.Index })
+                    .ToList();
+
+                if (tagsToMove.Count > 0)
+                {
+                    movedTags[imageInfo] = tagsToMove;
+                }
+            }
+
+            if (movedTags.Count > 0)
+            {
+                var action = new TagGroupAction
+                {
+                    DoAction = () =>
+                    {
+                        foreach (var kvp in movedTags)
+                        {
+                            foreach (var tagInfo in kvp.Value.OrderByDescending(t => t.Position))
+                            {
+                                kvp.Key.Tags.RemoveAt(tagInfo.Position);
+                                kvp.Key.Tags.Add(tagInfo.Tag);
+                            }
+                        }
+                        AddMainLogEntry($"{movedTags.Sum(kvp => kvp.Value.Count)}個のタグを末尾に移動しました。");
+                    },
+                    UndoAction = () =>
+                    {
+                        foreach (var kvp in movedTags)
+                        {
+                            foreach (var tagInfo in kvp.Value)
+                            {
+                                kvp.Key.Tags.RemoveAt(kvp.Key.Tags.Count - 1);
+                                kvp.Key.Tags.Insert(tagInfo.Position, tagInfo.Tag);
+                            }
+                        }
+                        AddMainLogEntry($"{movedTags.Sum(kvp => kvp.Value.Count)}個のタグの移動を元に戻しました。");
+                    },
+                    Description = $"{movedTags.Sum(kvp => kvp.Value.Count)}個のタグを全画像の末尾に移動"
+                };
+
+                _undoStack.Push(action);
+                _redoStack.Clear();
+                action.DoAction();
+                UpdateUIAfterTagsChange();
+            }
+            else
+            {
+                AddMainLogEntry("移動するタグがありませんでした。");
             }
         }
 
