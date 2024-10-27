@@ -460,6 +460,7 @@
                 <RowDefinition Height="2*"/>    <!-- 動作処理リスト用 -->
                 <RowDefinition Height="1*"/>    <!-- 選択されたタグ用 -->
                 <RowDefinition Height="1*"/>    <!-- フィルタリングされているタグリスト用 -->
+                <RowDefinition Height="Auto"/>  <!-- クラスタリング可視化用 -->
             </Grid.RowDefinitions>
 
             <!-- プログレスバー -->
@@ -562,6 +563,9 @@
 
             <!-- フィルタリングされているタグリスト -->
             <ListBox x:Name="FilteredTagsListBox" Grid.Row="10" IsEnabled="False"/>
+
+            <!-- クラスタリング可視化用の画像表示領域 -->
+            <Image x:Name="ClusteringVisualizationImage" Grid.Row="11" Width="auto" Height="auto" Margin="0"/>
         </Grid>
     </Grid>
 </Window>

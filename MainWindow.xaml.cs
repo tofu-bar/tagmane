@@ -1960,6 +1960,9 @@ namespace tagmane
             int k = (int)Math.Sqrt(embeddings.Length / 2); // クラスター数の決定（ここでは簡単な方法を使用）
             var clusters = PerformKMeansClustering(reducedEmbeddings, k);
 
+            // クラスタリング結果の可視化
+            VisualizeClusteringResult(reducedEmbeddings, clusters);
+
             return clusters;
         }
 
@@ -2002,6 +2005,57 @@ namespace tagmane
         {
             return (float)Math.Sqrt(a.Zip(b, (x, y) => (x - y) * (x - y)).Sum());
         }
+
+        private void VisualizeClusteringResult(float[][] reducedEmbeddings, int[] clusters)
+        {
+            int width = 400;
+            int height = 400;
+            var bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgr32, null);
+
+            // 正規化関数
+            float Normalize(float value, float min, float max) => (value - min) / (max - min);
+
+            // x座標とy座標の最小値と最大値を取得
+            float minX = reducedEmbeddings.Min(e => e[0]);
+            float maxX = reducedEmbeddings.Max(e => e[0]);
+            float minY = reducedEmbeddings.Min(e => e[1]);
+            float maxY = reducedEmbeddings.Max(e => e[1]);
+
+            // クラスターごとの色を生成
+            var random = new Random(42);
+            var clusterColors = Enumerable.Range(0, clusters.Max() + 1)
+                .Select(_ => Color.FromRgb((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256)))
+                .ToArray();
+
+            bitmap.Lock();
+
+            for (int i = 0; i < reducedEmbeddings.Length; i++)
+            {
+                int x = (int)(Normalize(reducedEmbeddings[i][0], minX, maxX) * (width - 1));
+                int y = (int)(Normalize(reducedEmbeddings[i][1], minY, maxY) * (height - 1));
+                Color color = clusterColors[clusters[i]];
+
+                // 点を描画（5x5ピクセルの正方形）
+                for (int dx = -2; dx <= 2; dx++)
+                {
+                    for (int dy = -2; dy <= 2; dy++)
+                    {
+                        int px = x + dx;
+                        int py = y + dy;
+                        if (px >= 0 && px < width && py >= 0 && py < height)
+                        {
+                            int colorData = (color.R << 16) | (color.G << 8) | color.B;
+                            bitmap.WritePixels(new Int32Rect(px, py, 1, 1), new[] { colorData }, 4, 0);
+                        }
+                    }
+                }
+            }
+
+            bitmap.Unlock();
+
+            ClusteringVisualizationImage.Source = bitmap;
+        }
+
         private void ApplyClusterFiltering(int[] clusters)
         {
             var selectedImage = ImageListBox.SelectedItem as ImageInfo;
