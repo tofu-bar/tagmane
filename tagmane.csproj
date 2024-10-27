@@ -122,6 +122,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.18.1" />
+    <PackageReference Include="UMAP" Version="1.0.34015" />
     <PackageReference Include="WindowsAPICodePackShell" Version="8.0.6" />
   </ItemGroup>
 

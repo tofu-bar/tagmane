@@ -21,6 +21,7 @@ using System.Text.Json.Serialization;
 using Path = System.IO.Path;
 using System.Text.RegularExpressions;
 using System.Diagnostics;
+using UMAP;
 
 namespace tagmane
 {
@@ -1895,7 +1896,7 @@ namespace tagmane
                 var (features, styleEmbeddings, contentEmbeddings) = await ExtractFeatures(_imageInfos, _csdModel);
 
                 // クラスタリングの実行
-                var clusters = PerformClustering(features);
+                var clusters = PerformClustering(styleEmbeddings);
                 // --- 未実装 --- //
 
                 // クラスタリング結果に基づくフィルタリング
@@ -1937,28 +1938,147 @@ namespace tagmane
             return (features.ToArray(), styleEmbeddings.ToArray(), contentEmbeddings.ToArray());
         }
 
-        private int[] PerformClustering(float[][] features)
+        
+
+        private int[] PerformClustering(float[][] embeddings)
         {
-            // --- 未実装 ---　//
-            // UMAPを使ってクラスタリングする予定
+            // UMAPの設定
+            // var umap = new Umap(dimensions: 2, numberOfNeighbors: 15, random: new Random(42));
+            var umap = new Umap();
 
+            // UMAPの実行
+            var numberOfEpochs = umap.InitializeFit(embeddings);
+            for (var i = 0; i < numberOfEpochs; i++)
+            {
+                umap.Step();
+            }
 
-            // k-meansクラスタリングの実装
-            // ここでは簡単のため、ランダムにクラスタを割り当てています
-            var random = new Random();
-            return features.Select(_ => random.Next(5)).ToArray();
+            // 2次元に縮小された埋め込みを取得
+            var reducedEmbeddings = umap.GetEmbedding();
+
+            // k-meansクラスタリングの実行
+            int k = (int)Math.Sqrt(embeddings.Length / 2); // クラスター数の決定（ここでは簡単な方法を使用）
+            var clusters = PerformKMeansClustering(reducedEmbeddings, k);
+
+            return clusters;
         }
 
+        private int[] PerformKMeansClustering(float[][] data, int k)
+        {
+            // k-meansクラスタリングの実装
+            // この実装は簡略化されています。実際のプロジェクトではより堅牢な実装を使用することをお勧めします。
+            var random = new Random(42);
+            var centroids = data.OrderBy(x => random.Next()).Take(k).ToArray();
+            var clusters = new int[data.Length];
+
+            for (int iter = 0; iter < 100; iter++)
+            {
+                // 各点を最も近いセントロイドに割り当て
+                for (int i = 0; i < data.Length; i++)
+                {
+                    clusters[i] = Enumerable.Range(0, k)
+                        .MinBy(j => Distance(data[i], centroids[j]));
+                }
+
+                // セントロイドを更新
+                for (int j = 0; j < k; j++)
+                {
+                    var clusterPoints = data.Where((_, i) => clusters[i] == j).ToArray();
+                    if (clusterPoints.Any())
+                    {
+                        centroids[j] = clusterPoints.Aggregate(
+                            (a, b) => a.Zip(b, (x, y) => x + y).ToArray()
+                        ).Select(sum => sum / clusterPoints.Length).ToArray();
+                    }
+                }
+            }
+
+            AddMainLogEntry($"k-meansクラスタリングが完了しました。クラスタ数: {k}");
+
+            return clusters;
+        }
+
+        private float Distance(float[] a, float[] b)
+        {
+            return (float)Math.Sqrt(a.Zip(b, (x, y) => (x - y) * (x - y)).Sum());
+        }
         private void ApplyClusterFiltering(int[] clusters)
         {
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage == null)
+            {
+                AddMainLogEntry("選択された画像がありません。");
+                return;
+            }
+
+            var selectedIndex = _imageInfos.IndexOf(selectedImage);
+            var selectedCluster = clusters[selectedIndex];
+
+            // 選択されたクラスターに属する画像のインデックスを保存
+            var filteredImageIndices = new List<int>();
+            for (int i = 0; i < _imageInfos.Count; i++)
+            {
+                if (clusters[i] == selectedCluster)
+                {
+                    filteredImageIndices.Add(i);
+                }
+            }
+
+            AddMainLogEntry($"選択されたクラスターに属する画像の数: {filteredImageIndices.Count}");
+
             _currentFilterMode = FilterMode.Cluster;
-            _clusterAssignments = clusters;
-            
+            _clusterAssignments = clusters; // 必要？
+
+            AddDebugLogEntry($"_clusterAssignments: {string.Join(", ", _clusterAssignments)}");
+
+            // _imageInfosをfilteredImageIndicesにフィルター
+            _imageInfos = filteredImageIndices.Select(index => _imageInfos[index]).ToList();
+
+            // UIを更新
             UpdateImageList();
             UpdateAllTags();
             UpdateFilteredTagsListBox();
             UpdateFilterButton();
         }
+
+        // private void ApplyClusterFiltering(int[] clusters)
+        // {
+        //     // 選択されている画像のクラスターを特定
+        //     var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+        //     if (selectedImage == null)
+        //     {
+        //         AddMainLogEntry("選択された画像がありません。");
+        //         return;
+        //     }
+
+        //     var selectedCluster = clusters[_imageInfos.IndexOf(selectedImage)];
+
+        //     // 選択されたクラスターに属する画像のみをフィルタリング
+        //     for (int i = 0; i < _imageInfos.Count; i++)
+        //     {
+        //         _imageInfos[i].IsFiltered = (clusters[i] != selectedCluster);
+        //     }
+
+        //     _currentFilterMode = FilterMode.Cluster;
+        //     _clusterAssignments = clusters;
+
+        //     // UIを更新
+        //     UpdateImageList();
+        //     UpdateAllTags();
+        //     UpdateFilteredTagsListBox();
+        //     UpdateFilterButton();
+        // }
+
+        // private void ApplyClusterFiltering(int[] clusters)
+        // {
+        //     _currentFilterMode = FilterMode.Cluster;
+        //     _clusterAssignments = clusters;
+            
+        //     UpdateImageList();
+        //     UpdateAllTags();
+        //     UpdateFilteredTagsListBox();
+        //     UpdateFilterButton();
+        // }
 
         // // 既存のFilterImageButton_Clickメソッドを拡張
         // private void FilterImageButton_Click(object sender, RoutedEventArgs e)
