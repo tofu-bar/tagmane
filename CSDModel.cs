@@ -165,12 +165,12 @@ namespace tagmane
         
         public async Task<Dictionary<string, float[]>> ExtractFeature(BitmapImage image)
         {
-            AddLogEntry("特徴量抽出を開始します");
+            // AddLogEntry("特徴量抽出を開始します");
             var inputTensor = PreprocessImage(image);
             
             var inputMetadata = _session.InputMetadata;
             var inputName = inputMetadata.Keys.FirstOrDefault() ?? throw new InvalidOperationException("モデルの入力名が見つかりません");
-            AddLogEntry($"モデルの入力名: {inputName}");
+            // AddLogEntry($"モデルの入力名: {inputName}");
 
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(inputName, inputTensor) };
 
@@ -178,33 +178,33 @@ namespace tagmane
             {
                 using (var outputs = await Task.Run(() => _session.Run(inputs)))
                 {
-                    AddLogEntry($"出力の数: {outputs.Count}");
+                    // AddLogEntry($"出力の数: {outputs.Count}");
                     var result = new Dictionary<string, float[]>();
 
                     foreach (var output in outputs)
                     {
-                        AddLogEntry($"出力名: {output.Name}, 型: {output.GetType().Name}");
+                        // AddLogEntry($"出力名: {output.Name}, 型: {output.GetType().Name}");
                         if (output.Value is DenseTensor<float> floatTensor)
                         {
                             var array = floatTensor.ToArray();
                             result[output.Name] = array;
-                            AddLogEntry($"{output.Name} の長さ: {array.Length}");
-                            AddLogEntry($"{output.Name} の最初の10要素: {string.Join(", ", array.Take(10))}");
+                            // AddLogEntry($"{output.Name} の長さ: {array.Length}");
+                            // AddLogEntry($"{output.Name} の最初の10要素: {string.Join(", ", array.Take(10))}");
                         }
                         else if (output.Value is DenseTensor<Float16> float16Tensor)
                         {
                             var array = float16Tensor.ToArray().Select(f => (float)f).ToArray();
                             result[output.Name] = array;
-                            AddLogEntry($"{output.Name} の長さ: {array.Length}");
-                            AddLogEntry($"{output.Name} の最初の10要素: {string.Join(", ", array.Take(10))}");
+                            // AddLogEntry($"{output.Name} の長さ: {array.Length}");
+                            // AddLogEntry($"{output.Name} の最初の10要素: {string.Join(", ", array.Take(10))}");
                         }
                         else
                         {
-                            AddLogEntry($"未対応の出力型: {output.Name} ({output.Value?.GetType().Name ?? "null"})");
+                            // AddLogEntry($"未対応の出力型: {output.Name} ({output.Value?.GetType().Name ?? "null"})");
                         }
                     }
 
-                    AddLogEntry("特徴量抽出が完了しました");
+                    // AddLogEntry("特徴量抽出が完了しました");
                     // 出力名は features, style_output, content_outputの3つ
                     return result;
                 }

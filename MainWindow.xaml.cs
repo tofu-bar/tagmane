@@ -1863,7 +1863,7 @@ namespace tagmane
 
         private async Task InitializeCSDModel()
         {
-            _csdModel = await CSDModel.LoadModel();
+            _csdModel = await CSDModel.LoadModel(UseGPUCheckBox.IsChecked ?? false);
             _csdModel.LogUpdated += (sender, message) =>
             {
                 Application.Current.Dispatcher.Invoke(() =>
@@ -1916,6 +1916,17 @@ namespace tagmane
             var styleEmbeddings = new List<float[]>();
             var contentEmbeddings = new List<float[]>();
 
+            var totalImages = images.Count;
+            var processedImages = 0;
+            var lastUpdateTime = DateTime.Now;
+
+            Stopwatch stopwatch = new Stopwatch();
+            stopwatch.Start();
+
+            int totalProcessed = 0;
+
+            AddMainLogEntry($"特徴量抽出を開始します。");
+
             foreach (var image in images)
             {
                 var bitmapImage = new BitmapImage(new Uri(image.ImagePath));
@@ -1933,12 +1944,110 @@ namespace tagmane
                 {
                     AddMainLogEntry($"画像 '{image.ImagePath}' の特徴量抽出に失敗しました。");
                 }
+
+                Interlocked.Increment(ref processedImages);
+
+                if (stopwatch.ElapsedMilliseconds >= 1000)
+                {
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        ProgressBar.Value = (double)processedImages / totalImages * 100;
+                    });
+                    lastUpdateTime = DateTime.Now;
+
+                    // リセット
+                    stopwatch.Restart();
+                    totalProcessed = 0;
+                }
+
+                totalProcessed++;
+            }
+
+            stopwatch.Stop();
+
+            // 最後の測定結果を表示（1秒未満の場合）
+            if (totalProcessed > 0)
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    ProgressBar.Value = (double)processedImages / totalImages * 100;
+                });
             }
 
             return (features.ToArray(), styleEmbeddings.ToArray(), contentEmbeddings.ToArray());
-        }
+        } 
 
-        
+        // private async Task<(float[][] features, float[][] styleEmbeddings, float[][] contentEmbeddings)> ExtractFeatures(List<ImageInfo> images, CSDModel model)
+        // {
+        //     var features = new List<float[]>();
+        //     var styleEmbeddings = new List<float[]>();
+        //     var contentEmbeddings = new List<float[]>();
+
+        //     var batchSize = (int)BatchCountSlider.Value; // バッチサイズを設定
+        //     var totalImages = images.Count;
+        //     var processedImages = 0;
+        //     var lastUpdateTime = DateTime.Now;
+
+        //     Stopwatch stopwatch = new Stopwatch();
+        //     stopwatch.Start();
+
+        //     int totalProcessed = 0;
+
+        //     for (int i = 0; i < images.Count; i += batchSize)
+        //     {
+        //         var batch = images.Skip(i).Take(batchSize).ToList();
+        //         var batchTasks = batch.Select(async image =>
+        //         {
+        //             var bitmapImage = new BitmapImage(new Uri(image.ImagePath));
+        //             var featureDict = await model.ExtractFeature(bitmapImage);
+
+        //             if (featureDict.TryGetValue("features", out var feature) &&
+        //                 featureDict.TryGetValue("style_output", out var styleEmbedding) &&
+        //                 featureDict.TryGetValue("content_output", out var contentEmbedding))
+        //             {
+        //                 features.Add(feature);
+        //                 styleEmbeddings.Add(styleEmbedding);
+        //                 contentEmbeddings.Add(contentEmbedding);
+        //             }
+        //             else
+        //             {
+        //                 AddMainLogEntry($"画像 '{image.ImagePath}' の特徴量抽出に失敗しました。");
+        //             }
+
+        //             Interlocked.Increment(ref processedImages);
+        //         });
+
+        //         if (stopwatch.ElapsedMilliseconds >= 1000)
+        //         {
+        //             Application.Current.Dispatcher.Invoke(() =>
+        //             {
+        //                 ProgressBar.Value = (double)processedImages / totalImages * 100;
+        //             });
+        //             lastUpdateTime = DateTime.Now;
+
+        //             // リセット
+        //             stopwatch.Restart();
+        //             totalProcessed = 0;
+        //         }
+
+        //         totalProcessed += Math.Min(batchSize, images.Count - i);
+
+        //         await Task.WhenAll(batchTasks);
+        //     }
+
+        //     stopwatch.Stop();
+
+        //     // 最後の測定結果を表示（1秒未満の場合）
+        //     if (totalProcessed > 0)
+        //     {
+        //         Application.Current.Dispatcher.Invoke(() =>
+        //         {
+        //             ProgressBar.Value = (double)processedImages / totalImages * 100;
+        //         });
+        //     }
+
+        //     return (features.ToArray(), styleEmbeddings.ToArray(), contentEmbeddings.ToArray());
+        // } 
 
         private int[] PerformClustering(float[][] embeddings)
         {
@@ -2621,7 +2730,7 @@ namespace tagmane
 
             if (_isInitializeSuccess)
             {
-                LoadVLMModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked == true);
+                LoadVLMModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false);
             }
         }
 
