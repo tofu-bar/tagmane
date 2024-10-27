@@ -199,6 +199,7 @@ namespace tagmane
                 _defaultTagCategories = new Dictionary<string, TagCategory>();
                 _customTagCategories = new Dictionary<string, TagCategory>();
                 _tagCategoryNames = new ObservableCollection<CategoryItem>();
+                _userAddedTagCategories = new Dictionary<string, TagCategory>();
                 TagCategoryListView.ItemsSource = _tagCategoryNames;
 
                 _prefixOrder = new List<string>();
@@ -605,6 +606,8 @@ namespace tagmane
 
                 _originalImageInfos = _fileExplorer.GetImageInfos(dialog.FileName);
                 _imageInfos = _originalImageInfos;
+
+                _userAddedTagCategories = null;
                 
                 // Undo/Redoスタックをクリア
                 _undoStack.Clear();
@@ -615,6 +618,7 @@ namespace tagmane
                 AddMainLogEntry($"{_imageInfos.Count}個の画像が見つかりました。");
                 AddMainLogEntry($"フォルダを選択しました: {dialog.FileName}");
                 AddMainLogEntry("Undo/Redoスタックをクリアしました。");
+                AddMainLogEntry("UserAddedカテゴリをクリアしました。");
             }
         }
 
@@ -1792,6 +1796,7 @@ namespace tagmane
                             if (!string.IsNullOrWhiteSpace(processedTag) && !image.Tags.Contains(processedTag))
                             {
                                 tagsToAdd.Add(processedTag);
+                                AddTagToUserAddedCategory(processedTag);
                             }
                         }
                     }
@@ -2706,14 +2711,21 @@ namespace tagmane
         {
             const string userAddedCategoryName = "UserAdded";
 
-            // 新しいタグが他のカテゴリに属しているか確認
-            foreach (var category in _tagCategories)
+            // 既存のカテゴリをオーバーライドするかどうかを確認
+            bool overrideExistingCategories = OverrideExistingCategoriesCheckBox.IsChecked ?? false;
+
+            // オーバーライドしない場合のみ、既存のカテゴリをチェック
+            if (!overrideExistingCategories)
             {
-                if (category.Value?.Tags != null && category.Value.Tags.ContainsKey(newTag))
+                // 新しいタグが他のカテゴリに属しているか確認
+                foreach (var category in _tagCategories)
                 {
-                    // 既知のカテゴリのカウントを増やす
-                    category.Value.Tags[newTag]++;
-                    return;
+                    if (category.Value?.Tags != null && category.Value.Tags.ContainsKey(newTag))
+                    {
+                        // 既知のカテゴリのカウントを増やす
+                        category.Value.Tags[newTag]++;
+                        return;
+                    }
                 }
             }
 
@@ -2733,7 +2745,16 @@ namespace tagmane
                 _userAddedTagCategories[userAddedCategoryName].Tags = new Dictionary<string, int>();
             }
 
-            _userAddedTagCategories[userAddedCategoryName].Tags[newTag] = 1;
+            // タグをUserAddedカテゴリに追加または更新
+            if (_userAddedTagCategories[userAddedCategoryName].Tags.ContainsKey(newTag))
+            {
+                _userAddedTagCategories[userAddedCategoryName].Tags[newTag]++;
+                AddMainLogEntry($"タグ '{newTag}' をUserAddedカテゴリに追加しました。");
+            }
+            else
+            {
+                _userAddedTagCategories[userAddedCategoryName].Tags[newTag] = 1;
+            }
 
             UpdateTagCategories();
         }
@@ -2805,6 +2826,17 @@ namespace tagmane
 
         private string GetTagCategory(string tag)
         {
+            if (_userAddedTagCategories != null)
+            {
+                foreach (var category in _userAddedTagCategories)
+                {
+                    if (category.Value.Tags.ContainsKey(tag))
+                    {
+                        return category.Key;
+                    }
+                }
+            }
+
             if (_useCustomCategories)
             {
                 foreach (var category in _customTagCategories)
@@ -2821,17 +2853,6 @@ namespace tagmane
                 if (category.Value.Tags.ContainsKey(tag))
                 {
                     return category.Key;
-                }
-            }
-
-            if (_userAddedTagCategories != null)
-            {
-                foreach (var category in _userAddedTagCategories)
-                {
-                    if (category.Value.Tags.ContainsKey(tag))
-                    {
-                        return category.Key;
-                    }
                 }
             }
 
