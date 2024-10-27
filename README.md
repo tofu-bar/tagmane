@@ -1,4 +1,4 @@
-# Tagmane (ver 1.0.1)
+# Tagmane
 
 ![Tagmane Cover](asset/cover.png)
 

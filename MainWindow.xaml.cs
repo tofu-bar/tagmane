@@ -29,7 +29,7 @@ namespace tagmane
     /// </summary>
     public partial class MainWindow : Window
     {
-        private string _currentVersion = "1.0.2";
+        private string _currentVersion = "1.0.3";
 
         private bool _isInitializeSuccess = false;
         private FileExplorer _fileExplorer;
@@ -139,7 +139,7 @@ namespace tagmane
 
         public ObservableCollection<string> Tags { get; set; }    
         private FilterMode _currentFilterMode = FilterMode.Off;
-        private enum FilterMode { Off, And, Or }
+        private enum FilterMode { Off, And, Or, Cluster }
 
         private string _webpDllPath;
         private WebPHandler _webPHandler;
@@ -159,6 +159,8 @@ namespace tagmane
         }
 
         private string _processingSpeed = "";
+
+        private int[] _clusterAssignments;
 
         public MainWindow()
         {
@@ -1540,22 +1542,27 @@ namespace tagmane
                 AddMainLogEntry("画像が読み込まれていません。");
                 return;
             }
-            _currentFilterMode = (FilterMode)(((int)_currentFilterMode + 1) % 3);
+            
             switch (_currentFilterMode)
             {
                 case FilterMode.Off:
-                    _filterTags = new HashSet<string>();
-                    _imageInfos = _originalImageInfos;
-                    break;
-                case FilterMode.And:
+                    _currentFilterMode = FilterMode.And;
                     _filterTags = _selectedTags;
                     _imageInfos = _originalImageInfos.Where(image => _filterTags.All(tag => image.Tags.Contains(tag))).ToList();
                     break;
-                case FilterMode.Or:
+                case FilterMode.And:
+                    _currentFilterMode = FilterMode.Or;
                     _filterTags = _selectedTags;
                     _imageInfos = _originalImageInfos.Where(image => image.Tags.Any(tag => _filterTags.Contains(tag))).ToList();
                     break;
+                case FilterMode.Or:
+                case FilterMode.Cluster:
+                    _currentFilterMode = FilterMode.Off;
+                    _filterTags = new HashSet<string>();
+                    _imageInfos = _originalImageInfos;
+                    break;
             }
+            
             UpdateImageList();
             UpdateAllTags();
             UpdateFilteredTagsListBox();
@@ -1578,6 +1585,10 @@ namespace tagmane
                 case FilterMode.Or:
                     filterButton.Content = new Image { Source = new BitmapImage(new Uri("/icon/or.png", UriKind.Relative)), Width = 32, Height = 32 };
                     filterButton.ToolTip = "フィルタリング: OR";
+                    break;
+                case FilterMode.Cluster:
+                    filterButton.Content = new Image { Source = new BitmapImage(new Uri("/icon/csd.png", UriKind.Relative)), Width = 32, Height = 32 };
+                    filterButton.ToolTip = "フィルタリング: CSDクラスタリング";
                     break;
             }
         }
@@ -1846,6 +1857,130 @@ namespace tagmane
                 AddMainLogEntry("追加するタグが見つかりませんでした。");
             }
         }
+
+        private CSDModel _csdModel;
+
+        private async Task InitializeCSDModel()
+        {
+            _csdModel = await CSDModel.LoadModel();
+            _csdModel.LogUpdated += (sender, message) =>
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    // ここでUIのログ表示を更新
+                    AddMainLogEntry(message);
+                });
+            };
+        }
+
+        private async void CSDClusteringButton_Click(object sender, RoutedEventArgs e)
+        {
+            AddDebugLogEntry("CSDClusteringButton_Click");
+
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("クラスタリングを行う画像がありません。");
+                return;
+            }
+
+            try
+            {
+                // CSDモデルのロード
+                if (_csdModel == null)
+                {
+                    await InitializeCSDModel();
+                }
+
+                // 画像の特徴量抽出
+                var (features, styleEmbeddings, contentEmbeddings) = await ExtractFeatures(_imageInfos, _csdModel);
+
+                // クラスタリングの実行
+                var clusters = PerformClustering(features);
+                // --- 未実装 --- //
+
+                // クラスタリング結果に基づくフィルタリング
+                ApplyClusterFiltering(clusters);
+
+                AddMainLogEntry("CSDクラスタリングが完了しました。");
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"CSDクラスタリング中にエラーが発生しました: {ex.Message}");
+            }
+        }
+
+        private async Task<(float[][] features, float[][] styleEmbeddings, float[][] contentEmbeddings)> ExtractFeatures(List<ImageInfo> images, CSDModel model)
+        {
+            var features = new List<float[]>();
+            var styleEmbeddings = new List<float[]>();
+            var contentEmbeddings = new List<float[]>();
+
+            foreach (var image in images)
+            {
+                var bitmapImage = new BitmapImage(new Uri(image.ImagePath));
+                var featureDict = await model.ExtractFeature(bitmapImage);
+
+                if (featureDict.TryGetValue("features", out var feature) &&
+                    featureDict.TryGetValue("style_output", out var styleEmbedding) &&
+                    featureDict.TryGetValue("content_output", out var contentEmbedding))
+                {
+                    features.Add(feature);
+                    styleEmbeddings.Add(styleEmbedding);
+                    contentEmbeddings.Add(contentEmbedding);
+                }
+                else
+                {
+                    AddMainLogEntry($"画像 '{image.ImagePath}' の特徴量抽出に失敗しました。");
+                }
+            }
+
+            return (features.ToArray(), styleEmbeddings.ToArray(), contentEmbeddings.ToArray());
+        }
+
+        private int[] PerformClustering(float[][] features)
+        {
+            // --- 未実装 ---　//
+            // UMAPを使ってクラスタリングする予定
+
+
+            // k-meansクラスタリングの実装
+            // ここでは簡単のため、ランダムにクラスタを割り当てています
+            var random = new Random();
+            return features.Select(_ => random.Next(5)).ToArray();
+        }
+
+        private void ApplyClusterFiltering(int[] clusters)
+        {
+            _currentFilterMode = FilterMode.Cluster;
+            _clusterAssignments = clusters;
+            
+            UpdateImageList();
+            UpdateAllTags();
+            UpdateFilteredTagsListBox();
+            UpdateFilterButton();
+        }
+
+        // // 既存のFilterImageButton_Clickメソッドを拡張
+        // private void FilterImageButton_Click(object sender, RoutedEventArgs e)
+        // {
+        //     // ... 既存のコード ...
+            
+        //     switch (_currentFilterMode)
+        //     {
+        //         // ... 既存のケース ...
+        //         case FilterMode.Cluster:
+        //             if (_clusterAssignments != null)
+        //             {
+        //                 var selectedCluster = GetSelectedCluster(); // UIから選択されたクラスタを取得
+        //                 _imageInfos = _originalImageInfos
+        //                     .Where((image, index) => _clusterAssignments[index] == selectedCluster)
+        //                     .ToList();
+        //             }
+        //             break;
+        //     }
+            
+        //     // ... 既存のコード ...
+        // }
 
         // 右ペイン3: ユーザー入力タグの追加
         private void AddTextboxinputButton_Click(object sender, RoutedEventArgs e)
