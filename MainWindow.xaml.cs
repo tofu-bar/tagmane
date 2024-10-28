@@ -1884,6 +1884,13 @@ namespace tagmane
                 return;
             }
 
+            if (_isAsyncProcessing)
+            {
+                AddMainLogEntry("前の処理が完了するまで待機しています。");
+                return;
+            }
+            _isAsyncProcessing = true;
+
             try
             {
                 // CSDモデルのロード
@@ -1909,7 +1916,7 @@ namespace tagmane
             finally
             {
                 _csdModel.Dispose();
-
+                _isAsyncProcessing = false;
                 AddMainLogEntry("CSDクラスタリングが完了しました。");
             }
         }
@@ -1955,9 +1962,12 @@ namespace tagmane
                 {
                     Application.Current.Dispatcher.Invoke(() =>
                     {
-                        ProgressBar.Value = (double)processedImages / totalImages * 100;
+                        UpdateProgressBar((double)processedImages / totalImages);
                     });
                     lastUpdateTime = DateTime.Now;
+
+                    double imagesPerSecond = totalProcessed / (stopwatch.ElapsedMilliseconds / 1000.0);
+                    ProcessingSpeed = $"{imagesPerSecond:F2} 画像/秒";
 
                     // リセット
                     stopwatch.Restart();
@@ -1974,8 +1984,11 @@ namespace tagmane
             {
                 Application.Current.Dispatcher.Invoke(() =>
                 {
-                    ProgressBar.Value = (double)processedImages / totalImages * 100;
+                    UpdateProgressBar((double)processedImages / totalImages);
                 });
+
+                double imagesPerSecond = totalProcessed / (stopwatch.ElapsedMilliseconds / 1000.0);
+                ProcessingSpeed = $"{imagesPerSecond:F2} 画像/秒";
             }
 
             return (features.ToArray(), styleEmbeddings.ToArray(), contentEmbeddings.ToArray());
@@ -2789,6 +2802,10 @@ namespace tagmane
         // VLM推論を実行するボタンのクリックイベントハンドラ
         private async void VLMPredictButton_Click(object sender, RoutedEventArgs e)
         {
+            if (_selectedImage == null) { return; }
+            if (_isAsyncProcessing) { return; }
+            _isAsyncProcessing = true;
+            
             try
             {
                 // ボタンを無効化して、処理中であることを示す
@@ -2873,9 +2890,6 @@ namespace tagmane
         // すべての画像にVLM推論でタグを追加するメソッド
         private async void VLMPredictAllButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_isAsyncProcessing) { return; }
-            _isAsyncProcessing = true;
-
             if (_imageInfos == null || _imageInfos.Count == 0)
             {
                 AddMainLogEntry("対象画像がありません。");
@@ -2892,6 +2906,8 @@ namespace tagmane
                     return;
                 }
             }
+            if (_isAsyncProcessing) { return; }
+            _isAsyncProcessing = true;
             try
             {
                 // ボタンを無効化して、処理中であることを示す

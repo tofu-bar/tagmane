@@ -13,6 +13,7 @@
     <None Remove="icon\addm.png" />
     <None Remove="icon\and.png" />
     <None Remove="icon\cancel.png" />
+    <None Remove="icon\csd.png" />
     <None Remove="icon\deselect.png" />
     <None Remove="icon\down.png" />
     <None Remove="icon\erasem.png" />
@@ -45,6 +46,9 @@
   <ItemGroup>
     <Resource Include="icon\addfname.png" />
     <Resource Include="icon\cancel.png" />
+    <Resource Include="icon\csd.png">
+      <CopyToOutputDirectory></CopyToOutputDirectory>
+    </Resource>
     <Resource Include="icon\down.png" />
     <Resource Include="icon\filter.png" />
     <Resource Include="icon\florence.png" />
