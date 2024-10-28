@@ -1,17 +1,8 @@
-using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.IO;
-using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
-using System.Windows;
 using System.Windows.Media.Imaging;
-using System.Security.Cryptography;
-using System.Drawing;
-using System.Drawing.Imaging;
 
 namespace tagmane
 {
@@ -62,9 +53,34 @@ namespace tagmane
             }
 
             if (_currentPredictor is WDPredictor wdPredictor)
-                return wdPredictor.Predict(image, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled);
+                return wdPredictor.Predict(PrepareTensor(image)!, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled);
             else if (_currentPredictor is JoyPredictor joyPredictor)
-                return joyPredictor.Predict(image, generalThresh);
+                return joyPredictor.Predict(PrepareTensor(image)!, generalThresh);
+            else
+                throw new InvalidOperationException("No predictor loaded");
+        }
+
+        public DenseTensor<float>? PrepareTensor(BitmapImage image)
+        {
+            if (_currentPredictor is WDPredictor wdPredictor)
+                return wdPredictor.PrepareTensor(image);
+            else if (_currentPredictor is JoyPredictor joyPredictor)
+                return joyPredictor.PrepareTensor(image);
+            else
+                throw new InvalidOperationException("No predictor loaded");
+        }
+
+        public (string, Dictionary<string, float>, Dictionary<string, float>, Dictionary<string, float>) Predict(
+            DenseTensor<float> tensor, 
+            float generalThresh,
+            bool generalMcutEnabled,
+            float characterThresh,
+            bool characterMcutEnabled)
+        {
+            if (_currentPredictor is WDPredictor wdPredictor)
+                return wdPredictor.Predict(tensor, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled);
+            else if (_currentPredictor is JoyPredictor joyPredictor)
+                return joyPredictor.Predict(tensor, generalThresh);
             else
                 throw new InvalidOperationException("No predictor loaded");
         }

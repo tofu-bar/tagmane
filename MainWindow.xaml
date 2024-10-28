@@ -145,10 +145,10 @@
                         <CheckBox x:Name="UseGPUCheckBox" Content="GPUを使用して推論する" IsChecked="True" Checked="UseGPUCheckBox_Checked" Unchecked="UseGPUCheckBox_Checked"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,5">
-                        <TextBlock Text="Batch Count:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                        <Slider x:Name="BatchCountSlider" Width="150" Minimum="1" Maximum="256" Value="4" 
+                        <TextBlock Text="VLM Concurrency:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                        <Slider x:Name="VLMConcurrencySlider" Width="100" Minimum="1" Maximum="64" Value="14" 
                                 TickFrequency="1" IsSnapToTickEnabled="True"/>
-                        <TextBlock x:Name="BatchCountValue" Text="{Binding ElementName=BatchCountSlider, Path=Value, StringFormat={}{0:F0}}" 
+                        <TextBlock x:Name="VLMConcurrencyValue" Text="{Binding ElementName=VLMConcurrencySlider, Path=Value, StringFormat={}{0:F0}}" 
                                    VerticalAlignment="Center" Margin="5,0,0,0"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,5">

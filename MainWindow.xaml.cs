@@ -2,17 +2,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Threading;
@@ -22,6 +17,9 @@ using Path = System.IO.Path;
 using System.Text.RegularExpressions;
 using System.Diagnostics;
 using UMAP;
+using R3;
+using System.Collections.Concurrent;
+using Microsoft.ML.OnnxRuntime.Tensors;
 
 namespace tagmane
 {
@@ -31,6 +29,14 @@ namespace tagmane
     public partial class MainWindow : Window
     {
         private string _currentVersion = "1.0.3";
+        private CancellationTokenSource _logCancellationTokenSource;
+        private RingBuffer<string> _logQueue = new RingBuffer<string>(20);
+        private RingBuffer<string> _debugLogQueue = new RingBuffer<string>(20);
+        private RingBuffer<string> _uiErrorLogQueue = new RingBuffer<string>(20);
+        private RingBuffer<string> _vlmLogQueue = new RingBuffer<string>(20);
+        private RingBuffer<string> _vlmErrorLogQueue = new RingBuffer<string>(20);
+        private int _logUpdateIntervalMs = 500;
+        private int _vlmUpdateIntervalMs = 1000;
 
         private bool _isInitializeSuccess = false;
         private FileExplorer _fileExplorer;
@@ -47,8 +53,6 @@ namespace tagmane
         private Stack<ITagAction> _undoStack = new Stack<ITagAction>();
         private Stack<ITagAction> _redoStack = new Stack<ITagAction>();
 
-        private ObservableCollection<string> _debugLogEntries;
-        private ObservableCollection<string> _logEntries;
         private ObservableCollection<ActionLogItem> _actionLogItems;
         private const int MaxLogEntries = 20; // 100から20に変更
 
@@ -162,6 +166,9 @@ namespace tagmane
         private string _processingSpeed = "";
 
         private int[] _clusterAssignments;
+        private int _loadImgProcessedImagesCount;
+        private int _predictProcessedImagesCount;
+        private int _totalProcessedImagesCount;
 
         public MainWindow()
         {
@@ -179,8 +186,6 @@ namespace tagmane
 
                 _fileExplorer = new FileExplorer();
                 _allTags = new Dictionary<string, int>();
-                _logEntries = new ObservableCollection<string>();
-                _debugLogEntries = new ObservableCollection<string>();
                 _actionLogItems = new ObservableCollection<ActionLogItem>();
                 ActionListView.ItemsSource = _actionLogItems;
                 
@@ -211,6 +216,8 @@ namespace tagmane
                 LoadTagCategories();
 
                 _isInitializeSuccess = true;
+
+                StartLogProcessing(); // ログ処理を開始
             }
             catch (Exception ex)
             {
@@ -402,6 +409,7 @@ namespace tagmane
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
             SaveSettings();
+            _logCancellationTokenSource.Cancel(); // ログ処理を停止
             base.OnClosing(e);
         }
 
@@ -419,7 +427,8 @@ namespace tagmane
                 {
                     var bitmap = new BitmapImage();
                     bitmap.BeginInit();
-                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    // ロード時にはキャッシュせず(OnDemand)、すぐに処理を開始したほうがメモリ効率がよく、実行速度も速い
+                    // bitmap.CacheOption = BitmapCacheOption.OnLoad; 
                     bitmap.UriSource = new Uri(imagePath);
                     bitmap.EndInit();
                     bitmap.Freeze();
@@ -509,25 +518,55 @@ namespace tagmane
         private void UpdateUIAfterTagsChange()
         {
             if (_allTags == null) { return; }
-            UpdateCurrentTags();
-            UpdateAllTags();
-            UpdateTagListView();
-            UpdateAllTagsListView();
-            UpdateSelectedTagsListBox();
-            UpdateFilteredTagsListBox();
-            UpdateSearchedTagsListView();
-            UpdateButtonStates();
+            // ロックが取れなかった場合は、そのままreturnする。
+            // Taskが並列で動いて更新している場合のみにreturnされるので、
+            // 単一の操作時にはロック取得は何ら影響を与えない。
+            // TODO ここのロックがない場合に、UIが固まることがある。理由の調査
+            if (Monitor.TryEnter(_allTags, 0))
+            {
+                try
+                {
+                    UpdateCurrentTags();
+                    UpdateAllTags();
+                    UpdateTagListView();
+                    UpdateAllTagsListView();
+                    UpdateSelectedTagsListBox();
+                    UpdateFilteredTagsListBox();
+                    UpdateSearchedTagsListView();
+                    UpdateButtonStates();
+                }
+                finally
+                {
+                    Monitor.Exit(_allTags);
+                }
+            } else {
+                _uiErrorLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} ロック失敗 @UpdateUIAfterTagsChange");
+            }
         }
 
         // 選択された画像の更新 (選択が変化したときのみ)
-        private void UpdateUIAfterSelectionChange()
+        private void UpdateUIAfterSelectionChange(bool updateAllTagSelection = true)
         {
             if (_imageInfos == null || _allTags == null) { return; }
-            UpdateCurrentTags();
-            UpdateTagListView();
-            UpdateAllTagsListView();
-            UpdateSelectedTagsListBox();
-            UpdateSearchedTagsListView();
+            
+            // TODO ここのロックがない場合に、UIが固まることがある。理由の調査
+            if (Monitor.TryEnter(_allTags, 0))
+            {
+                try
+                {
+                    UpdateCurrentTags();
+                    UpdateTagListView();
+                    UpdateAllTagsListView(updateTagSelection: updateAllTagSelection);
+                    UpdateSelectedTagsListBox();
+                    UpdateSearchedTagsListView();
+                }
+                finally
+                {
+                    Monitor.Exit(_allTags);
+                }
+            } else {
+                _uiErrorLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} ロック失敗 @UpdateUIAfterSelectionChange");
+            }
         }
 
         // ボタンの状態を更新
@@ -537,33 +576,44 @@ namespace tagmane
             RedoButton.IsEnabled = _redoStack.Count > 0;
         }
 
+        private void StartLogProcessing()
+        {
+            _logCancellationTokenSource = new CancellationTokenSource();
+            Task.Run(async () => {
+                var logObservable = Observable.Interval(TimeSpan.FromMilliseconds(_logUpdateIntervalMs)).ToAsyncEnumerable();
+                await foreach (var _ in logObservable)
+                {
+                    var logEntries = _logQueue.GetRecentItems();
+                    logEntries.Reverse();
+                    Dispatcher.Invoke(() => MainLogTextBox.Text = string.Join(Environment.NewLine, logEntries));
+
+                    // TODO: ログ出力タブを追加
+                    // var uilogEntries = _uiErrorLogQueue.GetRecentItems();
+                    // uilogEntries.Reverse();
+                    // Dispatcher.Invoke(() => MainLogTextBox.Text = string.Join(Environment.NewLine, uilogEntries));
+
+                    var debuglogEntries = _debugLogQueue.GetRecentItems();
+                    debuglogEntries.Reverse();
+                    Dispatcher.Invoke(() => DebugLogTextBox.Text = string.Join(Environment.NewLine, debuglogEntries));
+
+                    var vlmlogEntries = _vlmLogQueue.GetRecentItems();
+                    vlmlogEntries.Reverse();
+                    Dispatcher.Invoke(() => VLMLogTextBox.Text = string.Join(Environment.NewLine, vlmlogEntries));
+
+                    if (_logCancellationTokenSource.IsCancellationRequested) break;
+                }
+            });
+        }
+
         // デバッグログを追加するメソッド
         private void AddDebugLogEntry(string message)
         {
-            if (_debugLogEntries == null) { return; }
-
-            string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
-            _debugLogEntries.Insert(0, logMessage);
-            while (_debugLogEntries.Count > MaxLogEntries)
-            {
-                _debugLogEntries.RemoveAt(_debugLogEntries.Count - 1);
-            }
-            DebugLogTextBox.Text = string.Join(Environment.NewLine, _debugLogEntries);
+            _debugLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} - {message}");
         }
 
-        // ログを追加するメソッド
-        private void AddMainLogEntry(string message)
+        public void AddMainLogEntry(string message)
         {
-            if (_logEntries == null) { return; }
-
-            string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
-            _logEntries.Insert(0, logMessage);
-            while (_logEntries.Count > MaxLogEntries)
-            {
-                _logEntries.RemoveAt(_logEntries.Count - 1);
-            }
-            // TextBoxに直接ログを追加
-            MainLogTextBox.Text = string.Join(Environment.NewLine, _logEntries);
+            _logQueue.Enqueue($"{DateTime.Now:HH:mm:ss} - {message}");
         }
 
         // アクションログを追加するメソッド
@@ -782,10 +832,6 @@ namespace tagmane
             SelectedImage.Source = null;
             AssociatedText.Text = "";
 
-            // ガベージコレクタを強制的に実行してメモリを解放する
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-
             if (ImageListBox.SelectedItem is ImageInfo selectedImage)
             {
                 try
@@ -795,7 +841,8 @@ namespace tagmane
                     AssociatedText.Text = selectedImage.AssociatedText;
                     _currentImageTags = new HashSet<string>(selectedImage.Tags);
                     
-                    UpdateUIAfterSelectionChange();
+                    // タグの更新は不要なのでfalseにして若干UIの更新処理を軽くする
+                    UpdateUIAfterSelectionChange(updateAllTagSelection: false);
                     
                     AddMainLogEntry($"画像を選択しました: {System.IO.Path.GetFileName(selectedImage.ImagePath)}");
                 }
@@ -1117,9 +1164,10 @@ namespace tagmane
 
         // 右ペイン2: 全タグリストの表示、選択、ソート
         // 全タグリストビューの更新
-        private void UpdateAllTagsListView()
+        private void UpdateAllTagsListView(bool updateTagSelection = true)
         {
-            AddDebugLogEntry("UpdateAllTagsListView");
+            AddDebugLogEntry($"UpdateAllTagsListView(updateTagSelection:{updateTagSelection})");
+
             var sortedTags = _allTags
                 .Select(kvp => new
                 {
@@ -1138,13 +1186,16 @@ namespace tagmane
             AllTagsListView.ItemsSource = sortedTags;
 
             // 選択状態を更新
-            AllTagsListView.SelectedItems.Clear();
-            var selectedItems = AllTagsListView.Items.Cast<dynamic>()
-                .Where(item => _selectedTags.Contains(item.Tag))
-                .ToList();
-            foreach (var item in selectedItems)
+            if (updateTagSelection)
             {
-                AllTagsListView.SelectedItems.Add(item);
+                AllTagsListView.SelectedItems.Clear();
+                var selectedItems = AllTagsListView.Items.Cast<dynamic>()
+                    .Where(item => _selectedTags.Contains(item.Tag))
+                    .ToList();
+                foreach (var item in selectedItems)
+                {
+                    AllTagsListView.SelectedItems.Add(item);
+                }
             }
             AllTagsListView.SelectionChanged += AllTagsListView_SelectionChanged;
         }
@@ -1196,20 +1247,14 @@ namespace tagmane
         {
             if (_allTags == null) { _allTags = new Dictionary<string, int>(); }
             _allTags.Clear();
-            foreach (var imageInfo in _imageInfos)
+            _imageInfos.ForEach(imageInfo =>
             {
-                foreach (var tag in imageInfo.Tags)
+                imageInfo.Tags.ForEach(tag =>
                 {
-                    if (_allTags.ContainsKey(tag))
-                    {
-                        _allTags[tag]++;
-                    }
-                    else
-                    {
-                        _allTags[tag] = 1;
-                    }
-                }
-            }
+                    if (tag == null) return; // なぜここで null...? 
+                    _allTags[tag] = _allTags.ContainsKey(tag) ? _allTags[tag] + 1 : 1;
+                });
+            });
         }
 
         // 全画像にタグの追加
@@ -2733,16 +2778,9 @@ namespace tagmane
 
         private void UseGPUCheckBox_Checked(object sender, RoutedEventArgs e)
         {
-            if (BatchCountSlider != null)
+            if (VLMConcurrencySlider != null)
             {
-                if (UseGPUCheckBox.IsChecked == true)
-                {
-                    BatchCountSlider.Value = 4;
-                }
-                else
-                {
-                    BatchCountSlider.Value = 1;
-                }
+                VLMConcurrencySlider.Value = Environment.ProcessorCount - 2;
             }
 
             if (_isInitializeSuccess)
@@ -2751,7 +2789,7 @@ namespace tagmane
             }
         }
 
-        private async void InitializeVLMPredictor()
+        private void InitializeVLMPredictor()
         {
             AddDebugLogEntry("InitializeVLMPredictor");
             _vlmPredictor = new VLMPredictor();
@@ -2889,7 +2927,6 @@ namespace tagmane
             }
         }
 
-        // すべての画像にVLM推論でタグを追加するメソッド
         private async void VLMPredictAllButton_Click(object sender, RoutedEventArgs e)
         {
             if (_imageInfos == null || _imageInfos.Count == 0)
@@ -2915,84 +2952,12 @@ namespace tagmane
                 // ボタンを無効化して、処理中であることを示す
                 VLMPredictAllButton.IsEnabled = false;
 
-                _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false);
-                
-                // キャンセルトークンソースを作成
-                _cts = new CancellationTokenSource();
+                await _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false);
                 
                 AddMainLogEntry("すべての画像に対してVLM推論を開始します");
-
-                var batchSize = (int)BatchCountSlider.Value; // バッチサイズを設定
-                var totalImages = _imageInfos.Count;
-                var processedImages = 0;
-                var lastUpdateTime = DateTime.Now;
-
-                Stopwatch stopwatch = new Stopwatch();
-                stopwatch.Start();
-
-                int totalProcessed = 0;
-
-                for (int i = 0; i < _imageInfos.Count; i += batchSize)
-                {
-                    if (_cts.Token.IsCancellationRequested)
-                        break;
-
-                    var batch = _imageInfos.Skip(i).Take(batchSize).ToList();
-                    var batchTasks = batch.Select(async imageInfo =>
-                    {
-                        try
-                        {
-                            var predictedTags = await PredictVLMTagsAsync(imageInfo, _cts.Token);
-                            var newTags = predictedTags.Except(imageInfo.Tags).ToList();
-                            if (newTags.Any())
-                            {
-                                var action = CreateAddTagsAction(imageInfo, newTags);
-                                action.DoAction();
-                                _undoStack.Push(action);
-                            }
-                            
-                            Interlocked.Increment(ref processedImages);
-                            
-                            // AddMainLogEntry($"{imageInfo.ImagePath}のVLM推論が完了しました");
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            AddMainLogEntry("処理がキャンセルされました");
-                        }
-                        catch (Exception ex)
-                        {
-                            AddMainLogEntry($"{imageInfo.ImagePath}のVLM推論中にエラーが発生しました: {ex.Message}");
-                        }
-                    });
-
-                    if (stopwatch.ElapsedMilliseconds >= 1000)
-                    {
-                        UpdateProgressBar((double)processedImages / totalImages);
-                        UpdateUIAfterTagsChange();
-                        lastUpdateTime = DateTime.Now;
-                        
-                        double imagesPerSecond = totalProcessed / (stopwatch.ElapsedMilliseconds / 1000.0);
-                        ProcessingSpeed = $"{imagesPerSecond:F2} 画像/秒";
-
-                        // リセット
-                        stopwatch.Restart();
-                        totalProcessed = 0;
-                    }
-
-                    totalProcessed += Math.Min(batchSize, _imageInfos.Count - i);
-
-                    await Task.WhenAll(batchTasks);
-                }
-
-                stopwatch.Stop();
-
-                // 最後の測定結果を表示（1秒未満の場合）
-                if (totalProcessed > 0)
-                {
-                    double imagesPerSecond = totalProcessed / (stopwatch.ElapsedMilliseconds / 1000.0);
-                    ProcessingSpeed = $"{imagesPerSecond:F2} 画像/秒";
-                }
-
+                
+                await ProcessImagesInAsyncPipeline();
+                
                 AddMainLogEntry("すべての画像に対するVLM推論が完了しました");
             }
             catch (InvalidOperationException ex)
@@ -3010,6 +2975,8 @@ namespace tagmane
                 // 処理が完了したらボタンを再度有効化
                 _isAsyncProcessing = false;
                 VLMPredictAllButton.IsEnabled = true;
+
+                // 多少冗長でもエラーの後始末で整合性を取るためにUI更新
                 UpdateProgressBar(0);
                 UpdateUIAfterTagsChange();
                 // 処理が完了したら処理速度表示をクリア
@@ -3018,6 +2985,190 @@ namespace tagmane
                 _cts = null;
                 _vlmPredictor.Dispose();
             }
+        }
+
+        // GPU処理の待機を別タスク(スレッド)へ切り出してCPU時間を有効に使うパイプライン実装
+        private async Task ProcessImagesInAsyncPipeline()
+        {   
+            _cts = new CancellationTokenSource();
+
+            if (UseGPUCheckBox.IsChecked == true && !_vlmPredictor.IsGpuLoaded) {
+                AddMainLogEntry("GPUが有効になっていますが、GPUモデルが読み込まれていません。");
+                return;
+            }
+            var usingGPU = UseGPUCheckBox.IsChecked == true && _vlmPredictor.IsGpuLoaded;
+            var _CPUConcurrencyLimit_VLMPrediction = (int)VLMConcurrencySlider.Value;
+
+            // 処理スピードを表示するためのタスクを開始
+            var processingSpeedTask = Task.Run(async () => {
+                var stopwatch = Stopwatch.StartNew();
+                var progressObservable = Observable.Interval(TimeSpan.FromMilliseconds(_vlmUpdateIntervalMs)).ToAsyncEnumerable();
+                await foreach (var _ in progressObservable)
+                {
+                    double loadImagesPerSecond = _loadImgProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
+                    double predictImagesPerSecond = _predictProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
+                    double totalImagesPerSecond = _totalProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
+                    double progress = _totalProcessedImagesCount / _imageInfos.Count;
+                    Dispatcher.Invoke(() =>
+                    {
+                        ProcessingSpeed = $"VLM LoadImg: {loadImagesPerSecond:F1} Predict: {predictImagesPerSecond:F1} Total: {totalImagesPerSecond:F1} 枚/秒";
+                        UpdateProgressBar(progress);
+                        UpdateUIAfterTagsChange();
+                    });
+                    if (_cts.IsCancellationRequested) break;
+                }
+            });
+
+            // CPU並列度設定の基準は (Environment.ProcessorCount - 2) = 14 (GPU処理の軽いjoytag利用時の最速設定)
+            SemaphoreSlim semaphoreCPU = new SemaphoreSlim(_CPUConcurrencyLimit_VLMPrediction);
+
+            // タスクを処理
+            var queue12 = new ConcurrentQueue<(ImageInfo imageInfo, DenseTensor<float> tensor)>();
+            var queue23 = new ConcurrentQueue<(ImageInfo imageInfo, List<String> tags)> ();
+            var tasks1 = new List<Task>();
+            var tasks2 = new List<Task>();
+            var tasks3 = new List<Task>();
+            await foreach ((ImageInfo imageInfo, BitmapImage bitmap) i in LoadImagesAsync()) {
+                if (_cts.Token.IsCancellationRequested) break;
+                
+                await semaphoreCPU.WaitAsync(); // 並列度の上限に達している間はループを止める
+
+                // bitmapのスケール処理はCPU依存
+                var task1 = Task.Run(async () => {
+                    try
+                    {
+                        DenseTensor<float>? tensor = await Task.Run(() => _vlmPredictor.PrepareTensor(i.bitmap));
+                        if (tensor == null) return;
+                        Interlocked.Increment(ref _loadImgProcessedImagesCount);
+                        queue12.Enqueue((i.imageInfo, tensor));
+                    } 
+                    finally
+                    {
+                        semaphoreCPU.Release();
+                    }
+                });
+                tasks1.Add(task1);
+
+                // Tensorのタグ推論はGPU依存
+                var task2 = task1.ContinueWith(async t => {
+                    if (usingGPU) {
+                        // GPUは並列度を制限せず全リソースを使う
+                        if (queue12.TryDequeue(out var dequeuedResult)) {
+                            var p = await PredictVLM(dequeuedResult.tensor, _cts.Token);
+                            Interlocked.Increment(ref _predictProcessedImagesCount);
+                            queue23.Enqueue((dequeuedResult.imageInfo, p));
+                        }
+                    } else {
+                        // CPUは並列度を制限する
+                        await semaphoreCPU.WaitAsync();
+                        try {
+                            if (queue12.TryDequeue(out var dequeuedResult)) {
+                                var p = await PredictVLM(dequeuedResult.tensor, _cts.Token);
+                                Interlocked.Increment(ref _predictProcessedImagesCount);
+                                queue23.Enqueue((dequeuedResult.imageInfo, p));
+                            }
+                        }
+                        finally
+                        {
+                            semaphoreCPU.Release();
+                        }
+                    }
+                });
+                tasks2.Add(task2);
+
+                // tagの更新処理はCPU依存
+                var task3 = task2.ContinueWith(async t => {
+                    await semaphoreCPU.WaitAsync();
+                    try
+                    {
+                        if (queue23.TryDequeue(out var dequeuedResult)) {
+                            if (_cts.Token.IsCancellationRequested) return;
+                            Interlocked.Increment(ref _totalProcessedImagesCount);
+                            ProcessPredictedTags(dequeuedResult.imageInfo, dequeuedResult.tags);
+                        }
+                    }
+                    finally
+                    {
+                        semaphoreCPU.Release();
+                    }
+                });
+                tasks3.Add(task3);
+            }
+
+            await Task.WhenAll(tasks1);
+            await Task.WhenAll(tasks2);
+            await Task.WhenAll(tasks3);
+
+            // 処理スピード計測タスクをキャンセル
+            _cts.Cancel();
+            await processingSpeedTask; // 処理スピード計測タスクの完了を待つ
+            
+            UpdateUIAfterTagsChange();
+            UpdateProgressBar(0);
+            _loadImgProcessedImagesCount = 0;
+            _predictProcessedImagesCount = 0;
+            _totalProcessedImagesCount = 0;
+            ProcessingSpeed = "";
+        }
+
+        private async IAsyncEnumerable<(ImageInfo imageInfo, BitmapImage bitmap)> LoadImagesAsync()
+        {
+            foreach (var imageInfo in _imageInfos)
+            {
+                yield return (imageInfo, await Task.Run(() => (BitmapImage) LoadImage(imageInfo.ImagePath)));
+            }
+        }
+
+        private void ProcessPredictedTags(ImageInfo imageInfo, List<string> predictedTags)
+        {
+            var newTags = predictedTags.Except(imageInfo.Tags).ToList();
+            if (newTags.Any())
+            {
+                var action = CreateAddTagsAction(imageInfo, newTags);
+                action.DoAction();
+                lock (_undoStack)
+                {
+                    _undoStack.Push(action);
+                }
+            }
+        }
+
+        private async Task<List<string>> PredictVLM(DenseTensor<float> tensor, CancellationToken cancellationToken)
+        {
+            float generalThreshold = 0.35f;
+            float characterThreshold = 0.85f;
+            
+            await Dispatcher.InvokeAsync(() =>
+            {
+                generalThreshold = (float)GeneralThresholdSlider.Value;
+                characterThreshold = (float)CharacterThresholdSlider.Value;
+            });
+
+            var (generalTags, rating, characters, allTags) = Task.Run(() =>
+                {
+                    try
+                    {
+                        return _vlmPredictor.Predict(
+                            tensor,
+                            generalThreshold,
+                            false,
+                            characterThreshold,
+                            false
+                        );
+                    }
+                    catch (Exception ex)
+                    {
+                        AddMainLogEntry($"画像の読み込み中にエラーが発生しました: {ex.Message}");
+                        _vlmErrorLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} 画像読み込みエラー: {ex.Message}");
+                        // tag更新をせずに継続
+                        return (string.Empty, new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
+                    }
+                }, cancellationToken).Result;
+            
+            var predictedTags = generalTags.Split(',').Select(t => t.Trim()).ToList();
+            predictedTags.AddRange(characters.Keys);
+
+            return predictedTags;
         }
 
         // VLM推論
@@ -3090,15 +3241,7 @@ namespace tagmane
             Dispatcher.Invoke(() =>
             {
                 AddDebugLogEntry("UpdateVLMLog");
-                // ログエントリの数が最大数を超えた場合、古いエントリを削除
-                var lines = VLMLogTextBox.Text.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-                if (lines.Length >= MaxLogEntries)
-                {
-                    VLMLogTextBox.Text = string.Join(Environment.NewLine, lines.Take(MaxLogEntries - 1));
-                }
-                
-                // 新しいログを上に追加
-                VLMLogTextBox.Text = log + Environment.NewLine + VLMLogTextBox.Text;
+                _vlmLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} - {log}");
             });
         }
 
