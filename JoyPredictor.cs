@@ -1,5 +1,4 @@
 using System;
-using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -212,31 +211,42 @@ namespace tagmane
                 return false;
             }
         }
-        
-        public (string, Dictionary<string, float>, Dictionary<string, float>, Dictionary<string, float>) Predict(
-            BitmapImage image,
-            float generalThresh)
+
+        // public (string, Dictionary<string, float>, Dictionary<string, float>, Dictionary<string, float>) Predict(
+        //     BitmapImage image,
+        //     float generalThresh)
+        // {
+        //     return Predict(InnerPrepareTensor(image), generalThresh);
+        //     // return (sortedGeneralStrings, new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
+        // }
+
+        public DenseTensor<float>? PrepareTensor(BitmapImage image)
         {
             if (!_isModelLoaded)
             {
-                // throw new InvalidOperationException("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
                 AddLogEntry("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
-                return ("", new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
+                throw new InvalidOperationException("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
             }
-
-            AddLogEntry("推論を開始します");
-            AddLogEntry($"generalThresh: {generalThresh}");
 
             DenseTensor<float> inputTensor;
             try
             {
-                inputTensor = PrepareImage(image);
+                inputTensor = InnerPrepareTensor(image);
             }
             catch (Exception ex)
             {
                 AddLogEntry($"画像の準備中にエラーが発生しました: {ex.Message}");
-                return ("", new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
+                return null;
             }
+            return inputTensor;
+        }
+        
+        public (string, Dictionary<string, float>, Dictionary<string, float>, Dictionary<string, float>) Predict(
+            DenseTensor<float> inputTensor,
+            float generalThresh)
+        {
+            AddLogEntry("推論を開始します");
+            AddLogEntry($"generalThresh: {generalThresh}");
 
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("input", inputTensor) };
 
@@ -264,7 +274,7 @@ namespace tagmane
             }
         }
 
-        private DenseTensor<float> PrepareImage(BitmapImage image)
+        private DenseTensor<float> InnerPrepareTensor(BitmapImage image)
         {
             AddLogEntry("画像を準備しています");
             var tensor = new DenseTensor<float>(new[] { 1, 3, ImageSize, ImageSize });

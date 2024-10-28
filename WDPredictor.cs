@@ -254,7 +254,7 @@ namespace tagmane
             }
         }
         public (string, Dictionary<string, float>, Dictionary<string, float>, Dictionary<string, float>) Predict(
-            BitmapImage image,
+            DenseTensor<float> inputTensor,
             float generalThresh,
             bool generalMcutEnabled,
             float characterThresh,
@@ -272,7 +272,6 @@ namespace tagmane
             // AddLogEntry($"characterThresh: {characterThresh}");
             // AddLogEntry($"characterMcutEnabled: {characterMcutEnabled}");
 
-            var inputTensor = PrepareImage(image);
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(_model.InputMetadata.First().Key, inputTensor) };
 
             using (var outputs = _model.Run(inputs))
@@ -288,8 +287,9 @@ namespace tagmane
 
                 return (sortedGeneralStrings, rating, characters, general);
             }
-    }
-        private DenseTensor<float> PrepareImage(BitmapImage image)
+        }
+
+        public DenseTensor<float> PrepareTensor(BitmapImage image)
         {
             var tensor = new DenseTensor<float>(new[] { 1, _modelTargetSize, _modelTargetSize, 3 });
 
