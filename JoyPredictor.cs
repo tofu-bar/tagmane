@@ -304,5 +304,11 @@ namespace tagmane
         {
             return 1f / (1f + (float)Math.Exp(-x));
         }
+
+        public void Dispose()
+        {
+            _session?.Dispose();
+            AddLogEntry("JoyPredictorのリソースを解放しました");
+        }
     }
 }

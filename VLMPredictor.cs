@@ -68,5 +68,18 @@ namespace tagmane
             else
                 throw new InvalidOperationException("No predictor loaded");
         }
+
+        public void Dispose()
+        {
+            if (_currentPredictor is WDPredictor wdPredictor)
+            {
+                wdPredictor.Dispose();
+            }
+            else if (_currentPredictor is JoyPredictor joyPredictor)
+            {
+                joyPredictor.Dispose();
+            }
+            _isModelLoaded = false;
+        }
     }
 }

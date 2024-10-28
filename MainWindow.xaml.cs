@@ -1901,12 +1901,16 @@ namespace tagmane
 
                 // クラスタリング結果に基づくフィルタリング
                 ApplyClusterFiltering(clusters);
-
-                AddMainLogEntry("CSDクラスタリングが完了しました。");
             }
             catch (Exception ex)
             {
                 AddMainLogEntry($"CSDクラスタリング中にエラーが発生しました: {ex.Message}");
+            }
+            finally
+            {
+                _csdModel.Dispose();
+
+                AddMainLogEntry("CSDクラスタリングが完了しました。");
             }
         }
 
@@ -2690,7 +2694,7 @@ namespace tagmane
                 var modelInfo = _vlmModels.First(m => m.Name == selectedModel);
                 UpdateThresholds(modelInfo.GeneralThreshold, DefaultCharacterThreshold);
                 LoadVLMModel(selectedModel);
-                
+
                 // 設定を保存
                 SaveSettings();
             }
@@ -2773,6 +2777,12 @@ namespace tagmane
             finally
             {
                 _isLoadingVLMModel = false;
+
+                if (!_isInitializeSuccess)
+                {
+                    _vlmPredictor.Dispose(); // 初期化途中のモデルを解放
+                    AddMainLogEntry("VLMモデルをオフロードしました");
+                }
             }
         }
 
@@ -2783,6 +2793,8 @@ namespace tagmane
             {
                 // ボタンを無効化して、処理中であることを示す
                 VLMPredictButton.IsEnabled = false;
+
+                _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false);
 
                 // キャンセルトークンソースを作成
                 _cts = new CancellationTokenSource();
@@ -2852,6 +2864,9 @@ namespace tagmane
             {
                 // 処理が完了したらボタンを再度有効化
                 VLMPredictButton.IsEnabled = true;
+
+                _cts = null;
+                _vlmPredictor.Dispose();
             }
         }
 
@@ -2881,6 +2896,8 @@ namespace tagmane
             {
                 // ボタンを無効化して、処理中であることを示す
                 VLMPredictAllButton.IsEnabled = false;
+
+                _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false);
                 
                 // キャンセルトークンソースを作成
                 _cts = new CancellationTokenSource();
@@ -2979,6 +2996,9 @@ namespace tagmane
                 UpdateUIAfterTagsChange();
                 // 処理が完了したら処理速度表示をクリア
                 ProcessingSpeed = "";
+
+                _cts = null;
+                _vlmPredictor.Dispose();
             }
         }
 

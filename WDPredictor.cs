@@ -366,5 +366,11 @@ namespace tagmane
             var t = Array.IndexOf(diffs, diffs.Max());
             return (sortedProbs[t] + sortedProbs[t + 1]) / 2;
         }
+
+        public void Dispose()
+        {
+            _model?.Dispose();
+            AddLogEntry("WDPredictorのリソースを解放しました");
+        }
     }
 }
