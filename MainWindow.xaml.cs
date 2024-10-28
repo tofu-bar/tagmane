@@ -2802,10 +2802,9 @@ namespace tagmane
         // VLM推論を実行するボタンのクリックイベントハンドラ
         private async void VLMPredictButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_selectedImage == null) { return; }
             if (_isAsyncProcessing) { return; }
             _isAsyncProcessing = true;
-            
+
             try
             {
                 // ボタンを無効化して、処理中であることを示す
@@ -2821,6 +2820,7 @@ namespace tagmane
                 if (selectedImage == null)
                 {
                     AddMainLogEntry("画像が選択されていません。");
+                    _isAsyncProcessing = false;
                     return;
                 }
 
@@ -2884,6 +2884,8 @@ namespace tagmane
 
                 _cts = null;
                 _vlmPredictor.Dispose();
+
+                _isAsyncProcessing = false;
             }
         }
 
