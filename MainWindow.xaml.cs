@@ -425,14 +425,18 @@ namespace tagmane
                 }
                 else
                 {
-                    var bitmap = new BitmapImage();
-                    bitmap.BeginInit();
-                    // ロード時にはキャッシュせず(OnDemand)、すぐに処理を開始したほうがメモリ効率がよく、実行速度も速い
-                    // bitmap.CacheOption = BitmapCacheOption.OnLoad; 
-                    bitmap.UriSource = new Uri(imagePath);
-                    bitmap.EndInit();
-                    bitmap.Freeze();
-                    return bitmap;
+                    BitmapSource bitmapSource = new BitmapImage(new Uri(imagePath));
+                    bitmapSource.Freeze();
+                    return bitmapSource;
+
+                    // var bitmap = new BitmapImage();
+                    // bitmap.BeginInit();
+                    // // ロード時にはキャッシュせず(OnDemand)、すぐに処理を開始したほうがメモリ効率がよく、実行速度も速い
+                    // // bitmap.CacheOption = BitmapCacheOption.OnLoad; 
+                    // bitmap.UriSource = new Uri(imagePath);
+                    // bitmap.EndInit();
+                    // bitmap.Freeze();
+                    // return bitmap;
                 }
             }
             catch (Exception ex)
@@ -3118,7 +3122,16 @@ namespace tagmane
         {
             foreach (var imageInfo in _imageInfos)
             {
-                yield return (imageInfo, await Task.Run(() => (BitmapImage) LoadImage(imageInfo.ImagePath)));
+                // yield return (imageInfo, await Task.Run(() => LoadImage(imageInfo.ImagePath)));
+                yield return (imageInfo, await Task.Run(() => {
+                    var bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.UriSource = new Uri(imageInfo.ImagePath);
+                    // bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.EndInit();
+                    bitmap.Freeze(); // UIスレッド以外でも使用可能にする
+                    return bitmap;
+                }));
             }
         }
 
@@ -3177,7 +3190,7 @@ namespace tagmane
         // VLM推論
         private async Task<List<string>> PredictVLMTagsAsync(ImageInfo imageInfo, CancellationToken cancellationToken)
         {
-            AddMainLogEntry("VLM推論を開始します");
+            AddMainLogEntry("VLM推論を開始します(旧？)");
 
             try
             {
