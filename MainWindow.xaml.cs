@@ -3499,7 +3499,7 @@ namespace tagmane
             var selectedImage = ImageListBox.SelectedItem as ImageInfo;
             if (selectedImage != null)
             {
-                SortImageTagsByCategory(selectedImage);
+                SortImageTagsByCategory(selectedImage, ShuffleInCategoriesCheckBox.IsChecked ?? false);
                 UpdateUIAfterTagsChange();
                 UpdateButtonStates();
             }
@@ -3514,6 +3514,8 @@ namespace tagmane
             ProgressBar.Value = 0;
 
             _cts = new CancellationTokenSource();
+
+            bool shuffleInCategories = ShuffleInCategoriesCheckBox.IsChecked ?? false;
 
             try
             {
@@ -3531,7 +3533,7 @@ namespace tagmane
                         int end = Math.Min(i + batchSize, totalImages);
                         Parallel.For(i, end, j =>
                         {
-                            SortImageTagsByCategory(_imageInfos[j]);
+                            SortImageTagsByCategory(_imageInfos[j], shuffleInCategories);
                         });
 
                         if ((DateTime.Now - lastUpdateTime).TotalSeconds >= 1)
@@ -3559,7 +3561,7 @@ namespace tagmane
             }
         }
 
-        private void SortImageTagsByCategory(ImageInfo image)
+        private void SortImageTagsByCategory(ImageInfo image, bool shuffleInCategories = false)
         {
             var prefixTags = new List<string>();
             var suffixTags = new List<string>();
@@ -3571,7 +3573,7 @@ namespace tagmane
             foreach (var category in _prefixOrder)
             {
                 var categoryTags = remainingTags.Where(tag => GetTagCategory(tag) == category).ToList();
-                if (ShuffleInCategoriesCheckBox.IsChecked == true)
+                if (shuffleInCategories)
                 {
                     categoryTags = categoryTags.OrderBy(x => Guid.NewGuid()).ToList();
                 }
@@ -3590,7 +3592,7 @@ namespace tagmane
             foreach (var category in _suffixOrder.AsEnumerable().Reverse())
             {
                 var categoryTags = remainingTags.Where(tag => GetTagCategory(tag) == category).ToList();
-                if (ShuffleInCategoriesCheckBox.IsChecked == true)
+                if (shuffleInCategories)
                 {
                     categoryTags = categoryTags.OrderBy(x => Guid.NewGuid()).ToList();
                 }
