@@ -128,6 +128,8 @@
     <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.18.1" />
     <PackageReference Include="UMAP" Version="1.0.34015" />
     <PackageReference Include="WindowsAPICodePackShell" Version="8.0.6" />
+    <PackageReference Include="R3" Version="1.2.9" />
+    <PackageReference Include="System.Reactive" Version="6.0.1" />
   </ItemGroup>
 
   <ItemGroup>
