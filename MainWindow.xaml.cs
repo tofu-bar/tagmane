@@ -2998,6 +2998,9 @@ namespace tagmane
             }
             var usingGPU = UseGPUCheckBox.IsChecked == true && _vlmPredictor.IsGpuLoaded;
             var _CPUConcurrencyLimit_VLMPrediction = (int)VLMConcurrencySlider.Value;
+            
+            // 進捗計算用の総画像数を保持
+            var totalImages = _imageInfos.Count;
 
             // 処理スピードを表示するためのタスクを開始
             var processingSpeedTask = Task.Run(async () => {
@@ -3008,7 +3011,7 @@ namespace tagmane
                     double loadImagesPerSecond = _loadImgProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
                     double predictImagesPerSecond = _predictProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
                     double totalImagesPerSecond = _totalProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
-                    double progress = _totalProcessedImagesCount / _imageInfos.Count;
+                    double progress = _totalProcessedImagesCount / (double)totalImages;
                     Dispatcher.Invoke(() =>
                     {
                         ProcessingSpeed = $"VLM LoadImg: {loadImagesPerSecond:F1} Predict: {predictImagesPerSecond:F1} Total: {totalImagesPerSecond:F1} 枚/秒";
