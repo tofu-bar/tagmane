@@ -20,6 +20,7 @@ using UMAP;
 using R3;
 using System.Collections.Concurrent;
 using Microsoft.ML.OnnxRuntime.Tensors;
+using System.Threading.Tasks.Dataflow;
 
 namespace tagmane
 {
@@ -3003,6 +3004,11 @@ namespace tagmane
                 
                 AddMainLogEntry("すべての画像に対するVLM推論が完了しました");
             }
+            catch (AggregateException ex) // awaitのキャンセルはAggregateExceptionで返される
+            {
+                AddMainLogEntry($"VLM推論がキャンセルされました: {ex.Message}");
+                MessageBox.Show("推論のキャンセルが完了しました", "キャンセル完了", MessageBoxButton.OK, MessageBoxImage.None);
+            }
             catch (InvalidOperationException ex)
             {
                 AddMainLogEntry($"VLM推論エラー: {ex.Message}");
@@ -3048,9 +3054,11 @@ namespace tagmane
             // 処理スピードを表示するためのタスクを開始
             var processingSpeedTask = Task.Run(async () => {
                 var stopwatch = Stopwatch.StartNew();
+                // 一定間隔で処理スピードを更新する。Rx(R3)でなくても実装できるが、便利でスレッドの処理も任せられて安心なので使う。
                 var progressObservable = Observable.Interval(TimeSpan.FromMilliseconds(_vlmUpdateIntervalMs)).ToAsyncEnumerable();
                 await foreach (var _ in progressObservable)
                 {
+                    if (_cts.IsCancellationRequested) break;
                     double loadImagesPerSecond = _loadImgProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
                     double predictImagesPerSecond = _predictProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
                     double totalImagesPerSecond = _totalProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
@@ -3061,89 +3069,97 @@ namespace tagmane
                         UpdateProgressBar(progress);
                         UpdateUIAfterTagsChange();
                     });
-                    if (_cts.IsCancellationRequested) break;
                 }
             });
 
             // CPU並列度設定の基準は (Environment.ProcessorCount - 2) = 14 (GPU処理の軽いjoytag利用時の最速設定)
             SemaphoreSlim semaphoreCPU = new SemaphoreSlim(_CPUConcurrencyLimit_VLMPrediction);
 
-            // タスクを処理
-            var queue12 = new ConcurrentQueue<(ImageInfo imageInfo, DenseTensor<float> tensor)>();
-            var queue23 = new ConcurrentQueue<(ImageInfo imageInfo, List<String> tags)> ();
-            var tasks1 = new List<Task>();
-            var tasks2 = new List<Task>();
-            var tasks3 = new List<Task>();
-            await foreach ((ImageInfo imageInfo, BitmapImage bitmap) i in LoadImagesAsync()) {
-                if (_cts.Token.IsCancellationRequested) break;
-                
-                await semaphoreCPU.WaitAsync(); // 並列度の上限に達している間はループを止める
-
-                // bitmapのスケール処理はCPU依存
-                var task1 = Task.Run(async () => {
-                    try
-                    {
-                        DenseTensor<float>? tensor = await Task.Run(() => _vlmPredictor.PrepareTensor(i.bitmap));
-                        if (tensor == null) return;
+            // 画像を非同期にロードし、テンソルを準備するブロック
+            var prepareTensorBlock = new TransformBlock<(ImageInfo, BitmapImage), (ImageInfo, DenseTensor<float>)?>(
+                async i =>
+                {
+                    await semaphoreCPU.WaitAsync(); // ロックを取得 or 並列度の上限に達している間は処理をを止める
+                    try {
                         Interlocked.Increment(ref _loadImgProcessedImagesCount);
-                        queue12.Enqueue((i.imageInfo, tensor));
-                    } 
-                    finally
-                    {
+                        DenseTensor<float>? tensor = await Task.Run(() => _vlmPredictor.PrepareTensor(i.Item2));
+                        if (tensor == null) return null; // nullで無効なタスクを表現する 冗長だけどTPLでは他に良い書き方がなさそう
+                        return (i.Item1, tensor);
+                    } finally {
                         semaphoreCPU.Release();
                     }
-                });
-                tasks1.Add(task1);
+                },
+                new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded } // 並列度の制限は外部的にセマフォで行う
+            );
 
-                // Tensorのタグ推論はGPU依存
-                var task2 = task1.ContinueWith(async t => {
+            // テンソルを使用してタグを予測するブロック
+            var predictTagsBlock = new TransformBlock<(ImageInfo, DenseTensor<float>)?, (ImageInfo, List<string>)?>(
+                async t =>
+                {
                     if (usingGPU) {
-                        // GPUは並列度を制限せず全リソースを使う
-                        if (queue12.TryDequeue(out var dequeuedResult)) {
-                            var p = await PredictVLM(dequeuedResult.tensor, _cts.Token);
-                            Interlocked.Increment(ref _predictProcessedImagesCount);
-                            queue23.Enqueue((dequeuedResult.imageInfo, p));
-                        }
+                        // GPU実行では並列度を制限せず全リソースを使う
+                        if (!t.HasValue) return null;
+                        Interlocked.Increment(ref _predictProcessedImagesCount);
+                        var tags = await PredictVLM(t.Value.Item2, _cts.Token);
+                        return (t.Value.Item1, tags);
                     } else {
-                        // CPUは並列度を制限する
+                        // CPU実行では並列度を制限する
                         await semaphoreCPU.WaitAsync();
                         try {
-                            if (queue12.TryDequeue(out var dequeuedResult)) {
-                                var p = await PredictVLM(dequeuedResult.tensor, _cts.Token);
-                                Interlocked.Increment(ref _predictProcessedImagesCount);
-                                queue23.Enqueue((dequeuedResult.imageInfo, p));
-                            }
-                        }
-                        finally
-                        {
+                            if (!t.HasValue) return null;
+                            Interlocked.Increment(ref _predictProcessedImagesCount);
+                            var tags = await PredictVLM(t.Value.Item2, _cts.Token);
+                            return (t.Value.Item1, tags);
+                        } finally {
                             semaphoreCPU.Release();
                         }
                     }
-                });
-                tasks2.Add(task2);
+                },
+                new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded }
+            );
 
-                // tagの更新処理はCPU依存
-                var task3 = task2.ContinueWith(async t => {
-                    await semaphoreCPU.WaitAsync();
-                    try
-                    {
-                        if (queue23.TryDequeue(out var dequeuedResult)) {
-                            if (_cts.Token.IsCancellationRequested) return;
-                            Interlocked.Increment(ref _totalProcessedImagesCount);
-                            ProcessPredictedTags(dequeuedResult.imageInfo, dequeuedResult.tags);
-                        }
-                    }
-                    finally
-                    {
+            // 予測されたタグを処理するブロック
+            var processTagsBlock = new ActionBlock<(ImageInfo, List<string>)?>(
+                async p =>
+                {
+                    // 比較的軽い処理だが、これもCPUで処理される独立したタスクのため、並列度を制限しておくとUIスレッドのハングを防げる
+                    await semaphoreCPU.WaitAsync(); // ロックを取得 or 並列度の上限に達している間は待つ
+                    try {
+                        if (!p.HasValue || p.Value.Item1 == null || _cts.Token.IsCancellationRequested) return;
+                        Interlocked.Increment(ref _totalProcessedImagesCount);
+                        ProcessPredictedTags(p.Value.Item1, p.Value.Item2);
+                    } finally {
                         semaphoreCPU.Release();
                     }
-                });
-                tasks3.Add(task3);
+                },
+                new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded }
+            );
+
+            // ブロックをリンク（データパイプラインを組む）
+            prepareTensorBlock.LinkTo(predictTagsBlock, new DataflowLinkOptions { PropagateCompletion = true });
+            predictTagsBlock.LinkTo(processTagsBlock, new DataflowLinkOptions { PropagateCompletion = true });
+
+            // 画像をロードしてパイプラインに投入
+            await foreach ((ImageInfo imageInfo, BitmapImage bitmap) in LoadImagesAsync())
+            {
+                // 全量を投入してもパイプラインは順次処理可能だが、ここではキャンセルの反応速度を上げるため、流量をセマフォで制御している（同時に取得するロックは最大で1)
+                if (_cts.IsCancellationRequested) break;
+                await semaphoreCPU.WaitAsync(); // ロックを取得 or 並列度の上限に達している間はループを止める
+                try{
+                    await prepareTensorBlock.SendAsync((imageInfo, bitmap));
+                } catch (OperationCanceledException) {
+                    // キャンセルされた場合はロックを開放してループを抜ける
+                    semaphoreCPU.Release();
+                    break;
+                } finally {
+                    semaphoreCPU.Release();
+                }
             }
 
-            await Task.WhenAll(tasks1);
-            await Task.WhenAll(tasks2);
-            await Task.WhenAll(tasks3);
+            // 全量投入後、パイプラインの完了を通知
+            prepareTensorBlock.Complete();
+            // 最後の処理の完了を待つ
+            await processTagsBlock.Completion;
 
             // 処理スピード計測タスクをキャンセル
             _cts.Cancel();
