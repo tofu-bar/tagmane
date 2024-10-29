@@ -1894,17 +1894,13 @@ namespace tagmane
             try
             {
                 // CSDモデルのロード
-                if (_csdModel == null)
-                {
-                    await InitializeCSDModel();
-                }
+                await InitializeCSDModel();
 
                 // 画像の特徴量抽出
                 var (features, styleEmbeddings, contentEmbeddings) = await ExtractFeatures(_imageInfos, _csdModel);
 
                 // クラスタリングの実行
-                var clusters = PerformClustering(styleEmbeddings);
-                // --- 未実装 --- //
+                var clusters = PerformClustering(contentEmbeddings);
 
                 // クラスタリング結果に基づくフィルタリング
                 ApplyClusterFiltering(clusters);
@@ -1915,6 +1911,10 @@ namespace tagmane
             }
             finally
             {
+                // 処理が完了したら処理速度表示をクリア
+                ProcessingSpeed = "";
+                UpdateProgressBar(0);
+                
                 _csdModel.Dispose();
                 _isAsyncProcessing = false;
                 AddMainLogEntry("CSDクラスタリングが完了しました。");
