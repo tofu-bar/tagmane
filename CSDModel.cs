@@ -43,10 +43,46 @@ namespace tagmane
         {
             var model = new CSDModel();
             model.AddLogEntry("CSDモデルのロードを開始します");
-            var modelPath = await model.DownloadModel();
-            await model.InitializeSession(modelPath, useGpu);
-            model.AddLogEntry("CSDモデルのロードが完了しました");
-            return model;
+
+            int retryCount = 0;
+            const int maxRetries = 3;
+            string modelPath = null;
+
+            while (retryCount < maxRetries)
+            {
+                try
+                {
+                    if (modelPath == null)
+                    {
+                        modelPath = await model.DownloadModel();
+                    }
+
+                    await model.InitializeSession(modelPath, useGpu);
+                    model.AddLogEntry("CSDモデルのロードが完了しました");
+                    return model;
+                }
+                catch (Exception ex)
+                {
+                    model.AddLogEntry($"モデルのロードに失敗しました: {ex.Message}");
+                    retryCount++;
+
+                    if (retryCount >= maxRetries)
+                    {
+                        model.AddLogEntry("最大再試行回数に達しました。モデルの読み込みに失敗しました。");
+                        throw;
+                    }
+
+                    model.AddLogEntry($"モデルの再ダウンロードを試みます。試行回数: {retryCount}");
+                    if (File.Exists(modelPath))
+                    {
+                        File.Delete(modelPath);
+                        model.AddLogEntry($"既存のモデルファイルを削除しました: {modelPath}");
+                    }
+                    modelPath = null;
+                }
+            }
+
+            throw new Exception("モデルのロードに失敗しました。");
         }
 
         private async Task<string> DownloadModel()
