@@ -199,11 +199,8 @@ namespace tagmane
             AddLogEntry("ONNX推論セッションの初期化が完了しました");
         }
         
-        public async Task<Dictionary<string, float[]>> ExtractFeature(BitmapImage image)
-        {
-            // AddLogEntry("特徴量抽出を開始します");
-            var inputTensor = PreprocessImage(image);
-            
+        public async Task<Dictionary<string, float[]>> ExtractFeature(DenseTensor<Float16> inputTensor)
+        {            
             var inputMetadata = _session.InputMetadata;
             var inputName = inputMetadata.Keys.FirstOrDefault() ?? throw new InvalidOperationException("モデルの入力名が見つかりません");
             // AddLogEntry($"モデルの入力名: {inputName}");
@@ -252,7 +249,7 @@ namespace tagmane
             }
         }
 
-        private DenseTensor<Float16> PreprocessImage(BitmapImage image)
+        public async Task<DenseTensor<Float16>> PreprocessImage(BitmapImage image)
         {
             var tensor = new DenseTensor<Float16>(new[] { 1, 3, ImageSize, ImageSize });
 
