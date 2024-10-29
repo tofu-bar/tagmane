@@ -249,7 +249,7 @@ namespace tagmane
             }
         }
 
-        public async Task<DenseTensor<Float16>> PreprocessImage(BitmapImage image)
+        public async Task<DenseTensor<Float16>> PrepareTensor(BitmapImage image)
         {
             var tensor = new DenseTensor<Float16>(new[] { 1, 3, ImageSize, ImageSize });
 

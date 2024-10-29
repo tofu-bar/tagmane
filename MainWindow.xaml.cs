@@ -19,6 +19,7 @@ using System.Diagnostics;
 using UMAP;
 using R3;
 using System.Collections.Concurrent;
+using Microsoft.ML.OnnxRuntime;  // Float16のため
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Threading.Tasks.Dataflow;
 
@@ -1946,14 +1947,16 @@ namespace tagmane
                 // CSDモデルのロード
                 await InitializeCSDModel();
 
-                // 画像の特徴量抽出
-                var (features, styleEmbeddings, contentEmbeddings) = await ExtractFeatures(_imageInfos, _csdModel);
+                await ProcessCSDInAsyncPipeline();
 
-                // クラスタリングの実行
-                var clusters = PerformClustering(contentEmbeddings);
+                // // 画像の特徴量抽出
+                // var (features, styleEmbeddings, contentEmbeddings) = await ExtractFeatures(_imageInfos, _csdModel);
+
+                // // クラスタリングの実行
+                // var clusters = PerformClustering(contentEmbeddings);
 
                 // クラスタリング結果に基づくフィルタリング
-                ApplyClusterFiltering(clusters);
+                // ApplyClusterFiltering(clusters);
             }
             catch (Exception ex)
             {
@@ -1971,189 +1974,217 @@ namespace tagmane
             }
         }
 
-        private async Task<(float[][] features, float[][] styleEmbeddings, float[][] contentEmbeddings)> ExtractFeatures(List<ImageInfo> images, CSDModel model)
-        {
-            var features = new List<float[]>();
-            var styleEmbeddings = new List<float[]>();
-            var contentEmbeddings = new List<float[]>();
+        // private async Task<(float[][] features, float[][] styleEmbeddings, float[][] contentEmbeddings)> ExtractFeatures(List<ImageInfo> images, CSDModel model)
+        // {
+        //     var features = new List<float[]>();
+        //     var styleEmbeddings = new List<float[]>();
+        //     var contentEmbeddings = new List<float[]>();
 
-            var totalImages = images.Count;
-            var processedImages = 0;
-            var lastUpdateTime = DateTime.Now;
+        //     var totalImages = images.Count;
+        //     var processedImages = 0;
+        //     var lastUpdateTime = DateTime.Now;
 
-            Stopwatch stopwatch = new Stopwatch();
-            stopwatch.Start();
+        //     Stopwatch stopwatch = new Stopwatch();
+        //     stopwatch.Start();
 
-            int totalProcessed = 0;
+        //     int totalProcessed = 0;
 
-            AddMainLogEntry($"特徴量抽出を開始します。");
+        //     AddMainLogEntry($"特徴量抽出を開始します。");
 
-            foreach (var image in images)
-            {
-                var bitmapImage = new BitmapImage(new Uri(image.ImagePath));
-                var tensor = await _csdModel.PreprocessImage(bitmapImage);
-                var featureDict = await _csdModel.ExtractFeature(tensor);
+        //     foreach (var image in images)
+        //     {
+        //         var bitmapImage = new BitmapImage(new Uri(image.ImagePath));
+        //         var tensor = await _csdModel.PreprocessImage(bitmapImage);
+        //         var featureDict = await _csdModel.ExtractFeature(tensor);
 
-                if (featureDict.TryGetValue("features", out var feature) &&
-                    featureDict.TryGetValue("style_output", out var styleEmbedding) &&
-                    featureDict.TryGetValue("content_output", out var contentEmbedding))
-                {
-                    features.Add(feature);
-                    styleEmbeddings.Add(styleEmbedding);
-                    contentEmbeddings.Add(contentEmbedding);
-                }
-                else
-                {
-                    AddMainLogEntry($"画像 '{image.ImagePath}' の特徴量抽出に失敗しました。");
-                }
-
-                Interlocked.Increment(ref processedImages);
-
-                if (stopwatch.ElapsedMilliseconds >= 1000)
-                {
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        UpdateProgressBar((double)processedImages / totalImages);
-                    });
-                    lastUpdateTime = DateTime.Now;
-
-                    double imagesPerSecond = totalProcessed / (stopwatch.ElapsedMilliseconds / 1000.0);
-                    ProcessingSpeed = $"{imagesPerSecond:F2} 画像/秒";
-
-                    // リセット
-                    stopwatch.Restart();
-                    totalProcessed = 0;
-                }
-
-                totalProcessed++;
-            }
-
-            stopwatch.Stop();
-
-            // 最後の測定結果を表示（1秒未満の場合）
-            if (totalProcessed > 0)
-            {
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    UpdateProgressBar((double)processedImages / totalImages);
-                });
-
-                double imagesPerSecond = totalProcessed / (stopwatch.ElapsedMilliseconds / 1000.0);
-                ProcessingSpeed = $"{imagesPerSecond:F2} 画像/秒";
-            }
-
-            return (features.ToArray(), styleEmbeddings.ToArray(), contentEmbeddings.ToArray());
-        } 
-
-
-        // // GPU処理の待機を別タスク(スレッド)へ切り出してCPU時間を有効に使うパイプライン実装
-        // private async Task ProcessCSDInAsyncPipeline()
-        // {   
-        //     _cts = new CancellationTokenSource();
-
-        //     if (UseGPUCheckBox.IsChecked == true && !_csdModel.IsGpuLoaded) {
-        //         AddMainLogEntry("GPUが有効になっていますが、GPUモデルが読み込まれていません。");
-        //         return;
-        //     }
-        //     var usingGPU = UseGPUCheckBox.IsChecked == true && _csdModel.IsGpuLoaded;
-        //     var _CPUConcurrencyLimit_VLMPrediction = (int)VLMConcurrencySlider.Value; // ここは共有する
-                    
-        //     // 進捗計算用の総画像数を保持
-        //     var totalImages = _imageInfos.Count;
-
-        //     // 処理スピードを表示するためのタスクを開始
-        //     var processingSpeedTask = Task.Run(async () => {
-        //         var stopwatch = Stopwatch.StartNew();
-        //         var progressObservable = Observable.Interval(TimeSpan.FromMilliseconds(_vlmUpdateIntervalMs)).ToAsyncEnumerable(); // ここは共有する
-        //         await foreach (var _ in progressObservable)
+        //         if (featureDict.TryGetValue("features", out var feature) &&
+        //             featureDict.TryGetValue("style_output", out var styleEmbedding) &&
+        //             featureDict.TryGetValue("content_output", out var contentEmbedding))
         //         {
-        //             double loadImagesPerSecond = _loadImgProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
-        //             double predictImagesPerSecond = _predictProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
-        //             double totalImagesPerSecond = _totalProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
-        //             double progress = _totalProcessedImagesCount / (double)totalImages;
-        //             Dispatcher.Invoke(() =>
-        //             {
-        //                 ProcessingSpeed = $"CSD LoadImg: {loadImagesPerSecond:F1} Predict: {predictImagesPerSecond:F1} Total: {totalImagesPerSecond:F1} 枚/秒";
-        //                 UpdateProgressBar(progress);
-        //                 UpdateUIAfterTagsChange();
-        //             });
-        //             if (_cts.IsCancellationRequested) break;
+        //             features.Add(feature);
+        //             styleEmbeddings.Add(styleEmbedding);
+        //             contentEmbeddings.Add(contentEmbedding);
         //         }
-        //     });
+        //         else
+        //         {
+        //             AddMainLogEntry($"画像 '{image.ImagePath}' の特徴量抽出に失敗しました。");
+        //         }
 
-        //     // CPU並列度設定の基準は (Environment.ProcessorCount - 2) = 14 (GPU処理の軽いjoytag利用時の最速設定)
-        //     SemaphoreSlim semaphoreCPU = new SemaphoreSlim(_CPUConcurrencyLimit_VLMPrediction); // ここは共有する
+        //         Interlocked.Increment(ref processedImages);
 
-        //     // タスクを処理
-        //     var queue12 = new ConcurrentQueue<(ImageInfo imageInfo, DenseTensor<Float16> tensor)>();
-        //     var queue23 = new ConcurrentQueue<(ImageInfo imageInfo, Dictionary<string, float[]>)> ();
-        //     var tasks1 = new List<Task>();
-        //     var tasks2 = new List<Task>();
-        //     var tasks3 = new List<Task>();
-        //     await foreach ((ImageInfo imageInfo, BitmapImage bitmap) i in LoadImagesAsync()) {
-        //         if (_cts.Token.IsCancellationRequested) break;
-                        
-        //         await semaphoreCPU.WaitAsync(); // 並列度の上限に達している間はループを止める
-
-        //         // bitmapのスケール処理はCPU依存
-        //         var task1 = Task.Run(async () => {
-        //             try
+        //         if (stopwatch.ElapsedMilliseconds >= 1000)
+        //         {
+        //             Application.Current.Dispatcher.Invoke(() =>
         //             {
-        //                 DenseTensor<Float16>? tensor = await Task.Run(() => _csdModel.PreprocessImage(i.bitmap));
-        //                 if (tensor == null) return;
-        //                 Interlocked.Increment(ref _loadImgProcessedImagesCount);
-        //                 queue12.Enqueue((i.imageInfo, tensor));
-        //             } 
-        //             finally
-        //             {
-        //                 semaphoreCPU.Release();
-        //             }
-        //         });
-        //         tasks1.Add(task1);
+        //                 UpdateProgressBar((double)processedImages / totalImages);
+        //             });
+        //             lastUpdateTime = DateTime.Now;
 
-        //         // Tensorの特徴量抽出はGPU依存
-        //         var task2 = task1.ContinueWith(async t => {
-        //             if (usingGPU) {
-        //                 // GPUは並列度を制限せず全リソースを使う
-        //                 if (queue12.TryDequeue(out var dequeuedResult)) {
-        //                     var p = await _csdModel.ExtractFeature(dequeuedResult.tensor);
-        //                     Interlocked.Increment(ref _predictProcessedImagesCount);
-        //                     queue23.Enqueue((dequeuedResult.imageInfo, p));
-        //                 }
-        //             } else {
-        //                 // CPUは並列度を制限する
-        //                 await semaphoreCPU.WaitAsync();
-        //                 try {
-        //                     if (queue12.TryDequeue(out var dequeuedResult)) {
-        //                         var p = await _csdModel.ExtractFeature(dequeuedResult.tensor);
-        //                         Interlocked.Increment(ref _predictProcessedImagesCount);
-        //                         queue23.Enqueue((dequeuedResult.imageInfo, p));
-        //                     }
-        //                 }
-        //                 finally
-        //                 {
-        //                     semaphoreCPU.Release();
-        //                 }
-        //             }
-        //         });
-        //         tasks2.Add(task2);
+        //             double imagesPerSecond = totalProcessed / (stopwatch.ElapsedMilliseconds / 1000.0);
+        //             ProcessingSpeed = $"{imagesPerSecond:F2} 画像/秒";
+
+        //             // リセット
+        //             stopwatch.Restart();
+        //             totalProcessed = 0;
+        //         }
+
+        //         totalProcessed++;
         //     }
 
-        //     await Task.WhenAll(tasks1);
-        //     await Task.WhenAll(tasks2);
-        //     // await Task.WhenAll(tasks3);
+        //     stopwatch.Stop();
 
-        //     // 処理スピード計測タスクをキャンセル
-        //     _cts.Cancel();
-        //     await processingSpeedTask; // 処理スピード計測タスクの完了を待つ
+        //     // 最後の測定結果を表示（1秒未満の場合）
+        //     if (totalProcessed > 0)
+        //     {
+        //         Application.Current.Dispatcher.Invoke(() =>
+        //         {
+        //             UpdateProgressBar((double)processedImages / totalImages);
+        //         });
+
+        //         double imagesPerSecond = totalProcessed / (stopwatch.ElapsedMilliseconds / 1000.0);
+        //         ProcessingSpeed = $"{imagesPerSecond:F2} 画像/秒";
+        //     }
+
+        //     return (features.ToArray(), styleEmbeddings.ToArray(), contentEmbeddings.ToArray());
+        // } 
+
+        private async Task ProcessCSDInAsyncPipeline()
+        {   
+            _cts = new CancellationTokenSource();
+
+            if (UseGPUCheckBox.IsChecked == true && !_csdModel.IsGpuLoaded) {
+                AddMainLogEntry("GPUが有効になっていますが、GPUモデルが読み込まれていません。");
+                return;
+            }
+            var usingGPU = UseGPUCheckBox.IsChecked == true && _csdModel.IsGpuLoaded;
+            var _CPUConcurrencyLimit_VLMPrediction = (int)VLMConcurrencySlider.Value; // ここは共有する
                     
-        //     UpdateUIAfterTagsChange();
-        //     UpdateProgressBar(0);
-        //     _loadImgProcessedImagesCount = 0;
-        //     _predictProcessedImagesCount = 0;
-        //     _totalProcessedImagesCount = 0;
-        //     ProcessingSpeed = "";
-        // }
+            // 進捗計算用の総画像数を保持
+            var totalImages = _imageInfos.Count;
+            
+            // 処理スピードを表示するためのタスク
+            var processingSpeedTask = Task.Run(async () => {
+                var stopwatch = Stopwatch.StartNew();
+                var progressObservable = Observable.Interval(TimeSpan.FromMilliseconds(_vlmUpdateIntervalMs)).ToAsyncEnumerable(); // ここは共有する
+                await foreach (var _ in progressObservable)
+                {
+                    if (_cts.IsCancellationRequested) break;
+                    double loadImagesPerSecond = _loadImgProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
+                    // double predictImagesPerSecond = _predictProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
+                    double totalImagesPerSecond = _totalProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
+                    double progress = _totalProcessedImagesCount / (double)totalImages;
+                    Dispatcher.Invoke(() =>
+                    {
+                        ProcessingSpeed = $"CSD LoadImg: {loadImagesPerSecond:F1} Total: {totalImagesPerSecond:F1} 枚/秒";
+                        UpdateProgressBar(progress);
+                        UpdateUIAfterTagsChange();
+                    });
+                }
+            });
+
+            // CPU並列度設定の基準は (Environment.ProcessorCount - 2) = 14 (GPU処理の軽いjoytag利用時の最速設定)
+            SemaphoreSlim semaphoreCPU = new SemaphoreSlim(_CPUConcurrencyLimit_VLMPrediction); // ここは共有する
+
+            var features = new ConcurrentDictionary<int, float[]>();
+            var styleEmbeddings = new ConcurrentDictionary<int, float[]>();
+            var contentEmbeddings = new ConcurrentDictionary<int, float[]>();
+
+            // 画像をテンソルに変換するブロック
+            var prepareTensorBlock = new TransformBlock<(int index, ImageInfo imageInfo), (int, ImageInfo, DenseTensor<Float16>)?>(
+                async input =>
+                {
+                    await semaphoreCPU.WaitAsync();
+                    try
+                    {
+                        var bitmapImage = new BitmapImage(new Uri(input.imageInfo.ImagePath));
+                        var tensor = await _csdModel.PrepareTensor(bitmapImage);
+                        Interlocked.Increment(ref _loadImgProcessedImagesCount);
+                        return (input.index, input.imageInfo, tensor);
+                    }
+                    catch (Exception ex)
+                    {
+                        AddMainLogEntry($"画像の前処理中にエラーが発生しました: {ex.Message}");
+                        return null;
+                    }
+                    finally
+                    {
+                        semaphoreCPU.Release();
+                    }
+                },
+                new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded }
+            );
+
+            // 特徴量を抽出するブロック
+            var extractFeaturesBlock = new ActionBlock<(int, ImageInfo, DenseTensor<Float16>)?>(
+                async item =>
+                {
+                    if (!item.HasValue) return;
+                    
+                    await semaphoreCPU.WaitAsync();
+                    try
+                    {
+                        var (index, imageInfo, tensor) = item.Value;
+                        var featureDict = await _csdModel.ExtractFeature(tensor);
+                        
+                        if (featureDict.TryGetValue("features", out var feature) &&
+                            featureDict.TryGetValue("style_output", out var styleEmbedding) &&
+                            featureDict.TryGetValue("content_output", out var contentEmbedding))
+                        {
+                            features.TryAdd(index, feature);
+                            styleEmbeddings.TryAdd(index, styleEmbedding);
+                            contentEmbeddings.TryAdd(index, contentEmbedding);
+                            Interlocked.Increment(ref _totalProcessedImagesCount);
+                        }
+                        else
+                        {
+                            AddMainLogEntry($"画像 '{imageInfo.ImagePath}' の特徴量抽出に失敗しました。");
+                        }
+                    }
+                    finally
+                    {
+                        semaphoreCPU.Release();
+                    }
+                },
+                new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded }
+            );
+
+            // ブロックをリンク
+            prepareTensorBlock.LinkTo(extractFeaturesBlock, new DataflowLinkOptions { PropagateCompletion = true });
+
+            // 画像をパイプラインに投入
+            for (int i = 0; i < _imageInfos.Count; i++)
+            {
+                if (_cts.Token.IsCancellationRequested) break;
+                await prepareTensorBlock.SendAsync((i, _imageInfos[i]));
+            }
+
+            // パイプラインの完了を通知
+            prepareTensorBlock.Complete();
+            await extractFeaturesBlock.Completion;
+
+            // 処理スピード計測タスクをキャンセル
+            _cts.Cancel();
+            await processingSpeedTask;
+
+            // 結果を順序通りに並べ直す
+            var orderedFeatures = features.OrderBy(x => x.Key).Select(x => x.Value).ToArray();
+            var orderedStyleEmbeddings = styleEmbeddings.OrderBy(x => x.Key).Select(x => x.Value).ToArray();
+            var orderedContentEmbeddings = contentEmbeddings.OrderBy(x => x.Key).Select(x => x.Value).ToArray();
+
+            // クラスタリングの実行
+            var clusters = PerformClustering(orderedContentEmbeddings);
+
+            // フィルタリングの適用
+            ApplyClusterFiltering(clusters);
+
+            // カウンターのリセット
+            _loadImgProcessedImagesCount = 0;
+            _predictProcessedImagesCount = 0;
+            _totalProcessedImagesCount = 0;
+            ProcessingSpeed = "";
+            UpdateUIAfterTagsChange();
+            UpdateProgressBar(0);
+        }
 
         private int[] PerformClustering(float[][] embeddings)
         {
@@ -2309,67 +2340,6 @@ namespace tagmane
             UpdateFilteredTagsListBox();
             UpdateFilterButton();
         }
-
-        // private void ApplyClusterFiltering(int[] clusters)
-        // {
-        //     // 選択されている画像のクラスターを特定
-        //     var selectedImage = ImageListBox.SelectedItem as ImageInfo;
-        //     if (selectedImage == null)
-        //     {
-        //         AddMainLogEntry("選択された画像がありません。");
-        //         return;
-        //     }
-
-        //     var selectedCluster = clusters[_imageInfos.IndexOf(selectedImage)];
-
-        //     // 選択されたクラスターに属する画像のみをフィルタリング
-        //     for (int i = 0; i < _imageInfos.Count; i++)
-        //     {
-        //         _imageInfos[i].IsFiltered = (clusters[i] != selectedCluster);
-        //     }
-
-        //     _currentFilterMode = FilterMode.Cluster;
-        //     _clusterAssignments = clusters;
-
-        //     // UIを更新
-        //     UpdateImageList();
-        //     UpdateAllTags();
-        //     UpdateFilteredTagsListBox();
-        //     UpdateFilterButton();
-        // }
-
-        // private void ApplyClusterFiltering(int[] clusters)
-        // {
-        //     _currentFilterMode = FilterMode.Cluster;
-        //     _clusterAssignments = clusters;
-            
-        //     UpdateImageList();
-        //     UpdateAllTags();
-        //     UpdateFilteredTagsListBox();
-        //     UpdateFilterButton();
-        // }
-
-        // // 既存のFilterImageButton_Clickメソッドを拡張
-        // private void FilterImageButton_Click(object sender, RoutedEventArgs e)
-        // {
-        //     // ... 既存のコード ...
-            
-        //     switch (_currentFilterMode)
-        //     {
-        //         // ... 既存のケース ...
-        //         case FilterMode.Cluster:
-        //             if (_clusterAssignments != null)
-        //             {
-        //                 var selectedCluster = GetSelectedCluster(); // UIから選択されたクラスタを取得
-        //                 _imageInfos = _originalImageInfos
-        //                     .Where((image, index) => _clusterAssignments[index] == selectedCluster)
-        //                     .ToList();
-        //             }
-        //             break;
-        //     }
-            
-        //     // ... 既存のコード ...
-        // }
 
         // 右ペイン3: ユーザー入力タグの追加
         private void AddTextboxinputButton_Click(object sender, RoutedEventArgs e)
@@ -3206,6 +3176,8 @@ namespace tagmane
 
         private async Task<List<string>> PredictVLM(DenseTensor<float> tensor, CancellationToken cancellationToken)
         {
+            // 全体版VLM推論
+            
             float generalThreshold = 0.35f;
             float characterThreshold = 0.85f;
             
@@ -3245,7 +3217,7 @@ namespace tagmane
         // VLM推論
         private async Task<List<string>> PredictVLMTagsAsync(ImageInfo imageInfo, CancellationToken cancellationToken)
         {
-            AddMainLogEntry("VLM推論を開始します(旧？)");
+            AddMainLogEntry("VLM推論を開始します(単体版)");
 
             try
             {
