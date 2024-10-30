@@ -45,7 +45,7 @@ namespace tagmane
         private string _selectedFolderPath;
 
         private List<ImageInfo> _originalImageInfos;
-        private List<ImageInfo> _clusteredImageInfos; // クラスタリング結果の画像リスト(未実装)
+        private List<ImageInfo> _clusteredImageInfos; // クラスタリング結果の画像リスト
         private List<ImageInfo> _imageInfos;
 
         // タグの管理
@@ -175,6 +175,7 @@ namespace tagmane
 
         private int[] _clusterAssignments;
         private float[][] _clusterEmbeddings;
+        private float[][] _umapEmbeddings;
 
         private int _loadImgProcessedImagesCount;
         private int _predictProcessedImagesCount;
@@ -438,15 +439,6 @@ namespace tagmane
                     BitmapSource bitmapSource = new BitmapImage(new Uri(imagePath));
                     bitmapSource.Freeze();
                     return bitmapSource;
-
-                    // var bitmap = new BitmapImage();
-                    // bitmap.BeginInit();
-                    // // ロード時にはキャッシュせず(OnDemand)、すぐに処理を開始したほうがメモリ効率がよく、実行速度も速い
-                    // // bitmap.CacheOption = BitmapCacheOption.OnLoad; 
-                    // bitmap.UriSource = new Uri(imagePath);
-                    // bitmap.EndInit();
-                    // bitmap.Freeze();
-                    // return bitmap;
                 }
             }
             catch (Exception ex)
@@ -672,9 +664,17 @@ namespace tagmane
                 _selectedFolderPath = dialog.FileName;
 
                 _originalImageInfos = _fileExplorer.GetImageInfos(dialog.FileName);
+                _clusteredImageInfos = null;
                 _imageInfos = new List<ImageInfo>(_originalImageInfos);
 
                 _userAddedTagCategories = null;
+
+                _clusterAssignments = null;
+                _clusterEmbeddings = null;
+                _umapEmbeddings = null;
+
+                resetFilter(updateUI: false);
+                _currentClusterMode = ClusterMode.Off;
                 
                 // Undo/Redoスタックをクリア
                 _undoStack.Clear();
@@ -1996,12 +1996,14 @@ namespace tagmane
                 await InitializeCSDModel();
 
                 _clusterEmbeddings = await ProcessCSDInAsyncPipeline();
-
                 // クラスタリングの実行
-                var clusters = PerformClustering(_clusterEmbeddings);
+                (_clusterAssignments, _umapEmbeddings) = PerformUmapClustering(_clusterEmbeddings);
+
+                // クラスタリング結果の可視化   
+                VisualizeClusteringResult(_umapEmbeddings, _clusterAssignments);
 
                 // クラスタリング結果に基づくフィルタリング
-                ApplyClusterFiltering(clusters);
+                ApplyClusterFiltering(_clusterAssignments);
             }
             catch (Exception ex)
             {
@@ -2163,7 +2165,7 @@ namespace tagmane
             return orderedContentEmbeddings;
         }
 
-        private int[] PerformClustering(float[][] embeddings)
+        private (int[] clusters, float[][] reducedEmbeddings) PerformUmapClustering(float[][] embeddings)
         {
             // UMAPの設定
             // var umap = new Umap(dimensions: 2, numberOfNeighbors: 15, random: new Random(42));
@@ -2183,10 +2185,7 @@ namespace tagmane
             int k = (int)Math.Sqrt(embeddings.Length / 2); // クラスター数の決定（ここでは簡単な方法を使用）
             var clusters = PerformKMeansClustering(reducedEmbeddings, k);
 
-            // クラスタリング結果の可視化
-            VisualizeClusteringResult(reducedEmbeddings, clusters);
-
-            return clusters;
+            return (clusters, reducedEmbeddings);
         }
 
         private int[] PerformKMeansClustering(float[][] data, int k)
@@ -2305,7 +2304,6 @@ namespace tagmane
 
             _currentClusterMode = ClusterMode.CSD;
             _currentFilterMode = FilterMode.Off;
-            _clusterAssignments = clusters;
 
             AddDebugLogEntry($"_clusterAssignments: {string.Join(", ", _clusterAssignments)}");
 
