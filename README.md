@@ -101,7 +101,7 @@ Tagmaneは、画像のタグ管理を効率化するためのデスクトップ�
 
 - また、このリポジトリは、そのほかのオープンソースの機械学習モデルをHugging Faceからロードすることがあります。それらのモデルのライセンスについては、それぞれのモデルのページを参照してください。
   - Smiling Wolf氏のtaggers: Apache-2.0
-  - Joytag: Apache-2.
+  - Joytag: Apache-2.0
   - CSD: MIT
 
 ## 貢献
