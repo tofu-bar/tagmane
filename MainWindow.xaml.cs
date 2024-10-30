@@ -1673,7 +1673,7 @@ namespace tagmane
         {
             _currentFilterMode = FilterMode.Off;
             _filterTags = new HashSet<string>();
-            _imageInfos = _originalImageInfos;
+            _imageInfos = new List<ImageInfo>(_originalImageInfos);
             if (updateUI)
             {
                 UpdateImageList();
@@ -1981,6 +1981,7 @@ namespace tagmane
 
             if (_currentClusterMode == ClusterMode.CSD)
             { 
+                _currentClusterMode = ClusterMode.Off;
                 _clusteredImageInfos = null;
                 resetFilter();
                 AddMainLogEntry("クラスタリングを解除しました。");
