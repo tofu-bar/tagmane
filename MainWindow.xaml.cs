@@ -174,6 +174,8 @@ namespace tagmane
         private string _processingSpeed = "";
 
         private int[] _clusterAssignments;
+        private float[][] _clusterEmbeddings;
+
         private int _loadImgProcessedImagesCount;
         private int _predictProcessedImagesCount;
         private int _totalProcessedImagesCount;
@@ -670,7 +672,7 @@ namespace tagmane
                 _selectedFolderPath = dialog.FileName;
 
                 _originalImageInfos = _fileExplorer.GetImageInfos(dialog.FileName);
-                _imageInfos = _originalImageInfos;
+                _imageInfos = new List<ImageInfo>(_originalImageInfos);
 
                 _userAddedTagCategories = null;
                 
@@ -1632,11 +1634,11 @@ namespace tagmane
                     _filterTags = new HashSet<string>();
                     if (_currentClusterMode == ClusterMode.CSD)
                     {
-                        _imageInfos = _clusteredImageInfos;
+                        _imageInfos = new List<ImageInfo>(_clusteredImageInfos);
                     }
                     else
                     {
-                        _imageInfos = _originalImageInfos;
+                        _imageInfos = new List<ImageInfo>(_originalImageInfos);
                     }
                     break;
             }
@@ -1664,6 +1666,20 @@ namespace tagmane
                     filterButton.Content = new Image { Source = new BitmapImage(new Uri("/icon/or.png", UriKind.Relative)), Width = 32, Height = 32 };
                     filterButton.ToolTip = "フィルタリング: OR";
                     break;
+            }
+        }
+
+        private void resetFilter(bool updateUI = true)
+        {
+            _currentFilterMode = FilterMode.Off;
+            _filterTags = new HashSet<string>();
+            _imageInfos = _originalImageInfos;
+            if (updateUI)
+            {
+                UpdateImageList();
+                UpdateAllTags();
+                UpdateFilteredTagsListBox();
+                UpdateFilterButton();
             }
         }
 
@@ -1964,16 +1980,10 @@ namespace tagmane
             }
 
             if (_currentClusterMode == ClusterMode.CSD)
-            {
-                _imageInfos = _originalImageInfos; 
+            { 
                 _clusteredImageInfos = null;
+                resetFilter();
                 AddMainLogEntry("クラスタリングを解除しました。");
-                _currentClusterMode = ClusterMode.Off;
-
-                UpdateImageList();
-                UpdateAllTags();
-                UpdateFilteredTagsListBox();
-                UpdateFilterButton();
                 return;
             }
 
@@ -1984,16 +1994,13 @@ namespace tagmane
                 // CSDモデルのロード
                 await InitializeCSDModel();
 
-                await ProcessCSDInAsyncPipeline();
+                _clusterEmbeddings = await ProcessCSDInAsyncPipeline();
 
-                // // 画像の特徴量抽出
-                // var (features, styleEmbeddings, contentEmbeddings) = await ExtractFeatures(_imageInfos, _csdModel);
-
-                // // クラスタリングの実行
-                // var clusters = PerformClustering(contentEmbeddings);
+                // クラスタリングの実行
+                var clusters = PerformClustering(_clusterEmbeddings);
 
                 // クラスタリング結果に基づくフィルタリング
-                // ApplyClusterFiltering(clusters);
+                ApplyClusterFiltering(clusters);
             }
             catch (Exception ex)
             {
@@ -2011,87 +2018,13 @@ namespace tagmane
             }
         }
 
-        // private async Task<(float[][] features, float[][] styleEmbeddings, float[][] contentEmbeddings)> ExtractFeatures(List<ImageInfo> images, CSDModel model)
-        // {
-        //     var features = new List<float[]>();
-        //     var styleEmbeddings = new List<float[]>();
-        //     var contentEmbeddings = new List<float[]>();
-
-        //     var totalImages = images.Count;
-        //     var processedImages = 0;
-        //     var lastUpdateTime = DateTime.Now;
-
-        //     Stopwatch stopwatch = new Stopwatch();
-        //     stopwatch.Start();
-
-        //     int totalProcessed = 0;
-
-        //     AddMainLogEntry($"特徴量抽出を開始します。");
-
-        //     foreach (var image in images)
-        //     {
-        //         var bitmapImage = new BitmapImage(new Uri(image.ImagePath));
-        //         var tensor = await _csdModel.PreprocessImage(bitmapImage);
-        //         var featureDict = await _csdModel.ExtractFeature(tensor);
-
-        //         if (featureDict.TryGetValue("features", out var feature) &&
-        //             featureDict.TryGetValue("style_output", out var styleEmbedding) &&
-        //             featureDict.TryGetValue("content_output", out var contentEmbedding))
-        //         {
-        //             features.Add(feature);
-        //             styleEmbeddings.Add(styleEmbedding);
-        //             contentEmbeddings.Add(contentEmbedding);
-        //         }
-        //         else
-        //         {
-        //             AddMainLogEntry($"画像 '{image.ImagePath}' の特徴量抽出に失敗しました。");
-        //         }
-
-        //         Interlocked.Increment(ref processedImages);
-
-        //         if (stopwatch.ElapsedMilliseconds >= 1000)
-        //         {
-        //             Application.Current.Dispatcher.Invoke(() =>
-        //             {
-        //                 UpdateProgressBar((double)processedImages / totalImages);
-        //             });
-        //             lastUpdateTime = DateTime.Now;
-
-        //             double imagesPerSecond = totalProcessed / (stopwatch.ElapsedMilliseconds / 1000.0);
-        //             ProcessingSpeed = $"{imagesPerSecond:F2} 画像/秒";
-
-        //             // リセット
-        //             stopwatch.Restart();
-        //             totalProcessed = 0;
-        //         }
-
-        //         totalProcessed++;
-        //     }
-
-        //     stopwatch.Stop();
-
-        //     // 最後の測定結果を表示（1秒未満の場合）
-        //     if (totalProcessed > 0)
-        //     {
-        //         Application.Current.Dispatcher.Invoke(() =>
-        //         {
-        //             UpdateProgressBar((double)processedImages / totalImages);
-        //         });
-
-        //         double imagesPerSecond = totalProcessed / (stopwatch.ElapsedMilliseconds / 1000.0);
-        //         ProcessingSpeed = $"{imagesPerSecond:F2} 画像/秒";
-        //     }
-
-        //     return (features.ToArray(), styleEmbeddings.ToArray(), contentEmbeddings.ToArray());
-        // } 
-
-        private async Task ProcessCSDInAsyncPipeline()
+        private async Task<float[][]> ProcessCSDInAsyncPipeline()
         {   
             _cts = new CancellationTokenSource();
 
             if (UseGPUCheckBox.IsChecked == true && !_csdModel.IsGpuLoaded) {
                 AddMainLogEntry("GPUが有効になっていますが、GPUモデルが読み込まれていません。");
-                return;
+                return Array.Empty<float[]>();
             }
             var usingGPU = UseGPUCheckBox.IsChecked == true && _csdModel.IsGpuLoaded;
             var _CPUConcurrencyLimit_VLMPrediction = (int)VLMConcurrencySlider.Value; // ここは共有する
@@ -2218,19 +2151,15 @@ namespace tagmane
             var orderedStyleEmbeddings = styleEmbeddings.OrderBy(x => x.Key).Select(x => x.Value).ToArray();
             var orderedContentEmbeddings = contentEmbeddings.OrderBy(x => x.Key).Select(x => x.Value).ToArray();
 
-            // クラスタリングの実行
-            var clusters = PerformClustering(orderedContentEmbeddings);
-
-            // フィルタリングの適用
-            ApplyClusterFiltering(clusters);
-
             // カウンターのリセット
             _loadImgProcessedImagesCount = 0;
             _predictProcessedImagesCount = 0;
             _totalProcessedImagesCount = 0;
             ProcessingSpeed = "";
-            UpdateUIAfterTagsChange();
             UpdateProgressBar(0);
+
+            // クラスタリングとフィルタリングは外で行うため、特徴量として使用するorderedContentEmbeddingsを返す
+            return orderedContentEmbeddings;
         }
 
         private int[] PerformClustering(float[][] embeddings)
@@ -2375,17 +2304,18 @@ namespace tagmane
 
             _currentClusterMode = ClusterMode.CSD;
             _currentFilterMode = FilterMode.Off;
-            _clusterAssignments = clusters; // 必要？
+            _clusterAssignments = clusters;
 
             AddDebugLogEntry($"_clusterAssignments: {string.Join(", ", _clusterAssignments)}");
 
+            resetFilter(updateUI: false);
+
             // _imageInfosをfilteredImageIndicesにフィルター
             _clusteredImageInfos = filteredImageIndices.Select(index => _originalImageInfos[index]).ToList();
-            _imageInfos = _clusteredImageInfos;
+            _imageInfos = new List<ImageInfo>(_clusteredImageInfos);
 
-            // UIを更新
             UpdateImageList();
-            UpdateAllTags();
+            UpdateUIAfterTagsChange();
             UpdateFilteredTagsListBox();
             UpdateFilterButton();
         }
