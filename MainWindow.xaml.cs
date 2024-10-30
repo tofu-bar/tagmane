@@ -2191,8 +2191,18 @@ namespace tagmane
             // 画像をパイプラインに投入
             for (int i = 0; i < _originalImageInfos.Count; i++)
             {
+                // 全量を投入してもパイプラインは順次処理可能だが、ここではキャンセルの反応速度を上げるため、流量をセマフォで制御している（同時に取得するロックは最大で1)
                 if (_cts.Token.IsCancellationRequested) break;
-                await prepareTensorBlock.SendAsync((i, _originalImageInfos[i]));
+                await semaphoreCPU.WaitAsync(); // ロックを取得 or 並列度の上限に達している間はループを止める
+                try {
+                    await prepareTensorBlock.SendAsync((i, _originalImageInfos[i]));
+                } catch (OperationCanceledException) {
+                    // キャンセルされた場合はロックを開放してループを抜ける
+                    semaphoreCPU.Release();
+                    break;
+                } finally {
+                    semaphoreCPU.Release();
+                }
             }
 
             // パイプラインの完了を通知
