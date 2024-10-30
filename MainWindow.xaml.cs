@@ -43,8 +43,12 @@ namespace tagmane
         private bool _isInitializeSuccess = false;
         private FileExplorer _fileExplorer;
         private string _selectedFolderPath;
+
         private List<ImageInfo> _originalImageInfos;
+        private List<ImageInfo> _clusteredImageInfos; // クラスタリング結果の画像リスト(未実装)
         private List<ImageInfo> _imageInfos;
+
+        // タグの管理
         private Dictionary<string, int> _allTags;
         private bool _isUpdatingSelection = false;
 
@@ -145,8 +149,10 @@ namespace tagmane
         }
 
         public ObservableCollection<string> Tags { get; set; }    
+        private enum FilterMode { Off, And, Or }
         private FilterMode _currentFilterMode = FilterMode.Off;
-        private enum FilterMode { Off, And, Or, Cluster }
+        private enum ClusterMode { Off, CSD }
+        private ClusterMode _currentClusterMode = ClusterMode.Off;
 
         private string _webpDllPath;
         private WebPHandler _webPHandler;
@@ -1600,18 +1606,38 @@ namespace tagmane
                 case FilterMode.Off:
                     _currentFilterMode = FilterMode.And;
                     _filterTags = _selectedTags;
-                    _imageInfos = _originalImageInfos.Where(image => _filterTags.All(tag => image.Tags.Contains(tag))).ToList();
+                    if (_currentClusterMode == ClusterMode.CSD)
+                    {
+                        _imageInfos = _clusteredImageInfos.Where(image => _filterTags.All(tag => image.Tags.Contains(tag))).ToList();
+                    }
+                    else
+                    {
+                        _imageInfos = _originalImageInfos.Where(image => _filterTags.All(tag => image.Tags.Contains(tag))).ToList();
+                    }
                     break;
                 case FilterMode.And:
                     _currentFilterMode = FilterMode.Or;
                     _filterTags = _selectedTags;
-                    _imageInfos = _originalImageInfos.Where(image => image.Tags.Any(tag => _filterTags.Contains(tag))).ToList();
+                    if (_currentClusterMode == ClusterMode.CSD)
+                    {
+                        _imageInfos = _clusteredImageInfos.Where(image => image.Tags.Any(tag => _filterTags.Contains(tag))).ToList();
+                    }
+                    else
+                    {
+                        _imageInfos = _originalImageInfos.Where(image => image.Tags.Any(tag => _filterTags.Contains(tag))).ToList();
+                    }
                     break;
                 case FilterMode.Or:
-                case FilterMode.Cluster:
                     _currentFilterMode = FilterMode.Off;
                     _filterTags = new HashSet<string>();
-                    _imageInfos = _originalImageInfos;
+                    if (_currentClusterMode == ClusterMode.CSD)
+                    {
+                        _imageInfos = _clusteredImageInfos;
+                    }
+                    else
+                    {
+                        _imageInfos = _originalImageInfos;
+                    }
                     break;
             }
             
@@ -1637,10 +1663,6 @@ namespace tagmane
                 case FilterMode.Or:
                     filterButton.Content = new Image { Source = new BitmapImage(new Uri("/icon/or.png", UriKind.Relative)), Width = 32, Height = 32 };
                     filterButton.ToolTip = "フィルタリング: OR";
-                    break;
-                case FilterMode.Cluster:
-                    filterButton.Content = new Image { Source = new BitmapImage(new Uri("/icon/csd.png", UriKind.Relative)), Width = 32, Height = 32 };
-                    filterButton.ToolTip = "フィルタリング: CSDクラスタリング";
                     break;
             }
         }
@@ -1929,7 +1951,7 @@ namespace tagmane
         {
             AddDebugLogEntry("CSDClusteringButton_Click");
 
-            if (_imageInfos == null || _imageInfos.Count == 0)
+            if (_originalImageInfos == null || _originalImageInfos.Count == 0)
             {
                 AddMainLogEntry("クラスタリングを行う画像がありません。");
                 return;
@@ -1940,6 +1962,21 @@ namespace tagmane
                 AddMainLogEntry("前の処理が完了するまで待機しています。");
                 return;
             }
+
+            if (_currentClusterMode == ClusterMode.CSD)
+            {
+                _imageInfos = _originalImageInfos; 
+                _clusteredImageInfos = null;
+                AddMainLogEntry("クラスタリングを解除しました。");
+                _currentClusterMode = ClusterMode.Off;
+
+                UpdateImageList();
+                UpdateAllTags();
+                UpdateFilteredTagsListBox();
+                UpdateFilterButton();
+                return;
+            }
+
             _isAsyncProcessing = true;
 
             try
@@ -2060,7 +2097,7 @@ namespace tagmane
             var _CPUConcurrencyLimit_VLMPrediction = (int)VLMConcurrencySlider.Value; // ここは共有する
                     
             // 進捗計算用の総画像数を保持
-            var totalImages = _imageInfos.Count;
+            var totalImages = _originalImageInfos.Count;
             
             // 処理スピードを表示するためのタスク
             var processingSpeedTask = Task.Run(async () => {
@@ -2077,7 +2114,7 @@ namespace tagmane
                     {
                         ProcessingSpeed = $"CSD LoadImg: {loadImagesPerSecond:F1} Total: {totalImagesPerSecond:F1} 枚/秒";
                         UpdateProgressBar(progress);
-                        UpdateUIAfterTagsChange();
+                        // UpdateUIAfterTagsChange(); // ここは不要
                     });
                 }
             });
@@ -2152,10 +2189,10 @@ namespace tagmane
             prepareTensorBlock.LinkTo(extractFeaturesBlock, new DataflowLinkOptions { PropagateCompletion = true });
 
             // 画像をパイプラインに投入
-            for (int i = 0; i < _imageInfos.Count; i++)
+            for (int i = 0; i < _originalImageInfos.Count; i++)
             {
                 if (_cts.Token.IsCancellationRequested) break;
-                await prepareTensorBlock.SendAsync((i, _imageInfos[i]));
+                await prepareTensorBlock.SendAsync((i, _originalImageInfos[i]));
             }
 
             // パイプラインの完了を通知
@@ -2307,16 +2344,16 @@ namespace tagmane
             var selectedImage = ImageListBox.SelectedItem as ImageInfo;
             if (selectedImage == null)
             {
-                AddMainLogEntry("選択された画像がありません。");
+                AddMainLogEntry("選択された画像がありません。フィルタリングを適用できません。");
                 return;
             }
 
-            var selectedIndex = _imageInfos.IndexOf(selectedImage);
+            var selectedIndex = _originalImageInfos.IndexOf(selectedImage);
             var selectedCluster = clusters[selectedIndex];
 
             // 選択されたクラスターに属する画像のインデックスを保存
             var filteredImageIndices = new List<int>();
-            for (int i = 0; i < _imageInfos.Count; i++)
+            for (int i = 0; i < _originalImageInfos.Count; i++)
             {
                 if (clusters[i] == selectedCluster)
                 {
@@ -2326,13 +2363,15 @@ namespace tagmane
 
             AddMainLogEntry($"選択されたクラスターに属する画像の数: {filteredImageIndices.Count}");
 
-            _currentFilterMode = FilterMode.Cluster;
+            _currentClusterMode = ClusterMode.CSD;
+            _currentFilterMode = FilterMode.Off;
             _clusterAssignments = clusters; // 必要？
 
             AddDebugLogEntry($"_clusterAssignments: {string.Join(", ", _clusterAssignments)}");
 
             // _imageInfosをfilteredImageIndicesにフィルター
-            _imageInfos = filteredImageIndices.Select(index => _imageInfos[index]).ToList();
+            _clusteredImageInfos = filteredImageIndices.Select(index => _originalImageInfos[index]).ToList();
+            _imageInfos = _clusteredImageInfos;
 
             // UIを更新
             UpdateImageList();
