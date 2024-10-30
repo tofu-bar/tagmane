@@ -857,6 +857,11 @@ namespace tagmane
                     
                     // タグの更新は不要なのでfalseにして若干UIの更新処理を軽くする
                     UpdateUIAfterSelectionChange(updateAllTagSelection: false);
+
+                    if (_currentClusterMode != ClusterMode.Off) // そんなに重くないので、_umapEmbeddings, _clusterAssignmentsがある場合でもいいかも
+                    {
+                        VisualizeClusteringResult(_umapEmbeddings, _clusterAssignments);
+                    }
                     
                     AddMainLogEntry($"画像を選択しました: {System.IO.Path.GetFileName(selectedImage.ImagePath)}");
                 }
@@ -2230,6 +2235,15 @@ namespace tagmane
 
         private void VisualizeClusteringResult(float[][] reducedEmbeddings, int[] clusters)
         {
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage == null)
+            {
+                AddMainLogEntry("選択された画像がありません。");
+                return;
+            }
+
+            var selectedIndex = _originalImageInfos.IndexOf(selectedImage);
+
             int width = 400;
             int height = 400;
             var bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgr32, null);
@@ -2256,18 +2270,42 @@ namespace tagmane
                 int x = (int)(Normalize(reducedEmbeddings[i][0], minX, maxX) * (width - 1));
                 int y = (int)(Normalize(reducedEmbeddings[i][1], minY, maxY) * (height - 1));
                 Color color = clusterColors[clusters[i]];
-
-                // 点を描画（5x5ピクセルの正方形）
-                for (int dx = -2; dx <= 2; dx++)
+                // 選択された画像の場合は20x20の円、それ以外は5x5の正方形を描画
+                if (i == selectedIndex)
                 {
-                    for (int dy = -2; dy <= 2; dy++)
+                    // 20x20の円を描画
+                    for (int dx = -10; dx <= 10; dx++)
                     {
-                        int px = x + dx;
-                        int py = y + dy;
-                        if (px >= 0 && px < width && py >= 0 && py < height)
+                        for (int dy = -10; dy <= 10; dy++)
                         {
-                            int colorData = (color.R << 16) | (color.G << 8) | color.B;
-                            bitmap.WritePixels(new Int32Rect(px, py, 1, 1), new[] { colorData }, 4, 0);
+                            // 円の方程式: x^2 + y^2 <= r^2
+                            if (dx * dx + dy * dy <= 100)
+                            {
+                                int px = x + dx;
+                                int py = y + dy;
+                                if (px >= 0 && px < width && py >= 0 && py < height)
+                                {
+                                    int colorData = (color.R << 16) | (color.G << 8) | color.B;
+                                    bitmap.WritePixels(new Int32Rect(px, py, 1, 1), new[] { colorData }, 4, 0);
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // 通常の5x5の正方形を描画
+                    for (int dx = -2; dx <= 2; dx++)
+                    {
+                        for (int dy = -2; dy <= 2; dy++)
+                        {
+                            int px = x + dx;
+                            int py = y + dy;
+                            if (px >= 0 && px < width && py >= 0 && py < height)
+                            {
+                                int colorData = (color.R << 16) | (color.G << 8) | color.B;
+                                bitmap.WritePixels(new Int32Rect(px, py, 1, 1), new[] { colorData }, 4, 0);
+                            }
                         }
                     }
                 }
