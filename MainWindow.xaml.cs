@@ -154,6 +154,13 @@ namespace tagmane
         private enum ClusterMode { Off, CSD }
         private ClusterMode _currentClusterMode = ClusterMode.Off;
 
+        // クラスタグループは可変のため、enumではなくlistで管理
+        private List<string> _clusterGroups = new List<string> { "ALL" };
+        private int _currentClusterGroup = 0;
+
+        private enum ClusterAnnotationMode { Clusters, Tags }
+        private ClusterAnnotationMode _currentClusterAnnotationMode = ClusterAnnotationMode.Clusters;
+
         private string _webpDllPath;
         private WebPHandler _webPHandler;
 
@@ -173,6 +180,7 @@ namespace tagmane
 
         private string _processingSpeed = "";
 
+        private int _clusterCount;
         private int[] _clusterAssignments;
         private float[][] _clusterEmbeddings;
         private float[][] _umapEmbeddings;
@@ -669,9 +677,12 @@ namespace tagmane
 
                 _userAddedTagCategories = null;
 
+                _clusterCount = 0;
+                _clusterGroups = new List<string> { "ALL" };
                 _clusterAssignments = null;
                 _clusterEmbeddings = null;
                 _umapEmbeddings = null;
+                UpdateClusterGroupComboBox(0);
 
                 resetFilter(updateUI: false);
                 _currentClusterMode = ClusterMode.Off;
@@ -2002,13 +2013,34 @@ namespace tagmane
 
                 _clusterEmbeddings = await ProcessCSDInAsyncPipeline();
                 // クラスタリングの実行
-                (_clusterAssignments, _umapEmbeddings) = PerformUmapClustering(_clusterEmbeddings);
+                _umapEmbeddings = PerformUmapEncoding(_clusterEmbeddings);
+
+                // k-meansクラスタリングの実行
+                _clusterCount = (int)Math.Sqrt(_umapEmbeddings.Length / 2); // クラスター数の決定（ここでは簡単な方法を使用）
+
+                _clusterAssignments = PerformKMeansClustering(_umapEmbeddings, _clusterCount);
 
                 // クラスタリング結果の可視化   
                 VisualizeClusteringResult(_umapEmbeddings, _clusterAssignments);
 
+                // 開いている画像のクラスターを取得
+                var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+                int selectedCluster = 0;
+
+                if (selectedImage == null)
+                {
+                    AddMainLogEntry("選択された画像がありません。クラスター1を表示します。");
+                    selectedCluster = 1;
+                }
+                else
+                {
+                    selectedCluster = _clusterAssignments[_originalImageInfos.IndexOf(selectedImage)];
+                }
+
+                UpdateClusterGroupComboBox(selectedCluster);
+
                 // クラスタリング結果に基づくフィルタリング
-                ApplyClusterFiltering(_clusterAssignments);
+                ApplyClusterFiltering(_clusterAssignments, selectedCluster);
             }
             catch (Exception ex)
             {
@@ -2024,6 +2056,42 @@ namespace tagmane
                 _isAsyncProcessing = false;
                 AddMainLogEntry("CSDクラスタリングが完了しました。");
             }
+        }
+        
+        private void ClusterGroupComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_clusterAssignments == null) return;
+            ApplyClusterFiltering(_clusterAssignments, ClusterGroupComboBox.SelectedIndex);
+        }
+
+        private void UpdateClusterGroupComboBox(int selectedIndex)
+        {
+            _clusterGroups.Clear();
+            _clusterGroups.Add("Select Image");
+            if (_clusterCount > 0)
+            {
+                _clusterGroups.AddRange(Enumerable.Range(1, _clusterCount).Select(i => i.ToString()));
+            }
+            
+            ClusterGroupComboBox.Items.Clear();
+            foreach (var item in _clusterGroups)
+            {   
+                ClusterGroupComboBox.Items.Add(item);
+            }
+
+            if (selectedIndex != null && selectedIndex >= 0 && selectedIndex < _clusterGroups.Count)
+            {
+                ClusterGroupComboBox.SelectedIndex = selectedIndex;
+            }
+            else
+            {
+                ClusterGroupComboBox.SelectedIndex = 0;
+            }
+        }
+
+        private void UpdateClusterAnnotationComboBox() // 今は使わない
+        {
+            ClusterAnnotationComboBox.ItemsSource = new[] { "Clusters", "Tags" };
         }
 
         private async Task<float[][]> ProcessCSDInAsyncPipeline()
@@ -2169,8 +2237,7 @@ namespace tagmane
             // クラスタリングとフィルタリングは外で行うため、特徴量として使用するorderedContentEmbeddingsを返す
             return orderedContentEmbeddings;
         }
-
-        private (int[] clusters, float[][] reducedEmbeddings) PerformUmapClustering(float[][] embeddings)
+        private float[][] PerformUmapEncoding (float[][] embeddings)
         {
             // UMAPの設定
             // var umap = new Umap(dimensions: 2, numberOfNeighbors: 15, random: new Random(42));
@@ -2186,11 +2253,7 @@ namespace tagmane
             // 2次元に縮小された埋め込みを取得
             var reducedEmbeddings = umap.GetEmbedding();
 
-            // k-meansクラスタリングの実行
-            int k = (int)Math.Sqrt(embeddings.Length / 2); // クラスター数の決定（ここでは簡単な方法を使用）
-            var clusters = PerformKMeansClustering(reducedEmbeddings, k);
-
-            return (clusters, reducedEmbeddings);
+            return reducedEmbeddings;  
         }
 
         private int[] PerformKMeansClustering(float[][] data, int k)
@@ -2316,17 +2379,19 @@ namespace tagmane
             ClusteringVisualizationImage.Source = bitmap;
         }
 
-        private void ApplyClusterFiltering(int[] clusters)
+        private void ApplyClusterFiltering(int[] clusters, int selectedCluster = 0)
         {
-            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
-            if (selectedImage == null)
+            if (selectedCluster == 0)
             {
-                AddMainLogEntry("選択された画像がありません。フィルタリングを適用できません。");
-                return;
+                var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+                if (selectedImage == null)
+                {
+                    AddMainLogEntry("選択された画像がありません。フィルタリングを適用できません。");
+                    return;
+                }
+                var selectedIndex = _originalImageInfos.IndexOf(selectedImage);
+                selectedCluster = clusters[selectedIndex];
             }
-
-            var selectedIndex = _originalImageInfos.IndexOf(selectedImage);
-            var selectedCluster = clusters[selectedIndex];
 
             // 選択されたクラスターに属する画像のインデックスを保存
             var filteredImageIndices = new List<int>();

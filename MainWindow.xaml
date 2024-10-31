@@ -458,9 +458,9 @@
                 <RowDefinition Height="1*"/>    <!-- デバッグログ用 -->
                 <RowDefinition Height="2*"/>    <!-- メイン/VLMログ用 -->
                 <RowDefinition Height="2*"/>    <!-- 動作処理リスト用 -->
-                <RowDefinition Height="1*"/>    <!-- 選択されたタグ用 -->
-                <RowDefinition Height="1*"/>    <!-- フィルタリングされているタグリスト用 -->
-                <RowDefinition Height="Auto"/>  <!-- クラスタリング可視化用 -->
+                <RowDefinition Height="1*"/>    <!-- 選択されたタグ用とフィルタリングされているタグリスト用 -->
+                <RowDefinition Height="Auto"/>    <!-- クラスター番号を選択するためのドロップダウンリスト用 -->
+                <RowDefinition Height="Auto"/>    <!-- クラスタリング可視化用 -->
             </Grid.RowDefinitions>
 
             <!-- プログレスバー -->
@@ -558,14 +558,37 @@
                 </ListView.View>
             </ListView>
 
-            <!-- 選択されたタグ -->
-            <ListBox x:Name="SelectedTagsListBox" Grid.Row="9" IsEnabled="False"/>
+            <!-- 選択されたタグとフィルタリングされているタグを横に並べる -->
+            <Grid Grid.Row="9">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                
+                <!-- 選択されたタグ -->
+                <ListBox x:Name="SelectedTagsListBox" Grid.Column="0" IsEnabled="False"/>
 
-            <!-- フィルタリングされているタグリスト -->
-            <ListBox x:Name="FilteredTagsListBox" Grid.Row="10" IsEnabled="False"/>
+                <!-- フィルタリングされているタグリスト -->
+                <ListBox x:Name="FilteredTagsListBox" Grid.Column="1" IsEnabled="False"/>
+            </Grid>
 
+            <!-- クラスター番号を選択するためのドロップダウンリスト-->
+            <Grid Grid.Row="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <ComboBox x:Name="ClusterGroupComboBox" Grid.Column="0" Margin="5" SelectedIndex="0" SelectionChanged="ClusterGroupComboBox_SelectionChanged">
+                    <ComboBoxItem Content="ALL"/>
+                </ComboBox>
+                <ComboBox x:Name="ClusterAnnotationComboBox" Grid.Column="1" Margin="5" SelectedIndex="0">
+                    <ComboBoxItem Content="Clusters"/>
+                    <ComboBoxItem Content="Tags"/>
+                </ComboBox>
+            </Grid>
             <!-- クラスタリング可視化用の画像表示領域 -->
-            <Image x:Name="ClusteringVisualizationImage" Grid.Row="11" Width="auto" Height="auto" Margin="0"/>
+            <Image x:Name="ClusteringVisualizationImage" Grid.Row="11" Width="Auto" Height="Auto" Margin="0"/>
+
         </Grid>
     </Grid>
 </Window>
