@@ -158,8 +158,8 @@ namespace tagmane
         private List<string> _clusterGroups = new List<string> { "ALL" };
         private int _currentClusterGroup = 0;
 
-        private enum ClusterAnnotationMode { Clusters, Tags }
-        private ClusterAnnotationMode _currentClusterAnnotationMode = ClusterAnnotationMode.Clusters;
+        private enum ClusterAnnotationMode { Default, Tags_And, Tags_Or }
+        private ClusterAnnotationMode _currentClusterAnnotationMode = ClusterAnnotationMode.Default;
 
         private string _webpDllPath;
         private WebPHandler _webPHandler;
@@ -571,8 +571,8 @@ namespace tagmane
                     UpdateCurrentTags();
                     UpdateTagListView();
                     UpdateAllTagsListView(updateTagSelection: updateAllTagSelection);
-                    UpdateSelectedTagsListBox();
-                    UpdateSearchedTagsListView();
+                    // UpdateSelectedTagsListBox();
+                    // UpdateSearchedTagsListView();
                 }
                 finally
                 {
@@ -581,6 +581,17 @@ namespace tagmane
             } else {
                 _uiErrorLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} ロック失敗 @UpdateUIAfterSelectionChange");
             }
+        }
+
+        // タグの選択が変更されたときの更新
+        private void UpdateUIAfterTagSelectionChange()
+        {
+            if (_imageInfos == null || _allTags == null) { return; }
+            UpdateTagListView();
+            UpdateAllTagsListView();
+            UpdateSelectedTagsListBox();
+            UpdateSearchedTagsListView();
+            if (_umapEmbeddings != null && _clusterAssignments != null) { VisualizeClusteringResult(_umapEmbeddings, _clusterAssignments); }
         }
 
         // ボタンの状態を更新
@@ -677,6 +688,7 @@ namespace tagmane
 
                 _userAddedTagCategories = null;
 
+                _currentClusterMode = ClusterMode.Off;
                 _clusterCount = 0;
                 _clusterGroups = new List<string> { "ALL" };
                 _clusterAssignments = null;
@@ -685,7 +697,6 @@ namespace tagmane
                 UpdateClusterGroupComboBox(0);
 
                 resetFilter(updateUI: false);
-                _currentClusterMode = ClusterMode.Off;
                 
                 // Undo/Redoスタックをクリア
                 _undoStack.Clear();
@@ -964,9 +975,7 @@ namespace tagmane
             {
                 _selectedTags.Remove(tag);
             }
-            UpdateTagListView();
-            UpdateAllTagsListView();
-            UpdateSelectedTagsListBox();
+            UpdateUIAfterTagSelectionChange();
         }
 
         // 個別タグの更新
@@ -1251,10 +1260,11 @@ namespace tagmane
                     _selectedTags.Add(addedTag);
                 }
 
-                UpdateAllTagsListView();
-                UpdateTagListView();  // 個別タグリストを更新
-                UpdateSelectedTagsListBox();
-                UpdateSearchedTagsListView();
+                // UpdateAllTagsListView();
+                // UpdateTagListView();  // 個別タグリストを更新
+                // UpdateSelectedTagsListBox();
+                // UpdateSearchedTagsListView();
+                UpdateUIAfterTagSelectionChange();
             }
             finally
             {
@@ -1266,10 +1276,11 @@ namespace tagmane
         private void DeselectAllTagsButton_Click(object sender, RoutedEventArgs e)
         {
             _selectedTags.Clear();
-            UpdateTagListView();
-            UpdateAllTagsListView();
-            UpdateSelectedTagsListBox();
-            UpdateSearchedTagsListView();
+            // UpdateTagListView();
+            // UpdateAllTagsListView();
+            // UpdateSelectedTagsListBox();
+            // UpdateSearchedTagsListView();
+            UpdateUIAfterTagSelectionChange();
         }
 
         // 全タグの更新
@@ -2067,18 +2078,19 @@ namespace tagmane
         private void UpdateClusterGroupComboBox(int selectedIndex)
         {
             _clusterGroups.Clear();
-            _clusterGroups.Add("Select Image");
-            if (_clusterCount > 0)
+            ClusterGroupComboBox.Items.Clear();
+
+            if (_clusterCount == null || _clusterCount <= 0)
             {
-                _clusterGroups.AddRange(Enumerable.Range(1, _clusterCount).Select(i => i.ToString()));
+                _clusterGroups.Add("ALL");
+                ClusterGroupComboBox.Items.Add("ALL");
+                ClusterGroupComboBox.SelectedIndex = 0;
+                return;
             }
             
-            ClusterGroupComboBox.Items.Clear();
-            foreach (var item in _clusterGroups)
-            {   
-                ClusterGroupComboBox.Items.Add(item);
-            }
-
+            _clusterGroups.Add("Select Image");
+            _clusterGroups.AddRange(Enumerable.Range(1, _clusterCount).Select(i => i.ToString()));
+            foreach (var item in _clusterGroups) { ClusterGroupComboBox.Items.Add(item); }
             if (selectedIndex != null && selectedIndex >= 0 && selectedIndex < _clusterGroups.Count)
             {
                 ClusterGroupComboBox.SelectedIndex = selectedIndex;
@@ -2087,6 +2099,13 @@ namespace tagmane
             {
                 ClusterGroupComboBox.SelectedIndex = 0;
             }
+        }
+
+        private void ClusterAnnotationComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            _currentClusterAnnotationMode = (ClusterAnnotationMode)ClusterAnnotationComboBox.SelectedIndex;
+            AddMainLogEntry($"クラスタリング結果の可視化モードを{_currentClusterAnnotationMode}に変更しました。");
+            if (_umapEmbeddings != null && _clusterAssignments != null) { VisualizeClusteringResult(_umapEmbeddings, _clusterAssignments); }
         }
 
         private void UpdateClusterAnnotationComboBox() // 今は使わない
@@ -2309,22 +2328,54 @@ namespace tagmane
 
             int width = 400;
             int height = 400;
-            var bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgr32, null);
+            // var bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgr32, null);
+            var bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
 
-            // 正規化関数
             float Normalize(float value, float min, float max) => (value - min) / (max - min);
 
-            // x座標とy座標の最小値と最大値を取得
             float minX = reducedEmbeddings.Min(e => e[0]);
             float maxX = reducedEmbeddings.Max(e => e[0]);
             float minY = reducedEmbeddings.Min(e => e[1]);
             float maxY = reducedEmbeddings.Max(e => e[1]);
 
-            // クラスターごとの色を生成
             var random = new Random(42);
             var clusterColors = Enumerable.Range(0, clusters.Max() + 1)
                 .Select(_ => Color.FromRgb((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256)))
                 .ToArray();
+
+            // タグモード時の透明度を計算
+            var opacities = new double[reducedEmbeddings.Length];
+
+            int matchingImagesCount = 0;
+            switch (_currentClusterAnnotationMode)
+            {
+                case ClusterAnnotationMode.Tags_And:
+                    // AND条件: 選択されたタグの全てを含む画像は不透明(1.0)、それ以外は半透明(0.2)
+                    for (int i = 0; i < _originalImageInfos.Count; i++)
+                    {
+                        bool hasAllSelectedTags = _selectedTags.All(tag => _originalImageInfos[i].Tags.Contains(tag));
+                        opacities[i] = hasAllSelectedTags ? 1.0 : 0.2;
+                        if (hasAllSelectedTags) matchingImagesCount++;
+                    }
+                    AddMainLogEntry($"選択されたタグを全て含む画像: {matchingImagesCount}枚");
+                    break;
+
+                case ClusterAnnotationMode.Tags_Or:
+                    // OR条件: 選択されたタグのいずれかを含む画像は不透明(1.0)、それ以外は半透明(0.2)
+                    for (int i = 0; i < _originalImageInfos.Count; i++)
+                    {
+                        bool hasAnySelectedTag = _selectedTags.Any(tag => _originalImageInfos[i].Tags.Contains(tag));
+                        opacities[i] = hasAnySelectedTag ? 1.0 : 0.2;
+                        if (hasAnySelectedTag) matchingImagesCount++;
+                    }
+                    AddMainLogEntry($"選択されたタグのいずれかを含む画像: {matchingImagesCount}枚");
+                    break;
+
+                default:
+                    // クラスターモードまたはタグが選択されていない場合は全て不透明
+                    Array.Fill(opacities, 1.0);
+                    break;
+            }
 
             bitmap.Lock();
 
@@ -2332,23 +2383,31 @@ namespace tagmane
             {
                 int x = (int)(Normalize(reducedEmbeddings[i][0], minX, maxX) * (width - 1));
                 int y = (int)(Normalize(reducedEmbeddings[i][1], minY, maxY) * (height - 1));
-                Color color = clusterColors[clusters[i]];
+                Color baseColor = clusterColors[clusters[i]];
+                
+                // 透明度に基づいて色を調整
+                Color color = Color.FromArgb(
+                    (byte)(255 * opacities[i]),
+                    baseColor.R,
+                    baseColor.G,
+                    baseColor.B
+                );
+
                 // 選択された画像の場合は20x20の円、それ以外は5x5の正方形を描画
                 if (i == selectedIndex)
                 {
-                    // 20x20の円を描画
+                    // 選択された画像は常に完全不透明で描画
                     for (int dx = -10; dx <= 10; dx++)
                     {
                         for (int dy = -10; dy <= 10; dy++)
                         {
-                            // 円の方程式: x^2 + y^2 <= r^2
                             if (dx * dx + dy * dy <= 100)
                             {
                                 int px = x + dx;
                                 int py = y + dy;
                                 if (px >= 0 && px < width && py >= 0 && py < height)
                                 {
-                                    int colorData = (color.R << 16) | (color.G << 8) | color.B;
+                                    int colorData = (color.A << 24) | (color.R << 16) | (color.G << 8) | color.B;
                                     bitmap.WritePixels(new Int32Rect(px, py, 1, 1), new[] { colorData }, 4, 0);
                                 }
                             }
@@ -2357,7 +2416,6 @@ namespace tagmane
                 }
                 else
                 {
-                    // 通常の5x5の正方形を描画
                     for (int dx = -2; dx <= 2; dx++)
                     {
                         for (int dy = -2; dy <= 2; dy++)
@@ -2366,7 +2424,7 @@ namespace tagmane
                             int py = y + dy;
                             if (px >= 0 && px < width && py >= 0 && py < height)
                             {
-                                int colorData = (color.R << 16) | (color.G << 8) | color.B;
+                                int colorData = (color.A << 24) | (color.R << 16) | (color.G << 8) | color.B;
                                 bitmap.WritePixels(new Int32Rect(px, py, 1, 1), new[] { colorData }, 4, 0);
                             }
                         }
@@ -2378,6 +2436,89 @@ namespace tagmane
 
             ClusteringVisualizationImage.Source = bitmap;
         }
+
+        // private void VisualizeClusteringResult(float[][] reducedEmbeddings, int[] clusters)
+        // {
+        //     var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+        //     if (selectedImage == null)
+        //     {
+        //         AddMainLogEntry("選択された画像がありません。");
+        //         return;
+        //     }
+
+        //     var selectedIndex = _originalImageInfos.IndexOf(selectedImage);
+
+        //     int width = 400;
+        //     int height = 400;
+        //     var bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgr32, null);
+
+        //     // 正規化関数
+        //     float Normalize(float value, float min, float max) => (value - min) / (max - min);
+
+        //     // x座標とy座標の最小値と最大値を取得
+        //     float minX = reducedEmbeddings.Min(e => e[0]);
+        //     float maxX = reducedEmbeddings.Max(e => e[0]);
+        //     float minY = reducedEmbeddings.Min(e => e[1]);
+        //     float maxY = reducedEmbeddings.Max(e => e[1]);
+
+        //     // クラスターごとの色を生成
+        //     var random = new Random(42);
+        //     var clusterColors = Enumerable.Range(0, clusters.Max() + 1)
+        //         .Select(_ => Color.FromRgb((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256)))
+        //         .ToArray();
+
+        //     bitmap.Lock();
+
+        //     for (int i = 0; i < reducedEmbeddings.Length; i++)
+        //     {
+        //         int x = (int)(Normalize(reducedEmbeddings[i][0], minX, maxX) * (width - 1));
+        //         int y = (int)(Normalize(reducedEmbeddings[i][1], minY, maxY) * (height - 1));
+        //         Color color = clusterColors[clusters[i]];
+        //         // 選択された画像の場合は20x20の円、それ以外は5x5の正方形を描画
+        //         if (i == selectedIndex)
+        //         {
+        //             // 20x20の円を描画
+        //             for (int dx = -10; dx <= 10; dx++)
+        //             {
+        //                 for (int dy = -10; dy <= 10; dy++)
+        //                 {
+        //                     // 円の方程式: x^2 + y^2 <= r^2
+        //                     if (dx * dx + dy * dy <= 100)
+        //                     {
+        //                         int px = x + dx;
+        //                         int py = y + dy;
+        //                         if (px >= 0 && px < width && py >= 0 && py < height)
+        //                         {
+        //                             int colorData = (color.R << 16) | (color.G << 8) | color.B;
+        //                             bitmap.WritePixels(new Int32Rect(px, py, 1, 1), new[] { colorData }, 4, 0);
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //         else
+        //         {
+        //             // 通常の5x5の正方形を描画
+        //             for (int dx = -2; dx <= 2; dx++)
+        //             {
+        //                 for (int dy = -2; dy <= 2; dy++)
+        //                 {
+        //                     int px = x + dx;
+        //                     int py = y + dy;
+        //                     if (px >= 0 && px < width && py >= 0 && py < height)
+        //                     {
+        //                         int colorData = (color.R << 16) | (color.G << 8) | color.B;
+        //                         bitmap.WritePixels(new Int32Rect(px, py, 1, 1), new[] { colorData }, 4, 0);
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+
+        //     bitmap.Unlock();
+
+        //     ClusteringVisualizationImage.Source = bitmap;
+        // }
 
         private void ApplyClusterFiltering(int[] clusters, int selectedCluster = 0)
         {
@@ -2651,7 +2792,7 @@ namespace tagmane
                 _selectedTags.Add(tag);
             }
 
-            UpdateUIAfterSelectionChange();
+            UpdateUIAfterTagSelectionChange();
         }
 
         // 選択されたタグリストの更新
@@ -2784,7 +2925,7 @@ namespace tagmane
                         _selectedTags.Add(tag);
                         AddDebugLogEntry($"タグ '{tag}' を選択しました。");
                     }
-                    UpdateUIAfterSelectionChange();
+                    UpdateUIAfterTagSelectionChange();
                 }
             }
             _draggedItem = null;

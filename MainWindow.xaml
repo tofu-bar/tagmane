@@ -581,9 +581,10 @@
                 <ComboBox x:Name="ClusterGroupComboBox" Grid.Column="0" Margin="5" SelectedIndex="0" SelectionChanged="ClusterGroupComboBox_SelectionChanged">
                     <ComboBoxItem Content="ALL"/>
                 </ComboBox>
-                <ComboBox x:Name="ClusterAnnotationComboBox" Grid.Column="1" Margin="5" SelectedIndex="0">
-                    <ComboBoxItem Content="Clusters"/>
-                    <ComboBoxItem Content="Tags"/>
+                <ComboBox x:Name="ClusterAnnotationComboBox" Grid.Column="1" Margin="5" SelectedIndex="0" SelectionChanged="ClusterAnnotationComboBox_SelectionChanged">
+                    <ComboBoxItem Content="Default"/>
+                    <ComboBoxItem Content="Tags_And"/>
+                    <ComboBoxItem Content="Tags_Or"/>
                 </ComboBox>
             </Grid>
             <!-- クラスタリング可視化用の画像表示領域 -->
