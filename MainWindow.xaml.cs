@@ -882,7 +882,7 @@ namespace tagmane
 
                     if (_currentClusterMode != ClusterMode.Off) // そんなに重くないので、_umapEmbeddings, _clusterAssignmentsがある場合でもいいかも
                     {
-                        VisualizeClusteringResult(_umapEmbeddings, _clusterAssignments);
+                        DrawSelectedImagePoint(_umapEmbeddings, _clusterAssignments);
                     }
                     
                     AddMainLogEntry($"画像を選択しました: {System.IO.Path.GetFileName(selectedImage.ImagePath)}");
@@ -2315,20 +2315,12 @@ namespace tagmane
             return (float)Math.Sqrt(a.Zip(b, (x, y) => (x - y) * (x - y)).Sum());
         }
 
+        // private WriteableBitmap _baseClusteringBitmap; // ベースとなる画像を保持するフィールドを追加
+
         private void VisualizeClusteringResult(float[][] reducedEmbeddings, int[] clusters)
         {
-            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
-            if (selectedImage == null)
-            {
-                AddMainLogEntry("選択された画像がありません。");
-                return;
-            }
-
-            var selectedIndex = _originalImageInfos.IndexOf(selectedImage);
-
             int width = 400;
             int height = 400;
-            // var bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgr32, null);
             var bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
 
             float Normalize(float value, float min, float max) => (value - min) / (max - min);
@@ -2379,13 +2371,13 @@ namespace tagmane
 
             bitmap.Lock();
 
+            // 全ての点を描画（選択された画像以外）
             for (int i = 0; i < reducedEmbeddings.Length; i++)
             {
                 int x = (int)(Normalize(reducedEmbeddings[i][0], minX, maxX) * (width - 1));
                 int y = (int)(Normalize(reducedEmbeddings[i][1], minY, maxY) * (height - 1));
                 Color baseColor = clusterColors[clusters[i]];
                 
-                // 透明度に基づいて色を調整
                 Color color = Color.FromArgb(
                     (byte)(255 * opacities[i]),
                     baseColor.R,
@@ -2393,48 +2385,74 @@ namespace tagmane
                     baseColor.B
                 );
 
-                // 選択された画像の場合は20x20の円、それ以外は5x5の正方形を描画
-                if (i == selectedIndex)
+                for (int dx = -2; dx <= 2; dx++)
                 {
-                    // 選択された画像は常に完全不透明で描画
-                    for (int dx = -10; dx <= 10; dx++)
+                    for (int dy = -2; dy <= 2; dy++)
                     {
-                        for (int dy = -10; dy <= 10; dy++)
+                        int px = x + dx;
+                        int py = y + dy;
+                        if (px >= 0 && px < width && py >= 0 && py < height)
                         {
-                            if (dx * dx + dy * dy <= 100)
-                            {
-                                int px = x + dx;
-                                int py = y + dy;
-                                if (px >= 0 && px < width && py >= 0 && py < height)
-                                {
-                                    int colorData = (color.A << 24) | (color.R << 16) | (color.G << 8) | color.B;
-                                    bitmap.WritePixels(new Int32Rect(px, py, 1, 1), new[] { colorData }, 4, 0);
-                                }
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    for (int dx = -2; dx <= 2; dx++)
-                    {
-                        for (int dy = -2; dy <= 2; dy++)
-                        {
-                            int px = x + dx;
-                            int py = y + dy;
-                            if (px >= 0 && px < width && py >= 0 && py < height)
-                            {
-                                int colorData = (color.A << 24) | (color.R << 16) | (color.G << 8) | color.B;
-                                bitmap.WritePixels(new Int32Rect(px, py, 1, 1), new[] { colorData }, 4, 0);
-                            }
+                            int colorData = (color.A << 24) | (color.R << 16) | (color.G << 8) | color.B;
+                            bitmap.WritePixels(new Int32Rect(px, py, 1, 1), new[] { colorData }, 4, 0);
                         }
                     }
                 }
             }
 
             bitmap.Unlock();
-
             ClusteringVisualizationImage.Source = bitmap;
+
+            // 選択された画像があれば、その点を描画
+            DrawSelectedImagePoint(reducedEmbeddings, clusters);
+        }
+
+        private void DrawSelectedImagePoint(float[][] reducedEmbeddings, int[] clusters)
+        {
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage == null) return;
+
+            var selectedIndex = _originalImageInfos.IndexOf(selectedImage);
+            if (selectedIndex < 0) return;
+
+            var bitmap = ClusteringVisualizationImage.Source as WriteableBitmap;
+            if (bitmap == null) return;
+
+            int width = bitmap.PixelWidth;
+            int height = bitmap.PixelHeight;
+
+            float minX = reducedEmbeddings.Min(e => e[0]);
+            float maxX = reducedEmbeddings.Max(e => e[0]);
+            float minY = reducedEmbeddings.Min(e => e[1]);
+            float maxY = reducedEmbeddings.Max(e => e[1]);
+
+            float Normalize(float value, float min, float max) => (value - min) / (max - min);
+
+            int x = (int)(Normalize(reducedEmbeddings[selectedIndex][0], minX, maxX) * (width - 1));
+            int y = (int)(Normalize(reducedEmbeddings[selectedIndex][1], minY, maxY) * (height - 1));
+            Color color = Colors.Black;
+
+            bitmap.Lock();
+
+            // 選択された画像を20x20の円で描画（完全不透明）
+            for (int dx = -10; dx <= 10; dx++)
+            {
+                for (int dy = -10; dy <= 10; dy++)
+                {
+                    if (dx * dx + dy * dy <= 100)
+                    {
+                        int px = x + dx;
+                        int py = y + dy;
+                        if (px >= 0 && px < width && py >= 0 && py < height)
+                        {
+                            int colorData = (255 << 24) | (color.R << 16) | (color.G << 8) | color.B;
+                            bitmap.WritePixels(new Int32Rect(px, py, 1, 1), new[] { colorData }, 4, 0);
+                        }
+                    }
+                }
+            }
+
+            bitmap.Unlock();
         }
 
         // private void VisualizeClusteringResult(float[][] reducedEmbeddings, int[] clusters)
