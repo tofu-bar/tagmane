@@ -2315,7 +2315,7 @@ namespace tagmane
             return (float)Math.Sqrt(a.Zip(b, (x, y) => (x - y) * (x - y)).Sum());
         }
 
-        // private WriteableBitmap _baseClusteringBitmap; // ベースとなる画像を保持するフィールドを追加
+        private BitmapSource _baseClusteringBitmap; // ベースとなる画像を保持するフィールドを追加
 
         private void VisualizeClusteringResult(float[][] reducedEmbeddings, int[] clusters)
         {
@@ -2403,6 +2403,8 @@ namespace tagmane
             bitmap.Unlock();
             ClusteringVisualizationImage.Source = bitmap;
 
+            _baseClusteringBitmap = bitmap;
+
             // 選択された画像があれば、その点を描画
             DrawSelectedImagePoint(reducedEmbeddings, clusters);
         }
@@ -2415,7 +2417,7 @@ namespace tagmane
             var selectedIndex = _originalImageInfos.IndexOf(selectedImage);
             if (selectedIndex < 0) return;
 
-            var bitmap = ClusteringVisualizationImage.Source as WriteableBitmap;
+            var bitmap = new WriteableBitmap(_baseClusteringBitmap);
             if (bitmap == null) return;
 
             int width = bitmap.PixelWidth;
@@ -2453,6 +2455,8 @@ namespace tagmane
             }
 
             bitmap.Unlock();
+
+            ClusteringVisualizationImage.Source = bitmap;
         }
 
         // private void VisualizeClusteringResult(float[][] reducedEmbeddings, int[] clusters)
