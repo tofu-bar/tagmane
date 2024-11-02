@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -8,34 +7,28 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using System.Security.Cryptography;
-using System.Drawing;
-using System.Drawing.Imaging;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 
 namespace tagmane
 {
-    public class WDPredictor
+    public class JoyPredictor
     {
-        private InferenceSession _model;
-        private List<string> _tagNames;
-        private List<int> _ratingIndexes;
-        private List<int> _generalIndexes;
-        private List<int> _characterIndexes;
-        private int _modelTargetSize;
-        private const int MaxLogEntries = 20;
-
+        private InferenceSession _session;
+        private List<string> _tags;
+        private const int ImageSize = 448;
+        private const float Threshold = 0.4f;
         private const string MODEL_FILENAME = "model.onnx";
-        private const string LABEL_FILENAME = "selected_tags.csv";
+        private const string LABEL_FILENAME = "top_tags.txt";
+        private const string MODEL_REPO = "fancyfeast/joytag";
 
-        public ObservableCollection<string> VLMLogEntries { get; } = new ObservableCollection<string>();
         public event EventHandler<string> LogUpdated;
         public bool IsGpuLoaded { get; private set; }
 
         private void AddLogEntry(string message)
         {
             string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
-            LogUpdated?.Invoke(this, $"WDPredictor: {logMessage}");
+            LogUpdated?.Invoke(this, $"JoyPredictor: {logMessage}");
         }
 
         private bool _isModelLoaded = false;
@@ -43,14 +36,7 @@ namespace tagmane
         public async Task LoadModel(string modelRepo, bool useGpu = true)
         {
             AddLogEntry($"リポジトリからモデルを読み込みます: {modelRepo}");
-            var (csvPath, modelPath) = await DownloadModel(modelRepo);
-
-            _tagNames = new List<string>();
-            _ratingIndexes = new List<int>();
-            _generalIndexes = new List<int>();
-            _characterIndexes = new List<int>();
-
-            LoadLabels(csvPath);
+            var (tagsPath, modelPath) = await DownloadModel(modelRepo);
 
             int retryCount = 0;
             const int maxRetries = 3;
@@ -61,7 +47,7 @@ namespace tagmane
                 {
                     var sessionOptions = new SessionOptions();
                     var gpuDeviceId = 0;
-                    
+
                     if (useGpu)
                     {
                         AddLogEntry("ONNX推論セッションを初期化しています（GPU使用を試みます）");
@@ -84,9 +70,14 @@ namespace tagmane
                         AddLogEntry("ONNX推論セッションを初期化しています（CPU使用）");
                         IsGpuLoaded = false;
                     }
+
                     sessionOptions.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
-                    _model = new InferenceSession(modelPath, sessionOptions);
-                    break;
+                    _session = new InferenceSession(modelPath, sessionOptions);
+                    _tags = File.ReadAllLines(tagsPath).Where(line => !string.IsNullOrWhiteSpace(line)).ToList();
+                    AddLogEntry("モデルが正常に読み込まれました。");
+                    _isModelLoaded = true;
+                    AddLogEntry("モデルの読み込みが完了しました。");
+                    break; // 成功した場合、ループを抜ける
                 }
                 catch (Exception ex)
                 {
@@ -102,15 +93,9 @@ namespace tagmane
                     AddLogEntry($"モデルの再ダウンロードを試みます。試行回数: {retryCount}");
                     File.Delete(modelPath);
                     AddLogEntry($"既存のモデルファイルを削除しました: {modelPath}");
-                    (_, modelPath) = await DownloadModel(modelRepo);
+                    (tagsPath, modelPath) = await DownloadModel(modelRepo);
                 }
             }
-            
-            AddLogEntry($"モデルの読み込みが完了しました。");
-            _modelTargetSize = _model.InputMetadata.First().Value.Dimensions[2];
-            AddLogEntry($"ターゲットサイズ: {_modelTargetSize}");
-            _isModelLoaded = true;
-            AddLogEntry("初期化が完了しました。");
         }
 
         private async Task<(string, string)> DownloadModel(string modelRepo)
@@ -118,15 +103,17 @@ namespace tagmane
             using var client = new HttpClient();
             var modelDir = Path.Combine(Path.GetTempPath(), "tagmane", modelRepo.Split('/').Last());
             Directory.CreateDirectory(modelDir);
-            var csvPath = Path.Combine(modelDir, LABEL_FILENAME);
+            var tagsPath = Path.Combine(modelDir, LABEL_FILENAME);
             var modelPath = Path.Combine(modelDir, MODEL_FILENAME);
             AddLogEntry($"モデルファイルのダウンロードを開始します: {modelRepo}");
-            // AddLogEntry($"辞書ダウンロードパス: {csvPath}");
+            AddLogEntry($"辞書ダウンロードパス: {tagsPath}");
             AddLogEntry($"モデルダウンロードパス: {modelPath}");
 
-            if (!File.Exists(csvPath) || !File.Exists(modelPath))
+            bool needsDownload = !File.Exists(tagsPath) || !File.Exists(modelPath) || !VerifyFileIntegrity(modelPath);
+
+            if (needsDownload)
             {
-                await DownloadFileWithRetry(client, $"https://huggingface.co/{modelRepo}/resolve/main/{LABEL_FILENAME}", csvPath);
+                await DownloadFileWithRetry(client, $"https://huggingface.co/{modelRepo}/resolve/main/{LABEL_FILENAME}", tagsPath);
                 var progress = new Progress<double>(p => Application.Current.Dispatcher.Invoke(() => ((MainWindow)Application.Current.MainWindow).ProgressBar.Value = p * 100));
                 await DownloadFileWithRetry(client, $"https://huggingface.co/{modelRepo}/resolve/main/{MODEL_FILENAME}", modelPath, progress: progress);
 
@@ -144,7 +131,7 @@ namespace tagmane
 
             Application.Current.Dispatcher.Invoke(() => ((MainWindow)Application.Current.MainWindow).ProgressBar.Value = 0);
 
-            return (csvPath, modelPath);
+            return (tagsPath, modelPath);
         }
 
         private async Task DownloadFileWithRetry(HttpClient client, string url, string filePath, int maxRetries = 3, IProgress<double> progress = null)
@@ -221,156 +208,105 @@ namespace tagmane
             }
         }
 
-        private async Task DownloadFile(HttpClient client, string url, string filePath)
-        {
-            using var response = await client.GetAsync(url);
-            using var stream = await response.Content.ReadAsStreamAsync();
-            using var fileStream = new FileStream(filePath, FileMode.Create);
-            await stream.CopyToAsync(fileStream);
-        }
-
-        private void LoadLabels(string csvPath)
-        {
-            var lines = File.ReadAllLines(csvPath).Skip(1);
-            foreach (var (line, index) in lines.Select((l, i) => (l, i)))
-            {
-                var parts = line.Split(',');
-                var name = parts[1].Replace("_", " ");
-                _tagNames.Add(name);
-
-                var category = int.Parse(parts[2]);
-                switch (category)
-                {
-                    case 9:
-                        _ratingIndexes.Add(index);
-                        break;
-                    case 0:
-                        _generalIndexes.Add(index);
-                        break;
-                    case 4:
-                        _characterIndexes.Add(index);
-                        break;
-                }
-            }
-        }
-        public (string, Dictionary<string, float>, Dictionary<string, float>, Dictionary<string, float>) Predict(
-            DenseTensor<float> inputTensor,
-            float generalThresh,
-            bool generalMcutEnabled,
-            float characterThresh,
-            bool characterMcutEnabled)
+        public DenseTensor<float>? PrepareTensor(BitmapImage image)
         {
             if (!_isModelLoaded)
             {
                 AddLogEntry("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
-                return ("", new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
+                throw new InvalidOperationException("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
             }
 
-            // AddLogEntry("VLMログ：推論を開始します");
-            // AddLogEntry($"generalThresh: {generalThresh}");
-            // AddLogEntry($"generalMcutEnabled: {generalMcutEnabled}");
-            // AddLogEntry($"characterThresh: {characterThresh}");
-            // AddLogEntry($"characterMcutEnabled: {characterMcutEnabled}");
-
-            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(_model.InputMetadata.First().Key, inputTensor) };
-
-            using (var outputs = _model.Run(inputs))
+            DenseTensor<float> inputTensor;
+            try
             {
-                var predictions = outputs.First().AsEnumerable<float>().ToArray();
-                var labels = _tagNames.Zip(predictions, (name, pred) => (name, pred)).ToList();
+                inputTensor = InnerPrepareTensor(image);
+            }
+            catch (Exception ex)
+            {
+                AddLogEntry($"画像の準備中にエラーが発生しました: {ex.Message}");
+                return null;
+            }
+            return inputTensor;
+        }
+        
+        public (string, Dictionary<string, float>, Dictionary<string, float>, Dictionary<string, float>) Predict(
+            DenseTensor<float> inputTensor,
+            float generalThresh)
+        {
+            AddLogEntry("推論を開始します");
+            AddLogEntry($"generalThresh: {generalThresh}");
 
-                var rating = _ratingIndexes.Select(i => labels[i]).ToDictionary(x => x.name, x => x.pred);
-                var general = GetFilteredTags(_generalIndexes, labels, generalThresh, generalMcutEnabled);
-                var characters = GetFilteredTags(_characterIndexes, labels, characterThresh, characterMcutEnabled);
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("input", inputTensor) };
 
-                var sortedGeneralStrings = string.Join(", ", general.OrderByDescending(x => x.Value).Select(x => x.Key));
+            using (var results = _session.Run(inputs))
+            {
+                var output = results.First().AsTensor<float>();
+                var scores = new Dictionary<string, float>();
 
-                return (sortedGeneralStrings, rating, characters, general);
+                for (int i = 0; i < _tags.Count; i++)
+                {
+                    scores[_tags[i].Replace("_", " ")] = Sigmoid(output[0, i]);
+
+                    // 正規表現置換(顔文字などをそのままにする)は以下だが、処理が重いため保留
+                    // scores[System.Text.RegularExpressions.Regex.Replace(_tags[i], @"(?<=\w)_(?=\w)", " ")] = Sigmoid(output[0, i]);
+                }
+
+                var filteredScores = scores.Where(kv => kv.Value >= generalThresh)
+                                           .OrderByDescending(kv => kv.Value)
+                                           .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+                var sortedGeneralStrings = string.Join(", ", filteredScores.Keys);
+
+                // joytagは分類区分がないためgeneralのみを返す
+                return (sortedGeneralStrings, new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
             }
         }
 
-        public DenseTensor<float> PrepareTensor(BitmapImage image)
+        private DenseTensor<float> InnerPrepareTensor(BitmapImage image)
         {
-            var tensor = new DenseTensor<float>(new[] { 1, _modelTargetSize, _modelTargetSize, 3 });
+            AddLogEntry("画像を準備しています");
+            var tensor = new DenseTensor<float>(new[] { 1, 3, ImageSize, ImageSize });
 
-            // ソース画像のサイズを取得
+            int stride = (image.PixelWidth * image.Format.BitsPerPixel + 7) / 8;
+            byte[] pixels = new byte[stride * image.PixelHeight];
+            image.CopyPixels(pixels, stride, 0);
+            
             int sourceWidth = image.PixelWidth;
             int sourceHeight = image.PixelHeight;
 
-            // ソース画像のピクセルデータを取得
-            byte[] sourcePixels = new byte[4 * sourceWidth * sourceHeight];
-            image.CopyPixels(sourcePixels, 4 * sourceWidth, 0);
+            const float rMean = 0.48145466f, gMean = 0.4578275f, bMean = 0.40821073f;
+            const float rStd = 0.26862954f, gStd = 0.26130258f, bStd = 0.27577711f;
 
-            // リサイズと正規化を同時に行う
-            float xRatio = (float)sourceWidth / _modelTargetSize;
-            float yRatio = (float)sourceHeight / _modelTargetSize;
+            float xRatio = (float)sourceWidth / ImageSize;
+            float yRatio = (float)sourceHeight / ImageSize;
 
-            for (int y = 0; y < _modelTargetSize; y++)
+            for (int y = 0; y < ImageSize; y++)
             {
-                for (int x = 0; x < _modelTargetSize; x++)
+                int sourceY = (int)(y * yRatio);
+                for (int x = 0; x < ImageSize; x++)
                 {
                     int sourceX = (int)(x * xRatio);
-                    int sourceY = (int)(y * yRatio);
-                    int sourceIndex = (sourceY * sourceWidth + sourceX) * 4;
+                    int sourceIndex = (sourceY * stride) + (sourceX * 4);
 
-                    tensor[0, y, x, 2] = sourcePixels[sourceIndex + 2];     // R
-                    tensor[0, y, x, 1] = sourcePixels[sourceIndex + 1];     // G
-                    tensor[0, y, x, 0] = sourcePixels[sourceIndex];         // B
+                    tensor[0, 0, y, x] = (pixels[sourceIndex + 2] / 255f - rMean) / rStd; // R
+                    tensor[0, 1, y, x] = (pixels[sourceIndex + 1] / 255f - gMean) / gStd; // G
+                    tensor[0, 2, y, x] = (pixels[sourceIndex] / 255f - bMean) / bStd;     // B
                 }
             }
 
+            AddLogEntry("画像をテンソルに変換しました");
             return tensor;
         }
 
-        private BitmapSource TensorToBitmapSource(DenseTensor<float> tensor)
+        private float Sigmoid(float x)
         {
-            int width = tensor.Dimensions[1];
-            int height = tensor.Dimensions[2];
-            byte[] pixels = new byte[width * height * 4];
-
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    int i = (y * width + x) * 4;
-                    pixels[i + 2] = (byte)(tensor[0, y, x, 2]);     // R
-                    pixels[i + 1] = (byte)(tensor[0, y, x, 1]);     // G
-                    pixels[i] = (byte)(tensor[0, y, x, 0]);         // B
-                    pixels[i + 3] = 255; // A (完全不透明)
-                }
-            }
-
-            return BitmapSource.Create(width, height, 96, 96, System.Windows.Media.PixelFormats.Bgra32, null, pixels, width * 4);
-        }
-
-        private Dictionary<string, float> GetFilteredTags(
-            List<int> indexes,
-            List<(string name, float pred)> labels,
-            float threshold,
-            bool mcutEnabled)
-        {
-            var tags = indexes.Select(i => labels[i]).ToList();
-
-            if (mcutEnabled)
-            {
-                threshold = McutThreshold(tags.Select(x => x.pred).ToArray());
-            }
-
-            return tags.Where(x => x.pred > threshold).ToDictionary(x => x.name, x => x.pred);
-        }
-
-        private float McutThreshold(float[] probs)
-        {
-            var sortedProbs = probs.OrderByDescending(x => x).ToArray();
-            var diffs = sortedProbs.Zip(sortedProbs.Skip(1), (a, b) => a - b).ToArray();
-            var t = Array.IndexOf(diffs, diffs.Max());
-            return (sortedProbs[t] + sortedProbs[t + 1]) / 2;
+            return 1f / (1f + (float)Math.Exp(-x));
         }
 
         public void Dispose()
         {
-            _model?.Dispose();
-            AddLogEntry("WDPredictorのリソースを解放しました");
+            _session?.Dispose();
+            AddLogEntry("JoyPredictorのリソースを解放しました");
         }
     }
 }
