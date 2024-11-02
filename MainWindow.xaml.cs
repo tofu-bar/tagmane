@@ -3199,6 +3199,8 @@ namespace tagmane
         {
             AddDebugLogEntry("SearchedTagsListView_SelectionChanged");
             if (_isUpdatingSelection) return;
+
+            _isUpdatingSelection = true;
             
             foreach (string tag in e.RemovedItems)
             {
@@ -3208,9 +3210,11 @@ namespace tagmane
             foreach (string tag in e.AddedItems)
             {
                 _selectedTags.Add(tag);
+                SearchTextBox.Text = tag;
             }
 
             UpdateUIAfterTagSelectionChange();
+            _isUpdatingSelection = false;
         }
 
         // 選択されたタグリストの更新
