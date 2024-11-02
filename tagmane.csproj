@@ -15,6 +15,7 @@
     <None Remove="icon\cancel.png" />
     <None Remove="icon\csd.png" />
     <None Remove="icon\deldir.png" />
+    <None Remove="icon\delsea.png" />
     <None Remove="icon\deselect.png" />
     <None Remove="icon\down.png" />
     <None Remove="icon\erasem.png" />
@@ -51,6 +52,7 @@
       <CopyToOutputDirectory></CopyToOutputDirectory>
     </Resource>
     <Resource Include="icon\deldir.png" />
+    <Resource Include="icon\delsea.png" />
     <Resource Include="icon\down.png" />
     <Resource Include="icon\filter.png" />
     <Resource Include="icon\florence.png" />

@@ -291,10 +291,6 @@ namespace tagmane
                         MoveDirectoryButton_Click(null, null); // フィルタ中の画像のフォルダを移動
                         e.Handled = true;
                         break;
-                    case Key.Delete:
-                        DeleteSelectedImageAndTags_Click(null, null); // 選択中の画像とタグを削除
-                        e.Handled = true;
-                        break;
                     case Key.Z:
                         UndoButton_Click(null, null); // 元に戻す
                         e.Handled = true;
@@ -349,10 +345,11 @@ namespace tagmane
             {
                 switch (e.Key)
                 {
-                    case Key.Delete:
-                        DeleteFilteredImageAndTags_Click(null, null); // フィルタ中の画像とタグを削除
-                        e.Handled = true;
-                        break;
+                    // 危ないので今はコメントアウト
+                    // case Key.Delete:
+                    //     DeleteFilteredImageAndTags_Click(null, null); // フィルタ中の画像とタグを削除
+                    //     e.Handled = true;
+                    //     break;
                     case Key.T:
                         AddAllTagsButton_Click(null, null); // 選択しているタグを全画像に追加
                         e.Handled = true;
@@ -398,6 +395,27 @@ namespace tagmane
                     case Key.Escape:
                         CancelButton_Click(null, null); // キャンセル
                         e.Handled = true;
+                        break;
+                    case Key.Delete:
+                        if (ImageListBox.IsKeyboardFocusWithin)  // IsFocusedの代わりにIsKeyboardFocusWithinを使用
+                        {
+                            DeleteSelectedImageAndTags_Click(null, null);
+                            e.Handled = true;
+                        }
+                        break;
+                    case Key.T:
+                        if (ImageListBox.IsKeyboardFocusWithin)  // IsFocusedの代わりにIsKeyboardFocusWithinを使用
+                        {
+                            AddTagButton_Click(null, null); // タグを追加
+                            e.Handled = true;
+                        }
+                        break;
+                    case Key.D:
+                        if (ImageListBox.IsKeyboardFocusWithin)  // IsFocusedの代わりにIsKeyboardFocusWithinを使用
+                        {
+                            RemoveTagButton_Click(null, null); // タグを削除
+                            e.Handled = true;
+                        }
                         break;
                 }
             }
@@ -909,8 +927,14 @@ namespace tagmane
 
             try
             {
-                // ImageListBoxの選択をクリア
-                ImageListBox.SelectedItem = null;
+                // // ImageListBoxの選択をクリア
+                // ImageListBox.SelectedItem = null;
+
+                // 削除前に現在のインデックスを保持
+                int currentIndex = ImageListBox.SelectedIndex;
+
+                // ItemsSourceを一時的にnullに設定
+                ImageListBox.ItemsSource = null;
                 
                 _imageInfos.Remove(selectedImage);
                 _originalImageInfos.Remove(selectedImage);
@@ -933,10 +957,23 @@ namespace tagmane
                 _undoStack.Clear();
                 _redoStack.Clear();
 
-                UpdateImageList();
-                UpdateImageCountDisplay();
-                UpdateUIAfterImageInfosChange();
-                UpdateButtonStates();
+                // ItemsSourceを再設定
+                ImageListBox.ItemsSource = _imageInfos;
+
+                // インデックスを適切に設定
+                if (_imageInfos.Count > 0)
+                {
+                    if (currentIndex >= _imageInfos.Count)
+                    {
+                        currentIndex = _imageInfos.Count - 1;
+                    }
+                    ImageListBox.SelectedIndex = currentIndex;
+                    ImageListBox.ScrollIntoView(ImageListBox.SelectedItem);
+
+                    ListBoxItem item = ImageListBox.ItemContainerGenerator.ContainerFromIndex(ImageListBox.SelectedIndex) as ListBoxItem;
+                    item.Focus();
+                }
+
                 AddMainLogEntry($"画像 '{System.IO.Path.GetFileName(selectedImage.ImagePath)}' とそのタグを削除しました。");
                 AddMainLogEntry("Undo/Redoスタックをクリアしました。");
             }
@@ -944,6 +981,11 @@ namespace tagmane
             {
                 MessageBox.Show($"画像の削除中にエラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
                 AddMainLogEntry($"画像の削除中にエラーが発生: {ex.Message}");
+            }
+            finally
+            {
+                UpdateUIAfterImageInfosChange();
+                UpdateButtonStates();
             }
         }
 
@@ -955,14 +997,18 @@ namespace tagmane
                 return;
             }
 
-            if (ConfirmCheckBox.IsChecked == true)
+            // このメソッドは、確認を必ず行う
+            var result = MessageBox.Show(
+                $"フィルタされた{_imageInfos.Count}個の画像とそのタグを削除しますか？", 
+                "確認", 
+                MessageBoxButton.YesNo, 
+                MessageBoxImage.Question,
+                MessageBoxResult.No  // デフォルトを「いいえ」に設定
+            );
+            if (result != MessageBoxResult.Yes)
             {
-                var result = MessageBox.Show($"フィルタされた{_imageInfos.Count}個の画像とそのタグを削除しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (result != MessageBoxResult.Yes)
-                {
-                    AddMainLogEntry("削除がキャンセルされました。");
-                    return;
-                }
+                AddMainLogEntry("削除がキャンセルされました。");
+                return;
             }
 
             try
@@ -995,8 +1041,6 @@ namespace tagmane
                 _undoStack.Clear();
                 _redoStack.Clear();
 
-                UpdateImageList();
-                UpdateImageCountDisplay();
                 UpdateUIAfterImageInfosChange();
                 UpdateButtonStates();
                 AddMainLogEntry($"{_imageInfos.Count}個の画像とそのタグを削除しました。");
@@ -1007,6 +1051,18 @@ namespace tagmane
                 MessageBox.Show($"画像の削除中にエラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
                 AddMainLogEntry($"画像の削除中にエラーが発生: {ex.Message}");
             }
+        }
+
+        private void DeleteSelectedImageAndTagsAdvanced_Click(object sender, RoutedEventArgs e)
+        {
+            // var dialog = new AdvancedDeleteWindow(this, _selectedFolderPath);
+            // dialog.Owner = this;
+            // dialog.ShowDialog();
+            
+            // // ダイアログが閉じられた後にUIを更新
+            // UpdateUIAfterImageInfosChange();
+
+            // 未実装
         }
 
         // キャンセルボタンのクリックイベントハンドラ

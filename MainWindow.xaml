@@ -61,7 +61,7 @@
                                 <Image Source="/icon/trash.png" Width="32" Height="32"/>
                             </Button.Content>
                             <Button.ToolTip>
-                                <TextBlock Text="選択中の画像とタグを削除(Ctrl+Del)"/>
+                                <TextBlock Text="選択中の画像とタグを削除(Del)"/>
                             </Button.ToolTip>
                         </Button>
                         <Button Click="DeleteFilteredImageAndTags_Click">
@@ -72,12 +72,12 @@
                                 <TextBlock Text="フィルタ中の画像とタグを削除(Ctrl+Shift+Del)"/>
                             </Button.ToolTip>
                         </Button>
-                        <Button Click="CancelButton_Click">
+                        <Button Click="DeleteSelectedImageAndTagsAdvanced_Click">
                             <Button.Content>
-                                <Image Source="/icon/cancel.png" Width="32" Height="32"/>
+                                <Image Source="/icon/delser.png" Width="32" Height="32"/>
                             </Button.Content>
                             <Button.ToolTip>
-                                <TextBlock Text="キャンセル(Esc)"/>
+                                <TextBlock Text="高度な削除"/>
                             </Button.ToolTip>
                         </Button>
                     </StackPanel>
@@ -109,24 +109,39 @@
                 <RowDefinition Height="1*"/>
                 <RowDefinition Height="Auto"/> <!-- オプション欄用に新しい行を追加 -->
             </Grid.RowDefinitions>
-            <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center">
-                <Button x:Name="UndoButton" Click="UndoButton_Click">
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Button x:Name="UndoButton" Click="UndoButton_Click">
+                        <Button.Content>
+                            <Image Source="/icon/undo.png" Width="32" Height="32"/>
+                        </Button.Content>
+                        <Button.ToolTip>
+                            <TextBlock Text="元に戻す(Ctrl+Z)"/>
+                        </Button.ToolTip>
+                    </Button>
+                    <Button x:Name="RedoButton" Click="RedoButton_Click">
+                        <Button.Content>
+                            <Image Source="/icon/redo.png" Width="32" Height="32"/>
+                        </Button.Content>
+                        <Button.ToolTip>
+                            <TextBlock Text="やり直し(Ctrl+Y)"/>
+                        </Button.ToolTip>
+                    </Button>
+                </StackPanel>
+                <Button Grid.Column="2" Click="CancelButton_Click" HorizontalAlignment="Right" Margin="0,0,5,0">
                     <Button.Content>
-                        <Image Source="/icon/undo.png" Width="32" Height="32"/>
+                        <Image Source="/icon/cancel.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
-                        <TextBlock Text="元に戻す(Ctrl+Z)"/>
+                        <TextBlock Text="キャンセル(Esc)"/>
                     </Button.ToolTip>
                 </Button>
-                <Button x:Name="RedoButton" Click="RedoButton_Click">
-                    <Button.Content>
-                        <Image Source="/icon/redo.png" Width="32" Height="32"/>
-                    </Button.Content>
-                    <Button.ToolTip>
-                        <TextBlock Text="やり直し(Ctrl+Y)"/>
-                    </Button.ToolTip>
-                </Button>
-            </StackPanel>
+            </Grid>
             <Image x:Name="SelectedImage" Grid.Row="1" Stretch="Uniform"/>
             <TextBox x:Name="AssociatedText" Grid.Row="2" IsReadOnly="True" TextWrapping="Wrap"/>
             
