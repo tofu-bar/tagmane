@@ -8,6 +8,7 @@ namespace tagmane
 {
     public class VLMPredictor
     {
+        private static readonly object _predictLock = new object();
         private object? _currentPredictor;
         private bool _isModelLoaded = false;
 
@@ -40,7 +41,7 @@ namespace tagmane
 
         public DenseTensor<float>? PrepareTensor(BitmapImage image)
         {
-            // safe-guard: 万が一モデルが読み込まれていない場合、早めに失敗
+            // safe-guard: モデルが読み込まれていない場合、早めに失敗
             if (!_isModelLoaded) throw new InvalidOperationException("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
 
             if (_currentPredictor is WDPredictor wdPredictor)
@@ -58,15 +59,18 @@ namespace tagmane
             float characterThresh=0.85f,
             bool characterMcutEnabled=false)
         {
-            // safe-guard: 万が一モデルが読み込まれていない場合、早めに失敗
-            if (!_isModelLoaded) throw new InvalidOperationException("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
+            if (!_isModelLoaded) throw new InvalidOperationException("モデルが読み込まれていません。");
 
-            if (_currentPredictor is WDPredictor wdPredictor)
-                return wdPredictor.Predict(tensor, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled);
-            else if (_currentPredictor is JoyPredictor joyPredictor)
-                return joyPredictor.Predict(tensor, generalThresh);
-            else
-                throw new InvalidOperationException("No predictor loaded");
+            // 予測処理をロックで保護
+            lock (_predictLock)
+            {
+                if (_currentPredictor is WDPredictor wdPredictor)
+                    return wdPredictor.Predict(tensor, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled);
+                else if (_currentPredictor is JoyPredictor joyPredictor)
+                    return joyPredictor.Predict(tensor, generalThresh);
+                else
+                    throw new InvalidOperationException("No predictor loaded");
+            }
         }
 
         public void Dispose()

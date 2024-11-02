@@ -3707,6 +3707,7 @@ namespace tagmane
             } catch (OperationCanceledException) {
                 AddMainLogEntry("VLM推論がキャンセルされました");
             } finally {
+                AddMainLogEntry("VLM推論が完了しました");
                 stopwatch.Stop();
                 UpdateUIAfterTagsChange();
                 UpdateProgressBar(0);
