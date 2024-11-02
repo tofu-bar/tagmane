@@ -3495,7 +3495,7 @@ namespace tagmane
             }
         }
 
-        // VLM推論を実行するボタンのクリックイベントハンドラ
+        // VLM推論(単体)を実行するボタンのクリックイベントハンドラ
         private async void VLMPredictButton_Click(object sender, RoutedEventArgs e)
         {
             if (_isAsyncProcessing) { return; }
@@ -3506,7 +3506,7 @@ namespace tagmane
                 // ボタンを無効化して、処理中であることを示す
                 VLMPredictButton.IsEnabled = false;
 
-                _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false);
+                await _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false);
 
                 // キャンセルトークンソースを作成
                 _cts = new CancellationTokenSource();
@@ -3614,7 +3614,7 @@ namespace tagmane
                 
                 AddMainLogEntry("すべての画像に対してVLM推論を開始します");
                 
-                await ProcessImagesInAsyncPipeline();
+                await ProcessVLMPredictAllInAsyncPipeline();
                 
                 AddMainLogEntry("すべての画像に対するVLM推論が完了しました");
             }
@@ -3650,8 +3650,7 @@ namespace tagmane
             }
         }
 
-        // GPU処理の待機を別タスク(スレッド)へ切り出してCPU時間を有効に使うパイプライン実装
-        private async Task ProcessImagesInAsyncPipeline()
+        private async Task ProcessVLMPredictAllInAsyncPipeline()
         {   
             _cts = new CancellationTokenSource();
 
@@ -3660,148 +3659,77 @@ namespace tagmane
                 return;
             }
             var usingGPU = UseGPUCheckBox.IsChecked == true && _vlmPredictor.IsGpuLoaded;
-            var _CPUConcurrencyLimit_VLMPrediction = (int)VLMConcurrencySlider.Value;
-            
-            // 進捗計算用の総画像数を保持
+
+            var asyncPipelineService = new AsyncPipelineService(cpuConcurrencyLimit: (int)VLMConcurrencySlider.Value);
+
             var totalImages = _imageInfos.Count;
+            var stopwatch = Stopwatch.StartNew();
+            asyncPipelineService.ProgressUpdated += (counters) => {
+                double loadedImagesPerSecond = counters[0].Value / (stopwatch.ElapsedMilliseconds / 1000.0);
+                double predictImagesPerSecond = counters[1].Value / (stopwatch.ElapsedMilliseconds / 1000.0);
+                double totalImagesPerSecond = counters[2].Value / (stopwatch.ElapsedMilliseconds / 1000.0);
+                ProcessingSpeed = $"VLM - Load: {loadedImagesPerSecond:F1} Predict: {predictImagesPerSecond:F1} Complete: {totalImagesPerSecond:F1} 枚/秒";
+                Dispatcher.Invoke(() => {
+                    UpdateProgressBar(counters[2].Value / (double)totalImages);
+                    UpdateUIAfterTagsChange();
+                });
+            };
 
-            // 処理スピードを表示するためのタスクを開始
-            var processingSpeedTask = Task.Run(async () => {
-                var stopwatch = Stopwatch.StartNew();
-                // 一定間隔で処理スピードを更新する。Rx(R3)でなくても実装できるが、便利でスレッドの処理も任せられて安心なので使う。
-                var progressObservable = Observable.Interval(TimeSpan.FromMilliseconds(_vlmUpdateIntervalMs)).ToAsyncEnumerable();
-                await foreach (var _ in progressObservable)
-                {
-                    if (_cts.IsCancellationRequested) break;
-                    double loadImagesPerSecond = _loadImgProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
-                    double predictImagesPerSecond = _predictProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
-                    double totalImagesPerSecond = _totalProcessedImagesCount / (stopwatch.ElapsedMilliseconds / 1000.0);
-                    double progress = _totalProcessedImagesCount / (double)totalImages;
-                    Dispatcher.Invoke(() =>
-                    {
-                        ProcessingSpeed = $"VLM LoadImg: {loadImagesPerSecond:F1} Predict: {predictImagesPerSecond:F1} Total: {totalImagesPerSecond:F1} 枚/秒";
-                        UpdateProgressBar(progress);
-                        UpdateUIAfterTagsChange();
-                    });
-                }
-            });
+            var pipelineStages = new List<PipelineStage>{
 
-            // CPU並列度設定の基準は (Environment.ProcessorCount - 2) = 14 (GPU処理の軽いjoytag利用時の最速設定)
-            SemaphoreSlim semaphoreCPU = new SemaphoreSlim(_CPUConcurrencyLimit_VLMPrediction);
+                // 画像を非同期にロードし、テンソルを準備する
+                new PipelineStage(async i => {
+                    if (i is null || i!.Item2 is null) return null;
+                    DenseTensor<float>? tensor = await Task.Run(() => _vlmPredictor.PrepareTensor(i!.Item2));
+                    if (tensor is null) return null;
+                    return (i!.Item1, tensor);
+                }),
+                
+                // テンソルを使用してタグを予測する
+                new PipelineStage(async i => {
+                    if (i is null || i!.Item2 is null) return null;
+                    return (i!.Item1, await PredictVLMFromTensor(i!.Item2, _cts.Token));
+                }, isGpuStage: usingGPU),
 
-            // 画像を非同期にロードし、テンソルを準備するブロック
-            var prepareTensorBlock = new TransformBlock<(ImageInfo, BitmapImage), (ImageInfo, DenseTensor<float>)?>(
-                async i =>
-                {
-                    await semaphoreCPU.WaitAsync(); // ロックを取得 or 並列度の上限に達している間は処理をを止める
-                    try {
-                        Interlocked.Increment(ref _loadImgProcessedImagesCount);
-                        DenseTensor<float>? tensor = await Task.Run(() => _vlmPredictor.PrepareTensor(i.Item2));
-                        if (tensor == null) return null; // nullで無効なタスクを表現する 冗長だけどTPLでは他に良い書き方がなさそう
-                        return (i.Item1, tensor);
-                    } finally {
-                        semaphoreCPU.Release();
-                    }
-                },
-                new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded } // 並列度の制限は外部的にセマフォで行う
-            );
+                // 予測されたタグを処理する
+                new PipelineStage(async i => {
+                    if (i is null || i!.Item2 is null) return null;
+                    ProcessPredictedTags(i!.Item1, i!.Item2);
+                    return i!.Item1;
+                })
+            };
 
-            // テンソルを使用してタグを予測するブロック
-            var predictTagsBlock = new TransformBlock<(ImageInfo, DenseTensor<float>)?, (ImageInfo, List<string>)?>(
-                async t =>
-                {
-                    if (usingGPU) {
-                        // GPU実行では並列度を制限せず全リソースを使う
-                        if (!t.HasValue) return null;
-                        Interlocked.Increment(ref _predictProcessedImagesCount);
-                        var tags = await PredictVLM(t.Value.Item2, _cts.Token);
-                        return (t.Value.Item1, tags);
-                    } else {
-                        // CPU実行では並列度を制限する
-                        await semaphoreCPU.WaitAsync();
-                        try {
-                            if (!t.HasValue) return null;
-                            Interlocked.Increment(ref _predictProcessedImagesCount);
-                            var tags = await PredictVLM(t.Value.Item2, _cts.Token);
-                            return (t.Value.Item1, tags);
-                        } finally {
-                            semaphoreCPU.Release();
-                        }
-                    }
-                },
-                new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded }
-            );
-
-            // 予測されたタグを処理するブロック
-            var processTagsBlock = new ActionBlock<(ImageInfo, List<string>)?>(
-                async p =>
-                {
-                    // 比較的軽い処理だが、これもCPUで処理される独立したタスクのため、並列度を制限しておくとUIスレッドのハングを防げる
-                    await semaphoreCPU.WaitAsync(); // ロックを取得 or 並列度の上限に達している間は待つ
-                    try {
-                        if (!p.HasValue || p.Value.Item1 == null || _cts.Token.IsCancellationRequested) return;
-                        Interlocked.Increment(ref _totalProcessedImagesCount);
-                        ProcessPredictedTags(p.Value.Item1, p.Value.Item2);
-                    } finally {
-                        semaphoreCPU.Release();
-                    }
-                },
-                new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded }
-            );
-
-            // ブロックをリンク（データパイプラインを組む）
-            prepareTensorBlock.LinkTo(predictTagsBlock, new DataflowLinkOptions { PropagateCompletion = true });
-            predictTagsBlock.LinkTo(processTagsBlock, new DataflowLinkOptions { PropagateCompletion = true });
-
-            // 画像をロードしてパイプラインに投入
-            await foreach ((ImageInfo imageInfo, BitmapImage bitmap) in LoadImagesAsync())
-            {
-                // 全量を投入してもパイプラインは順次処理可能だが、ここではキャンセルの反応速度を上げるため、流量をセマフォで制御している（同時に取得するロックは最大で1)
-                if (_cts.IsCancellationRequested) break;
-                await semaphoreCPU.WaitAsync(); // ロックを取得 or 並列度の上限に達している間はループを止める
-                try{
-                    await prepareTensorBlock.SendAsync((imageInfo, bitmap));
-                } catch (OperationCanceledException) {
-                    // キャンセルされた場合はロックを開放してループを抜ける
-                    semaphoreCPU.Release();
-                    break;
-                } finally {
-                    semaphoreCPU.Release();
-                }
+            try {
+                await asyncPipelineService.ProcessAsync<(ImageInfo, BitmapImage), ImageInfo>(
+                    LoadAllBitmapImagesAsync(), 
+                    pipelineStages, 
+                    _cts);
+            } catch (OperationCanceledException) {
+                AddMainLogEntry("VLM推論がキャンセルされました");
+            } finally {
+                stopwatch.Stop();
+                UpdateUIAfterTagsChange();
+                UpdateProgressBar(0);
+                ProcessingSpeed = "";
             }
-
-            // 全量投入後、パイプラインの完了を通知
-            prepareTensorBlock.Complete();
-            // 最後の処理の完了を待つ
-            await processTagsBlock.Completion;
-
-            // 処理スピード計測タスクをキャンセル
-            _cts.Cancel();
-            await processingSpeedTask; // 処理スピード計測タスクの完了を待つ
-            
-            UpdateUIAfterTagsChange();
-            UpdateProgressBar(0);
-            _loadImgProcessedImagesCount = 0;
-            _predictProcessedImagesCount = 0;
-            _totalProcessedImagesCount = 0;
-            ProcessingSpeed = "";
         }
 
-        private async IAsyncEnumerable<(ImageInfo imageInfo, BitmapImage bitmap)> LoadImagesAsync()
+        private async IAsyncEnumerable<(ImageInfo imageInfo, BitmapImage bitmap)> LoadAllBitmapImagesAsync()
         {
-            foreach (var imageInfo in _imageInfos)
-            {
-                // yield return (imageInfo, await Task.Run(() => LoadImage(imageInfo.ImagePath)));
-                yield return (imageInfo, await Task.Run(() => {
-                    var bitmap = new BitmapImage();
-                    bitmap.BeginInit();
-                    bitmap.UriSource = new Uri(imageInfo.ImagePath);
-                    // bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                    bitmap.EndInit();
-                    bitmap.Freeze(); // UIスレッド以外でも使用可能にする
-                    return bitmap;
-                }));
+            foreach (var imageInfo in _imageInfos) {
+                yield return (imageInfo, await Task.Run(() => LoadImageForVLMPrediction(imageInfo.ImagePath)));
             }
+        }
+
+        private BitmapImage LoadImageForVLMPrediction(string imagePath)
+        {
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.UriSource = new Uri(imagePath);
+            // bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.EndInit();
+            bitmap.Freeze(); // UIスレッド以外でも使用可能にする
+            return bitmap;
         }
 
         private void ProcessPredictedTags(ImageInfo imageInfo, List<string> predictedTags)
@@ -3818,39 +3746,36 @@ namespace tagmane
             }
         }
 
-        private async Task<List<string>> PredictVLM(DenseTensor<float> tensor, CancellationToken cancellationToken)
+        private async Task<List<string>> PredictVLMFromTensor(DenseTensor<float> tensor, CancellationToken cancellationToken)
         {
-            // 全体版VLM推論
-            
-            float generalThreshold = 0.35f;
-            float characterThreshold = 0.85f;
-            
-            await Dispatcher.InvokeAsync(() =>
-            {
-                generalThreshold = (float)GeneralThresholdSlider.Value;
-                characterThreshold = (float)CharacterThresholdSlider.Value;
-            });
+            (float generalThreshold, float characterThreshold) = await Dispatcher.InvokeAsync(() => 
+                ((float)GeneralThresholdSlider.Value, (float)CharacterThresholdSlider.Value)
+            );
 
-            var (generalTags, rating, characters, allTags) = Task.Run(() =>
-                {
-                    try
-                    {
-                        return _vlmPredictor.Predict(
-                            tensor,
-                            generalThreshold,
-                            false,
-                            characterThreshold,
-                            false
-                        );
-                    }
-                    catch (Exception ex)
-                    {
-                        AddMainLogEntry($"画像の読み込み中にエラーが発生しました: {ex.Message}");
-                        _vlmErrorLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} 画像読み込みエラー: {ex.Message}");
-                        // tag更新をせずに継続
-                        return (string.Empty, new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
-                    }
-                }, cancellationToken).Result;
+            var (generalTags, rating, characters, allTags) = Task.Run(() => {
+                try {
+                    return _vlmPredictor.Predict(
+                        tensor,
+                        generalThreshold,
+                        false,
+                        characterThreshold,
+                        false
+                    );
+                } catch (Exception ex) {
+                    AddMainLogEntry($"画像の読み込み中にエラーが発生しました: {ex.Message}");
+                    _vlmErrorLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} 画像読み込みエラー: {ex.Message}");
+                    // tag更新をせずに継続
+                    return (string.Empty, new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
+                }
+            }, cancellationToken).Result;
+
+            // original author に確認のため、古い挙動をコメントで保存
+            // // generalTagsが空の場合は空のリストを返す
+            // if (string.IsNullOrWhiteSpace(generalTags)) { return new List<string>(); }
+            // // generalTagsとcharactersを結合して返す
+            // var predictedTags = generalTags.Split(',').Select(t => t.Trim()).ToList();
+            // predictedTags.AddRange(characters.Keys);
+            // return predictedTags;
             
             var predictedTags = generalTags.Split(',').Select(t => t.Trim()).ToList();
             predictedTags.AddRange(characters.Keys);
@@ -3862,71 +3787,19 @@ namespace tagmane
         private async Task<List<string>> PredictVLMTagsAsync(ImageInfo imageInfo, CancellationToken cancellationToken)
         {
             AddMainLogEntry("VLM推論を開始します(単体版)");
-
-            try
-            {
-                float generalThreshold = 0.35f;
-                float characterThreshold = 0.85f;
-                
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    generalThreshold = (float)GeneralThresholdSlider.Value;
-                    characterThreshold = (float)CharacterThresholdSlider.Value;
-                });
-                
-                // var (generalTags, rating, characters, allTags) = await Task.Run(() => _vlmPredictor.Predict(
-                //     new BitmapImage(new Uri(imageInfo.ImagePath)),
-                //     generalThreshold, // generalThresh
-                //     false, // generalMcutEnabled
-                //     characterThreshold, // characterThresh
-                //     false  // characterMcutEnabled
-                // ), cancellationToken);
-
-                var (generalTags, rating, characters, allTags) = await Task.Run(() =>
-                {
-                    try
-                    {
-                        // 壊れた画像を読み込んだときに例外が発生する可能性がある部分
-                        var bitmapImage = new BitmapImage(new Uri(imageInfo.ImagePath));
-                        return _vlmPredictor.Predict(
-                            bitmapImage,
-                            generalThreshold,  // generalThresh
-                            false,             // generalMcutEnabled
-                            characterThreshold,// characterThresh
-                            false              // characterMcutEnabled
-                        );
-                    }
-                    catch (Exception ex)
-                    {
-                        // Task.Run内で例外をキャッチし、再度スローすることで外側のtry-catchに伝える
-                        // throw new InvalidOperationException($"画像の読み込み中にエラーが発生しました: {ex.Message}", ex);
-                        return (string.Empty, new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
-                    }
-                }, cancellationToken);
-
-                // 結果を表示または処理する
-                await Dispatcher.InvokeAsync(() => AddMainLogEntry($"VLM推論結果: {generalTags}"));
-
-                // generalTagsが空の場合は空のリストを返す
-                if (string.IsNullOrWhiteSpace(generalTags)) { return new List<string>(); }
-
-                // generalTagsとcharactersを結合して返す
-                var predictedTags = generalTags.Split(',').Select(t => t.Trim()).ToList();
-                predictedTags.AddRange(characters.Keys);
-                return predictedTags;
-            }
-            catch (Exception ex)
-            {
-                AddMainLogEntry($"VLM推論中にエラーが発生しました: {ex.Message}");
-                throw;
-            }
+            var predictedTags = await Task.Run(() => { 
+                return PredictVLMFromTensor(
+                    _vlmPredictor.PrepareTensor(LoadImageForVLMPrediction(imageInfo.ImagePath))!,
+                    cancellationToken
+                );
+            }, cancellationToken);
+            await Dispatcher.InvokeAsync(() => AddMainLogEntry($"VLM推論結果: {string.Join(", ", predictedTags)}"));
+            return predictedTags;
         }
 
         // VLMログの更新
-        private void UpdateVLMLog(object sender, string log)
-        {
-            Dispatcher.Invoke(() =>
-            {
+        private void UpdateVLMLog(object? sender, string log) {
+            Dispatcher.Invoke(() => {
                 AddDebugLogEntry("UpdateVLMLog");
                 _vlmLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} - {log}");
             });

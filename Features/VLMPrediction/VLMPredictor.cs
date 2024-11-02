@@ -8,10 +8,10 @@ namespace tagmane
 {
     public class VLMPredictor
     {
-        private object _currentPredictor;
+        private object? _currentPredictor;
         private bool _isModelLoaded = false;
 
-        public event EventHandler<string> LogUpdated;
+        public event EventHandler<string>? LogUpdated;
         public bool IsGpuLoaded { get; private set; }
 
         public async Task LoadModel(string modelRepo, bool useGpu = true)
@@ -33,35 +33,16 @@ namespace tagmane
             _isModelLoaded = true;
         }
 
-        private void OnPredictorLogUpdated(object sender, string message)
+        private void OnPredictorLogUpdated(object? sender, string message)
         {
             LogUpdated?.Invoke(this, message);
         }
 
-        public (string, Dictionary<string, float>, Dictionary<string, float>, Dictionary<string, float>) Predict(
-            BitmapImage image,
-            float generalThresh,
-            bool generalMcutEnabled,
-            float characterThresh,
-            bool characterMcutEnabled)
-        {
-            if (!_isModelLoaded)
-            {
-                // throw new InvalidOperationException("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
-                // AddLogEntry("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
-                return ("", new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
-            }
-
-            if (_currentPredictor is WDPredictor wdPredictor)
-                return wdPredictor.Predict(PrepareTensor(image)!, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled);
-            else if (_currentPredictor is JoyPredictor joyPredictor)
-                return joyPredictor.Predict(PrepareTensor(image)!, generalThresh);
-            else
-                throw new InvalidOperationException("No predictor loaded");
-        }
-
         public DenseTensor<float>? PrepareTensor(BitmapImage image)
         {
+            // safe-guard: 万が一モデルが読み込まれていない場合、早めに失敗
+            if (!_isModelLoaded) throw new InvalidOperationException("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
+
             if (_currentPredictor is WDPredictor wdPredictor)
                 return wdPredictor.PrepareTensor(image);
             else if (_currentPredictor is JoyPredictor joyPredictor)
@@ -72,11 +53,14 @@ namespace tagmane
 
         public (string, Dictionary<string, float>, Dictionary<string, float>, Dictionary<string, float>) Predict(
             DenseTensor<float> tensor, 
-            float generalThresh,
-            bool generalMcutEnabled,
-            float characterThresh,
-            bool characterMcutEnabled)
+            float generalThresh=0.35f,
+            bool generalMcutEnabled=false,
+            float characterThresh=0.85f,
+            bool characterMcutEnabled=false)
         {
+            // safe-guard: 万が一モデルが読み込まれていない場合、早めに失敗
+            if (!_isModelLoaded) throw new InvalidOperationException("モデルが読み込まれていません。Predictを実行する前にLoadModelを呼び出してください。");
+
             if (_currentPredictor is WDPredictor wdPredictor)
                 return wdPredictor.Predict(tensor, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled);
             else if (_currentPredictor is JoyPredictor joyPredictor)
