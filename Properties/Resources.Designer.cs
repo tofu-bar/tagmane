@@ -123,6 +123,16 @@ namespace tagmane.Properties {
         /// <summary>
         ///   型 System.Drawing.Bitmap のローカライズされたリソースを検索します。
         /// </summary>
+        internal static System.Drawing.Bitmap deldir {
+            get {
+                object obj = ResourceManager.GetObject("deldir", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   型 System.Drawing.Bitmap のローカライズされたリソースを検索します。
+        /// </summary>
         internal static System.Drawing.Bitmap deselect {
             get {
                 object obj = ResourceManager.GetObject("deselect", resourceCulture);

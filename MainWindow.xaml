@@ -64,6 +64,14 @@
                                 <TextBlock Text="選択中の画像とタグを削除(Ctrl+Del)"/>
                             </Button.ToolTip>
                         </Button>
+                        <Button Click="DeleteFilteredImageAndTags_Click">
+                            <Button.Content>
+                                <Image Source="/icon/deldir.png" Width="32" Height="32"/>
+                            </Button.Content>
+                            <Button.ToolTip>
+                                <TextBlock Text="フィルタ中の画像とタグを削除(Ctrl+Shift+Del)"/>
+                            </Button.ToolTip>
+                        </Button>
                         <Button Click="CancelButton_Click">
                             <Button.Content>
                                 <Image Source="/icon/cancel.png" Width="32" Height="32"/>

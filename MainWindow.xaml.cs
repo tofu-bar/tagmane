@@ -349,6 +349,10 @@ namespace tagmane
             {
                 switch (e.Key)
                 {
+                    case Key.Delete:
+                        DeleteFilteredImageAndTags_Click(null, null); // フィルタ中の画像とタグを削除
+                        e.Handled = true;
+                        break;
                     case Key.T:
                         AddAllTagsButton_Click(null, null); // 選択しているタグを全画像に追加
                         e.Handled = true;
@@ -929,9 +933,73 @@ namespace tagmane
                 _undoStack.Clear();
                 _redoStack.Clear();
 
+                UpdateImageList();
+                UpdateImageCountDisplay();
                 UpdateUIAfterImageInfosChange();
                 UpdateButtonStates();
                 AddMainLogEntry($"画像 '{System.IO.Path.GetFileName(selectedImage.ImagePath)}' とそのタグを削除しました。");
+                AddMainLogEntry("Undo/Redoスタックをクリアしました。");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"画像の削除中にエラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                AddMainLogEntry($"画像の削除中にエラーが発生: {ex.Message}");
+            }
+        }
+
+        private void DeleteFilteredImageAndTags_Click(object sender, RoutedEventArgs e)
+        {
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("削除対象の画像がありません。");
+                return;
+            }
+
+            if (ConfirmCheckBox.IsChecked == true)
+            {
+                var result = MessageBox.Show($"フィルタされた{_imageInfos.Count}個の画像とそのタグを削除しますか？", "確認", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (result != MessageBoxResult.Yes)
+                {
+                    AddMainLogEntry("削除がキャンセルされました。");
+                    return;
+                }
+            }
+
+            try
+            {
+                // ImageListBoxの選択をクリア
+                ImageListBox.SelectedItem = null;
+
+                // 画像とタグファイルを削除
+                foreach (var imageInfo in _imageInfos.ToList())
+                {
+                    // GCを強制的に実行してリソースを解放
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+
+                    if (File.Exists(imageInfo.ImagePath))
+                    {
+                        File.Delete(imageInfo.ImagePath);
+                    }
+                    string textFilePath = System.IO.Path.ChangeExtension(imageInfo.ImagePath, ".txt");
+                    if (File.Exists(textFilePath))
+                    {
+                        File.Delete(textFilePath);
+                    }
+
+                    _imageInfos.Remove(imageInfo);
+                    _originalImageInfos.Remove(imageInfo);
+                }
+
+                // Undo/Redoスタックをクリア
+                _undoStack.Clear();
+                _redoStack.Clear();
+
+                UpdateImageList();
+                UpdateImageCountDisplay();
+                UpdateUIAfterImageInfosChange();
+                UpdateButtonStates();
+                AddMainLogEntry($"{_imageInfos.Count}個の画像とそのタグを削除しました。");
                 AddMainLogEntry("Undo/Redoスタックをクリアしました。");
             }
             catch (Exception ex)
