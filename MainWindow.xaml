@@ -46,6 +46,14 @@
                                 <TextBlock Text="現在のタグ状態を保存(Ctrl+S)"/>
                             </Button.ToolTip>
                         </Button>
+                        <Button Click="MoveDirectoryButton_Click">
+                            <Button.Content>
+                                <Image Source="/icon/move.png" Width="32" Height="32"/>
+                            </Button.Content>
+                            <Button.ToolTip>
+                                <TextBlock Text="フィルタ中の画像のフォルダを移動(Ctrl+M)"/>
+                            </Button.ToolTip>
+                        </Button>
                     </StackPanel>
                     <StackPanel Grid.Column="2" Orientation="Horizontal">
                         <Button Click="DeleteSelectedImageAndTags_Click">

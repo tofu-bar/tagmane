@@ -287,6 +287,10 @@ namespace tagmane
                         SaveTagsButton_Click(null, null); // 現在のタグ状態を保存
                         e.Handled = true;
                         break;
+                    case Key.M:
+                        MoveDirectoryButton_Click(null, null); // フィルタ中の画像のフォルダを移動
+                        e.Handled = true;
+                        break;
                     case Key.Delete:
                         DeleteSelectedImageAndTags_Click(null, null); // 選択中の画像とタグを削除
                         e.Handled = true;
@@ -747,6 +751,120 @@ namespace tagmane
                 AssociatedText.Text = selectedImage.AssociatedText;
             }
         }
+
+        private void MoveDirectoryButton_Click(object sender, RoutedEventArgs e)
+        {
+            MoveDirectory();
+        }
+
+        private void MoveDirectory()
+        {
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("移動対象の画像がありません。");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(_selectedFolderPath))
+            {
+                AddMainLogEntry("元のフォルダが選択されていません。");
+                return;
+            }
+
+            // 移動先フォルダを選択するダイアログを表示
+            var dialog = new CommonOpenFileDialog
+            {
+                IsFolderPicker = true,
+                Title = "移動先フォルダを選択してください",
+                InitialDirectory = _selectedFolderPath // 開いているフォルダを初期ディレクトリに設定
+            };
+
+            if (dialog.ShowDialog() == CommonFileDialogResult.Ok)
+            {
+                // 選択されたパスが元のフォルダのサブディレクトリかチェック
+                if (!dialog.FileName.StartsWith(_selectedFolderPath))
+                {
+                    MessageBox.Show("選択されたフォルダは現在開いているフォルダの中にある必要があります。", 
+                        "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                if (ConfirmCheckBox.IsChecked == true)
+                {
+                    var result = MessageBox.Show(
+                        $"{_imageInfos.Count}個の画像とタグを移動しますか？\n移動先: {dialog.FileName}", 
+                        "確認", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                    if (result != MessageBoxResult.Yes)
+                    {
+                        AddMainLogEntry("移動がキャンセルされました。");
+                        return;
+                    }
+                }
+
+                try
+                {
+                    int successCount = 0;
+                    int failureCount = 0;
+                    var failedFiles = new List<string>();
+
+                    foreach (var imageInfo in _imageInfos.ToList()) // ToList()で複製を作成
+                    {
+                        try
+                        {
+                            string fileName = Path.GetFileName(imageInfo.ImagePath);
+                            string newImagePath = Path.Combine(dialog.FileName, fileName);
+                            string tagFilePath = Path.ChangeExtension(imageInfo.ImagePath, ".txt");
+                            string newTagFilePath = Path.ChangeExtension(newImagePath, ".txt");
+
+                            // 画像を移動
+                            File.Move(imageInfo.ImagePath, newImagePath);
+
+                            // タグファイルが存在する場合は移動
+                            if (File.Exists(tagFilePath))
+                            {
+                                File.Move(tagFilePath, newTagFilePath);
+                            }
+                            else // タグファイルが存在しない場合は作成
+                            {
+                                SaveTagsToFile(imageInfo);
+                                File.Move(Path.ChangeExtension(imageInfo.ImagePath, ".txt"), newTagFilePath);
+                            }
+
+                            // パスを更新
+                            imageInfo.ImagePath = newImagePath;
+                            successCount++;
+                        }
+                        catch (Exception ex)
+                        {
+                            failureCount++;
+                            failedFiles.Add(Path.GetFileName(imageInfo.ImagePath));
+                            AddMainLogEntry($"ファイルの移動中にエラーが発生: {ex.Message}");
+                        }
+                    }
+
+                    // 結果を表示
+                    string resultMessage = $"{successCount}個のファイルを移動しました。";
+                    if (failureCount > 0)
+                    {
+                        resultMessage += $"\n{failureCount}個のファイルの移動に失敗しました:";
+                        resultMessage += $"\n{string.Join("\n", failedFiles)}";
+                        MessageBox.Show(resultMessage, "移動結果", MessageBoxButton.OK, 
+                            failureCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+                    }
+                    AddMainLogEntry(resultMessage);
+
+                    // UIを更新
+                    UpdateUIAfterImageInfosChange();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"移動処理中にエラーが発生しました: {ex.Message}", 
+                        "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                    AddMainLogEntry($"移動処理中にエラーが発生: {ex.Message}");
+                }
+            }
+        }
+
         // 画像のタグをファイルに保存
         private void SaveTagsToFile(ImageInfo imageInfo)
         {
