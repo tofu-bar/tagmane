@@ -72,14 +72,6 @@
                                 <TextBlock Text="フィルタ中の画像とタグを削除(Ctrl+Shift+Del)"/>
                             </Button.ToolTip>
                         </Button>
-                        <Button Click="DeleteSelectedImageAndTagsAdvanced_Click">
-                            <Button.Content>
-                                <Image Source="/icon/delser.png" Width="32" Height="32"/>
-                            </Button.Content>
-                            <Button.ToolTip>
-                                <TextBlock Text="高度な削除"/>
-                            </Button.ToolTip>
-                        </Button>
                     </StackPanel>
                 </Grid>
                 <CheckBox x:Name="ConfirmCheckBox" Content="操作時に確認する？" IsChecked="True" Margin="0,5,0,0"/>
@@ -108,6 +100,7 @@
                 <RowDefinition Height="2*"/>
                 <RowDefinition Height="1*"/>
                 <RowDefinition Height="Auto"/> <!-- オプション欄用に新しい行を追加 -->
+                <RowDefinition Height="Auto"/> <!-- 高度な削除用 -->
             </Grid.RowDefinitions>
             <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
@@ -244,6 +237,51 @@
                     </StackPanel>
                 </Grid>
             </Grid>
+
+
+            <!-- 高度な削除セクション -->
+            <Expander Grid.Row="4" Header="高度な削除" Margin="5">
+                <StackPanel>
+                    <!-- 孤立したタグファイルの削除 -->
+                    <GroupBox Header="孤立したタグファイル" Margin="0,5">
+                        <StackPanel Margin="5">
+                            <TextBlock Text="紐づいている画像が存在しないtxtファイルをすべて削除します" TextWrapping="Wrap"/>
+                            <Button x:Name="DeleteOrphanedTagsButton" Content="孤立タグファイルを削除" 
+                                    Margin="0,5" Padding="5" Click="DeleteOrphanedTagsButton_Click"/>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <!-- 低解像度画像の削除 -->
+                    <GroupBox Header="低解像度画像" Margin="0,5">
+                        <StackPanel Margin="5">
+                            <TextBlock Text="指定された解像度以下の画像とタグファイルを削除します" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,5">
+                                <RadioButton x:Name="LongSideRadio" Content="長辺" IsChecked="True" Margin="0,0,10,0"/>
+                                <RadioButton x:Name="ShortSideRadio" Content="短辺" Margin="0,0,10,0"/>
+                                <TextBlock Text="が" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                <TextBox x:Name="ResolutionTextBox" Text="480" Width="60" Margin="0,0,5,0"/>
+                                <TextBlock Text="ピクセル以下" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <Button x:Name="DeleteLowResButton" Content="低解像度画像を削除" 
+                                    Margin="0,5" Padding="5" Click="DeleteLowResButton_Click"/>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <!-- タグ数が少ない画像の削除 -->
+                    <GroupBox Header="タグ数が少ない画像" Margin="0,5">
+                        <StackPanel Margin="5">
+                            <TextBlock Text="指定された数以下のタグを持つ画像とタグファイルを削除します（タグがない画像は除外）" 
+                                    TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,5">
+                                <TextBox x:Name="TagCountTextBox" Text="3" Width="60" Margin="0,0,5,0"/>
+                                <TextBlock Text="個以下のタグ" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <Button x:Name="DeleteLowTagCountButton" Content="タグ数が少ない画像を削除" 
+                                    Margin="0,5" Padding="5" Click="DeleteLowTagCountButton_Click"/>
+                        </StackPanel>
+                    </GroupBox>
+                </StackPanel>
+            </Expander>
         </Grid>
 
         <!-- 右ペイン1: 個別タグ -->

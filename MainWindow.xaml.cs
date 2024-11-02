@@ -927,9 +927,6 @@ namespace tagmane
 
             try
             {
-                // // ImageListBoxの選択をクリア
-                // ImageListBox.SelectedItem = null;
-
                 // 削除前に現在のインデックスを保持
                 int currentIndex = ImageListBox.SelectedIndex;
 
@@ -1053,16 +1050,173 @@ namespace tagmane
             }
         }
 
-        private void DeleteSelectedImageAndTagsAdvanced_Click(object sender, RoutedEventArgs e)
+        private async void DeleteOrphanedTagsButton_Click(object sender, RoutedEventArgs e)
         {
-            // var dialog = new AdvancedDeleteWindow(this, _selectedFolderPath);
-            // dialog.Owner = this;
-            // dialog.ShowDialog();
-            
-            // // ダイアログが閉じられた後にUIを更新
-            // UpdateUIAfterImageInfosChange();
+            if (string.IsNullOrEmpty(_selectedFolderPath)) return;
 
-            // 未実装
+            var result = MessageBox.Show(
+                "紐づいている画像が存在しないtxtファイルをすべて削除しますか？",
+                "確認",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question,
+                MessageBoxResult.No
+            );
+            if (result != MessageBoxResult.Yes) return;
+
+            try
+            {
+                var txtFiles = Directory.GetFiles(_selectedFolderPath, "*.txt", SearchOption.AllDirectories);
+                int deletedCount = 0;
+
+                foreach (var txtFile in txtFiles)
+                {
+                    var imageFile = Path.ChangeExtension(txtFile, ".jpg");
+                    var imageFileWebp = Path.ChangeExtension(txtFile, ".webp");
+                    var imageFilePng = Path.ChangeExtension(txtFile, ".png");
+
+                    if (!File.Exists(imageFile) && !File.Exists(imageFileWebp) && !File.Exists(imageFilePng))
+                    {
+                        File.Delete(txtFile);
+                        deletedCount++;
+                    }
+                }
+
+                // Undo/Redoスタックをクリア
+                _undoStack.Clear();
+                _redoStack.Clear();
+                AddMainLogEntry("Undo/Redoスタックをクリアしました。");
+
+                UpdateUIAfterImageInfosChange();
+                UpdateButtonStates();
+                AddMainLogEntry($"{deletedCount}個の孤立したタグファイルを削除しました");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"削除中にエラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                AddMainLogEntry($"削除中にエラーが発生: {ex.Message}");
+            }
+        }
+
+        private async void DeleteLowResButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!int.TryParse(ResolutionTextBox.Text, out int threshold))
+            {
+                MessageBox.Show("有効な解像度を入力してください", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var result = MessageBox.Show(
+                $"{(LongSideRadio.IsChecked == true ? "長辺" : "短辺")}が{threshold}ピクセル以下の画像とタグファイルを削除しますか？",
+                "確認",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question,
+                MessageBoxResult.No
+            );
+            if (result != MessageBoxResult.Yes) return;
+
+            try
+            {
+                int deletedCount = 0;
+                var imageFiles = Directory.GetFiles(_selectedFolderPath, "*.*", SearchOption.AllDirectories)
+                    .Where(f => f.ToLower().EndsWith(".jpg") || f.ToLower().EndsWith(".png") || f.ToLower().EndsWith(".webp"));
+
+                foreach (var imageFile in imageFiles)
+                {
+                    try
+                    {
+                        using (var image = System.Drawing.Image.FromFile(imageFile))
+                        {
+                            int relevantSize = LongSideRadio.IsChecked == true ?
+                                Math.Max(image.Width, image.Height) :
+                                Math.Min(image.Width, image.Height);
+
+                            if (relevantSize <= threshold)
+                            {
+                                var txtFile = Path.ChangeExtension(imageFile, ".txt");
+                                if (File.Exists(txtFile)) File.Delete(txtFile);
+                                File.Delete(imageFile);
+                                deletedCount++;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AddMainLogEntry($"画像の処理中にエラー: {Path.GetFileName(imageFile)} - {ex.Message}");
+                    }
+                }
+
+                // Undo/Redoスタックをクリア
+                _undoStack.Clear();
+                _redoStack.Clear();
+                AddMainLogEntry("Undo/Redoスタックをクリアしました。");
+
+                UpdateUIAfterImageInfosChange();
+                UpdateButtonStates();
+                AddMainLogEntry($"{deletedCount}個の低解像度画像とタグファイルを削除しました");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"削除中にエラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                AddMainLogEntry($"削除中にエラーが発生: {ex.Message}");
+            }
+        }
+
+        private async void DeleteLowTagCountButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!int.TryParse(TagCountTextBox.Text, out int threshold))
+            {
+                MessageBox.Show("有効なタグ数を入力してください", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var result = MessageBox.Show(
+                $"{threshold}個以下のタグを持つ画像とタグファイルを削除しますか？（タグがない画像は除外されます）",
+                "確認",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question,
+                MessageBoxResult.No
+            );
+            if (result != MessageBoxResult.Yes) return;
+
+            try
+            {
+                int deletedCount = 0;
+                var txtFiles = Directory.GetFiles(_selectedFolderPath, "*.txt", SearchOption.AllDirectories);
+
+                foreach (var txtFile in txtFiles)
+                {
+                    var tags = File.ReadAllText(txtFile).Split(',').Select(t => t.Trim()).Where(t => !string.IsNullOrEmpty(t));
+                    int tagCount = tags.Count();
+
+                    if (tagCount > 0 && tagCount <= threshold)
+                    {
+                        var imageFile = Path.ChangeExtension(txtFile, ".jpg");
+                        var imageFileWebp = Path.ChangeExtension(txtFile, ".webp");
+                        var imageFilePng = Path.ChangeExtension(txtFile, ".png");
+
+                        if (File.Exists(imageFile)) File.Delete(imageFile);
+                        if (File.Exists(imageFileWebp)) File.Delete(imageFileWebp);
+                        if (File.Exists(imageFilePng)) File.Delete(imageFilePng);
+                        
+                        File.Delete(txtFile);
+                        deletedCount++;
+                    }
+                }
+
+                // Undo/Redoスタックをクリア
+                _undoStack.Clear();
+                _redoStack.Clear();
+                AddMainLogEntry("Undo/Redoスタックをクリアしました。");
+
+                UpdateUIAfterImageInfosChange();
+                UpdateButtonStates();
+                AddMainLogEntry($"{deletedCount}個の画像とタグファイルを削除しました");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"削除中にエラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                AddMainLogEntry($"削除中にエラーが発生: {ex.Message}");
+            }
         }
 
         // キャンセルボタンのクリックイベントハンドラ
