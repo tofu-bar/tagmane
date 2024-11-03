@@ -3702,6 +3702,10 @@ namespace tagmane
                     if (i is null || i!.Item2 is null) return null;
                     ProcessPredictedTags(i!.Item1, i!.Item2);
                     return i!.Item1;
+                }),
+
+                new PipelineStage(async i => {
+                    return null;
                 })
             };
 

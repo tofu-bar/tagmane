@@ -221,8 +221,8 @@ public class AsyncPipelineService
             // 完了処理
             AddLogEntry("入力処理が完了しました。パイプラインの完了処理を開始します。");
             
-            // // すべてのブロックを順番に完了させる
-            // for (int i = 0; i < blocks.Count; i++)
+            // // 最後のダミーステージを除く全ブロックを完了させる
+            // for (int i = 0; i < blocks.Count - 1; i++) 
             // {
             //     if (i == 0)
             //     {
@@ -231,16 +231,16 @@ public class AsyncPipelineService
             //     await blocks[i].Completion;
             //     AddLogEntry($"ステージ {i + 1} の処理が完了しました。");
             // }
-            
-            // AddLogEntry("すべてのパイプライン処理が完了しました。");
 
-            AddLogEntry("パイプラインの完了処理を開始します。");
+            // // 最後のダミーステージは完了させない
+            // AddLogEntry("すべての実行ステージの処理が完了しました。");
+
+            // // 最後のダミーステージを除く全ブロックの完了を待つ
             blocks[0].Complete();
-            AddLogEntry("1");
-            var completionTasks = blocks.Select(b => b.Completion).ToArray();
-            AddLogEntry("2");
-            await Task.WhenAll(completionTasks).WaitAsync(cts.Token);
-            AddLogEntry("3");
+            await blocks[blocks.Count - 2].Completion;
+            // var completionTasks = blocks.Take(blocks.Count - 1).Select(b => b.Completion).ToArray();
+            // await Task.WhenAll(completionTasks).WaitAsync(cts.Token);
+            AddLogEntry("すべてのブロックの完了処理が終了しました。");
             
         }
         catch (OperationCanceledException)
