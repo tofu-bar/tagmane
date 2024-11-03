@@ -2,8 +2,10 @@ using System;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Threading;
+using System.Linq; // この行を追加
 using R3;
 using System.Threading.Tasks.Dataflow;
+using System.Diagnostics;
 
 // GPU処理の待機を別タスク(スレッド)へ切り出してCPU時間を有効に使うパイプライン実装
 public class AsyncPipelineService
@@ -13,15 +15,78 @@ public class AsyncPipelineService
 
     private readonly int _cpuConcurrencyLimit;
     private readonly int _gpuConcurrencyLimit;
+    private readonly int _initialGpuConcurrencyLimit;
     private readonly int _statusUpdateIntervalMs = 1000;
 
     private bool _isProcessing = false;
+
+    private readonly double _adjustmentFactor = 0.1; // 調整係数
+    private volatile int _currentGpuConcurrencyLimit;
+    private readonly object _concurrencyLock = new object();
+    
+    // 前段のパイプラインの処理時間を追跡
+    private readonly Dictionary<int, Queue<double>> _previousStageTimings = new();
+    private const int TIMING_WINDOW_SIZE = 10; // 直近の処理時間をいくつ保持するか
+
+    private double GetAveragePreviousStageTime(int stageIndex)
+    {
+        if (stageIndex <= 0 || !_previousStageTimings.ContainsKey(stageIndex - 1))
+            return 0;
+
+        var timings = _previousStageTimings[stageIndex - 1];
+        return timings.Count > 0 ? timings.Average() : 0;
+    }
+
+    private void UpdatePreviousStageTime(int stageIndex, double processingTimeMs)
+    {
+        if (!_previousStageTimings.ContainsKey(stageIndex))
+            _previousStageTimings[stageIndex] = new Queue<double>();
+
+        var timings = _previousStageTimings[stageIndex];
+        timings.Enqueue(processingTimeMs);
+        
+        while (timings.Count > TIMING_WINDOW_SIZE)
+            timings.Dequeue();
+    }
+
+    private void AdjustGpuConcurrency(int stageIndex, double currentProcessingTimeMs)
+    {
+        var previousStageTime = GetAveragePreviousStageTime(stageIndex);
+        if (previousStageTime <= 0) return; // 前段の処理時間が不明な場合は調整しない
+
+        lock (_concurrencyLock)
+        {
+            var newLimit = _currentGpuConcurrencyLimit;
+            
+            // 現在の処理時間が前段の処理時間より長い場合は並列度を下げる
+            if (currentProcessingTimeMs > previousStageTime)
+            {
+                newLimit = Math.Max(1, 
+                    (int)(_currentGpuConcurrencyLimit * (1 - _adjustmentFactor)));
+            }
+            // 現在の処理時間が前段の処理時間より十分短い場合は並列度を上げる
+            else if (currentProcessingTimeMs < previousStageTime * 0.8)
+            {
+                newLimit = Math.Min(_initialGpuConcurrencyLimit, 
+                    (int)(_currentGpuConcurrencyLimit * (1 + _adjustmentFactor)));
+            }
+
+            // 値が1未満にならないよう保証
+            newLimit = Math.Max(1, Math.Min(_initialGpuConcurrencyLimit, newLimit));
+            
+            if (newLimit != _currentGpuConcurrencyLimit)
+            {
+                _currentGpuConcurrencyLimit = newLimit;
+            }
+        }
+    }
 
     // CPU並列度設定の基準は (Environment.ProcessorCount - 2) = 14 (VLMPredictionでGPU処理の軽いjoytag利用時の最速設定)
     public AsyncPipelineService(int cpuConcurrencyLimit=14, int gpuConcurrencyLimit=14)
     {
         _cpuConcurrencyLimit = cpuConcurrencyLimit;
         _gpuConcurrencyLimit = gpuConcurrencyLimit;
+        _initialGpuConcurrencyLimit = gpuConcurrencyLimit;
     }
 
     public async Task ProcessAsync<TInput, TOutput>(
@@ -53,30 +118,63 @@ public class AsyncPipelineService
         // パイプラインを定義する
         for (int i = 0; i < stages.Count; i++) {
             var stage = stages[i];
-            var counter = processedItemsCounter[i]; // ブロック定義の外で参照しないと、ブロックの中で参照できない
-            var semaphore = stage.IsGpuStage ? semaphoreGPU : semaphoreCPU;
+            var stageIndex = i; // ブロック内でインデックスを使用するためにキャプチャ
+            var counter = processedItemsCounter[i];
+            var semaphore = stage.IsGpuStage ? 
+                new SemaphoreSlim(Math.Max(1, _currentGpuConcurrencyLimit)) : 
+                new SemaphoreSlim(_cpuConcurrencyLimit);
             blocks.Add(
                 new TransformBlock<object?, object?>(
                     async input => {
-                        // 処理開始前にロックを取得 or 並列度の上限に達している間は処理を止める
-                        // 比較的軽い処理でも、CPUで処理される場合は、並列度を制限しておくとUIスレッドのハングを防げる
                         await semaphore.WaitAsync(cts.Token);
                         counter.Increment();
                         try {
                             if (input == null) return null;
-                            return await stage.ProcessFunc(input);
-                        } finally {
+                            
+                            var sw = Stopwatch.StartNew();
+                            var result = await stage.ProcessFunc(input);
+                            sw.Stop();
+
+                            var processingTime = sw.ElapsedMilliseconds;
+                            UpdatePreviousStageTime(stageIndex, processingTime);
+
+                            if (stage.IsGpuStage)
+                            {
+                                AdjustGpuConcurrency(stageIndex, processingTime);
+                                
+                                // セマフォの調整を安全に行う
+                                try
+                                {
+                                    var currentCount = semaphore.CurrentCount;
+                                    var targetCount = _currentGpuConcurrencyLimit;
+                                    
+                                    if (currentCount < targetCount)
+                                    {
+                                        for (int j = currentCount; j < targetCount; j++)
+                                        {
+                                            semaphore.Release();
+                                        }
+                                    }
+                                }
+                                catch (SemaphoreFullException)
+                                {
+                                    // セマフォが既に最大値に達している場合は無視
+                                }
+                            }
+
+                            return result;
+                        }
+                        finally
+                        {
                             semaphore.Release();
                         }
                     },
-                    new ExecutionDataflowBlockOptions { 
-                        // 並列度(=タスク生成速度)の制限は外部的にセマフォで行うが、
-                        // ここも制限しておくと、内部のバッファリングを抑制できるらしく、
-                        // 同時に生成されているTask量が減り、キャンセルや完了時の反応が速くなる
-                        MaxDegreeOfParallelism = _cpuConcurrencyLimit,
-                        // 各ブロックの処理をキャンセル可能にする
+                    new ExecutionDataflowBlockOptions
+                    {
+                        MaxDegreeOfParallelism = stage.IsGpuStage ? 
+                            Math.Max(1, _currentGpuConcurrencyLimit) : 
+                            _cpuConcurrencyLimit,
                         CancellationToken = cts.Token,
-                        // 直列なので Producer ブロックは単一
                         SingleProducerConstrained = true,
                     }
                 )
