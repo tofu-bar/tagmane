@@ -182,12 +182,24 @@ public class AsyncPipelineService
                 );
             }
 
+            // 最後に完了検出用のActionBlockを追加
+            var completionBlock = new ActionBlock<object?>(
+                obj => { },
+                new ExecutionDataflowBlockOptions
+                {
+                    CancellationToken = cts.Token
+                }
+            );
+
             // パイプラインの接続
             for (int i = 0; i < blocks.Count - 1; i++)
             {
                 var targetBlock = blocks[i + 1] as ITargetBlock<object>;
                 blocks[i].LinkTo(targetBlock!, new DataflowLinkOptions { PropagateCompletion = true });
             }
+            // 最後のTransformBlockをActionBlockに接続
+            blocks[blocks.Count - 1].LinkTo(completionBlock, new DataflowLinkOptions { PropagateCompletion = true });
+
             AddLogEntry("パイプラインの接続が完了しました。");
 
             // タスクを投入
@@ -221,8 +233,8 @@ public class AsyncPipelineService
             // 完了処理
             AddLogEntry("入力処理が完了しました。パイプラインの完了処理を開始します。");
             
-            // // 最後のダミーステージを除く全ブロックを完了させる
-            // for (int i = 0; i < blocks.Count - 1; i++) 
+            // //全ブロックを完了させる
+            // for (int i = 0; i < blocks.Count ; i++) 
             // {
             //     if (i == 0)
             //     {
@@ -235,11 +247,11 @@ public class AsyncPipelineService
             // // 最後のダミーステージは完了させない
             // AddLogEntry("すべての実行ステージの処理が完了しました。");
 
-            // // 最後のダミーステージを除く全ブロックの完了を待つ
+            // 全ブロックの完了を待つ
             blocks[0].Complete();
-            await blocks[blocks.Count - 2].Completion;
-            // var completionTasks = blocks.Take(blocks.Count - 1).Select(b => b.Completion).ToArray();
-            // await Task.WhenAll(completionTasks).WaitAsync(cts.Token);
+            await blocks[blocks.Count - 1].Completion;
+            var completionTasks = blocks.Take(blocks.Count - 1).Select(b => b.Completion).ToArray();
+            await Task.WhenAll(completionTasks).WaitAsync(cts.Token);
             AddLogEntry("すべてのブロックの完了処理が終了しました。");
             
         }
