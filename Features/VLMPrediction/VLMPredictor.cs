@@ -8,7 +8,6 @@ namespace tagmane
 {
     public class VLMPredictor
     {
-        private static readonly object _predictLock = new object();
         private object? _currentPredictor;
         private bool _isModelLoaded = false;
 
@@ -61,16 +60,12 @@ namespace tagmane
         {
             if (!_isModelLoaded) throw new InvalidOperationException("モデルが読み込まれていません。");
 
-            // 予測処理をロックで保護
-            lock (_predictLock)
-            {
-                if (_currentPredictor is WDPredictor wdPredictor)
-                    return wdPredictor.Predict(tensor, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled);
-                else if (_currentPredictor is JoyPredictor joyPredictor)
-                    return joyPredictor.Predict(tensor, generalThresh);
-                else
-                    throw new InvalidOperationException("No predictor loaded");
-            }
+            if (_currentPredictor is WDPredictor wdPredictor)
+                return wdPredictor.Predict(tensor, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled);
+            else if (_currentPredictor is JoyPredictor joyPredictor)
+                return joyPredictor.Predict(tensor, generalThresh);
+            else
+                throw new InvalidOperationException("No predictor loaded");
         }
 
         public void Dispose()

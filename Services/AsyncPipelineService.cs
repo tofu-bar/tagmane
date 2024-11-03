@@ -18,7 +18,7 @@ public class AsyncPipelineService
     private bool _isProcessing = false;
 
     // CPU並列度設定の基準は (Environment.ProcessorCount - 2) = 14 (VLMPredictionでGPU処理の軽いjoytag利用時の最速設定)
-    public AsyncPipelineService(int cpuConcurrencyLimit=14, int gpuConcurrencyLimit=1000)
+    public AsyncPipelineService(int cpuConcurrencyLimit=14, int gpuConcurrencyLimit=14)
     {
         _cpuConcurrencyLimit = cpuConcurrencyLimit;
         _gpuConcurrencyLimit = gpuConcurrencyLimit;
