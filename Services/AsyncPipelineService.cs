@@ -18,7 +18,7 @@ public class AsyncPipelineService
     private bool _isProcessing = false;
 
     // CPU並列度設定の基準は (Environment.ProcessorCount - 2) = 14 (VLMPredictionでGPU処理の軽いjoytag利用時の最速設定)
-    public AsyncPipelineService(int cpuConcurrencyLimit=14, int gpuConcurrencyLimit=1000)
+    public AsyncPipelineService(int cpuConcurrencyLimit=14, int gpuConcurrencyLimit=14)
     {
         _cpuConcurrencyLimit = cpuConcurrencyLimit;
         _gpuConcurrencyLimit = gpuConcurrencyLimit;
@@ -69,7 +69,16 @@ public class AsyncPipelineService
                             semaphore.Release();
                         }
                     },
-                    new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = DataflowBlockOptions.Unbounded } // 並列度の制限は外部的にセマフォで行う
+                    new ExecutionDataflowBlockOptions { 
+                        // 並列度(=タスク生成速度)の制限は外部的にセマフォで行うが、
+                        // ここも制限しておくと、内部のバッファリングを抑制できるらしく、
+                        // 同時に生成されているTask量が減り、キャンセルや完了時の反応が速くなる
+                        MaxDegreeOfParallelism = _cpuConcurrencyLimit,
+                        // 各ブロックの処理をキャンセル可能にする
+                        CancellationToken = cts.Token,
+                        // 直列なので Producer ブロックは単一
+                        SingleProducerConstrained = true,
+                    }
                 )
             );
         }

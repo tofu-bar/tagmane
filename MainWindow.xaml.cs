@@ -3660,7 +3660,7 @@ namespace tagmane
             }
             var usingGPU = UseGPUCheckBox.IsChecked == true && _vlmPredictor.IsGpuLoaded;
 
-            var asyncPipelineService = new AsyncPipelineService(cpuConcurrencyLimit: (int)VLMConcurrencySlider.Value);
+            var asyncPipelineService = new AsyncPipelineService(cpuConcurrencyLimit: (int)VLMConcurrencySlider.Value, gpuConcurrencyLimit: (int)VLMConcurrencySlider.Value);
 
             var totalImages = _imageInfos.Count;
             var stopwatch = Stopwatch.StartNew();
