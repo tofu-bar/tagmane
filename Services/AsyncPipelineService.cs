@@ -20,7 +20,6 @@ public class AsyncPipelineService
 
     private bool _isProcessing = false;
 
-    private readonly double _adjustmentFactor = 0.1; // 調整係数
     private volatile int _currentGpuConcurrencyLimit;
     private readonly object _concurrencyLock = new object();
     
@@ -59,16 +58,14 @@ public class AsyncPipelineService
             var newLimit = _currentGpuConcurrencyLimit;
             
             // 現在の処理時間が前段の処理時間より長い場合は並列度を下げる
-            if (currentProcessingTimeMs > previousStageTime)
+            if (currentProcessingTimeMs > previousStageTime * 1.2)
             {
-                newLimit = Math.Max(1, 
-                    (int)(_currentGpuConcurrencyLimit * (1 - _adjustmentFactor)));
+                newLimit = Math.Max(1, _currentGpuConcurrencyLimit - 1);
             }
             // 現在の処理時間が前段の処理時間より十分短い場合は並列度を上げる
-            else if (currentProcessingTimeMs < previousStageTime * 0.8)
+            else if (currentProcessingTimeMs < previousStageTime)
             {
-                newLimit = Math.Min(_initialGpuConcurrencyLimit, 
-                    (int)(_currentGpuConcurrencyLimit * (1 + _adjustmentFactor)));
+                newLimit = Math.Min(_initialGpuConcurrencyLimit, _currentGpuConcurrencyLimit + 1);
             }
 
             // 値が1未満にならないよう保証
