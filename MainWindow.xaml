@@ -615,6 +615,9 @@
                 <TabItem Header="VLMログ">
                     <TextBox x:Name="VLMLogTextBox" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
                 </TabItem>
+                <TabItem Header="Pipeログ">
+                    <TextBox x:Name="PipelineLogTextBox" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                </TabItem>
             </TabControl>
 
             <!-- Undo/Redoのための動作処理リスト -->

@@ -37,6 +37,7 @@ namespace tagmane
         private RingBuffer<string> _uiErrorLogQueue = new RingBuffer<string>(20);
         private RingBuffer<string> _vlmLogQueue = new RingBuffer<string>(20);
         private RingBuffer<string> _vlmErrorLogQueue = new RingBuffer<string>(20);
+        private RingBuffer<string> _pipelineLogQueue = new RingBuffer<string>(20);
         private int _logUpdateIntervalMs = 500;
         private int _vlmUpdateIntervalMs = 1000;
 
@@ -650,6 +651,10 @@ namespace tagmane
                     var vlmlogEntries = _vlmLogQueue.GetRecentItems();
                     vlmlogEntries.Reverse();
                     Dispatcher.Invoke(() => VLMLogTextBox.Text = string.Join(Environment.NewLine, vlmlogEntries));
+
+                    var pipelinelogEntries = _pipelineLogQueue.GetRecentItems();
+                    pipelinelogEntries.Reverse();
+                    Dispatcher.Invoke(() => PipelineLogTextBox.Text = string.Join(Environment.NewLine, pipelinelogEntries));
 
                     if (_logCancellationTokenSource.IsCancellationRequested) break;
                 }
@@ -3661,6 +3666,7 @@ namespace tagmane
             var usingGPU = UseGPUCheckBox.IsChecked == true && _vlmPredictor.IsGpuLoaded;
 
             var asyncPipelineService = new AsyncPipelineService(cpuConcurrencyLimit: (int)VLMConcurrencySlider.Value, gpuConcurrencyLimit: (int)VLMConcurrencySlider.Value);
+            asyncPipelineService.LogUpdated += UpdatePipelineLog;
 
             var totalImages = _imageInfos.Count;
             var stopwatch = Stopwatch.StartNew();
@@ -3712,6 +3718,8 @@ namespace tagmane
                 UpdateUIAfterTagsChange();
                 UpdateProgressBar(0);
                 ProcessingSpeed = "";
+
+                asyncPipelineService.LogUpdated -= UpdatePipelineLog;
             }
         }
 
@@ -3720,16 +3728,20 @@ namespace tagmane
             foreach (var imageInfo in _imageInfos) {
                 yield return (imageInfo, await Task.Run(() => LoadImageForVLMPrediction(imageInfo.ImagePath)));
             }
+            AddMainLogEntry("すべての画像を読み込みました(全画像VLM推論用)");
         }
 
         private BitmapImage LoadImageForVLMPrediction(string imagePath)
         {
-            var bitmap = new BitmapImage();
-            bitmap.BeginInit();
-            bitmap.UriSource = new Uri(imagePath);
-            // bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.EndInit();
-            bitmap.Freeze(); // UIスレッド以外でも使用可能にする
+            // var bitmap = new BitmapImage();
+            // bitmap.BeginInit();
+            // bitmap.UriSource = new Uri(imagePath);
+            // // bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            // bitmap.EndInit();
+            // bitmap.Freeze(); // UIスレッド以外でも使用可能にする/
+
+            var bitmap = new BitmapImage(new Uri(imagePath));
+            bitmap.Freeze();
             return bitmap;
         }
 
@@ -3742,7 +3754,7 @@ namespace tagmane
                 action.DoAction();
                 lock (_undoStack)
                 {
-                    _undoStack.Push(action);
+                _undoStack.Push(action);
                 }
             }
         }
@@ -3803,6 +3815,15 @@ namespace tagmane
             Dispatcher.Invoke(() => {
                 AddDebugLogEntry("UpdateVLMLog");
                 _vlmLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} - {log}");
+            });
+        }
+
+        // パイプラインのログを更新する
+        private void UpdatePipelineLog(object? sender, string log)
+        {
+            Dispatcher.Invoke(() => {
+                AddDebugLogEntry("UpdatePipelineLog");
+                _pipelineLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} - {log}");
             });
         }
 
