@@ -3664,23 +3664,7 @@ namespace tagmane
                 return;
             }
             var usingGPU = UseGPUCheckBox.IsChecked == true && _vlmPredictor.IsGpuLoaded;
-
-            var asyncPipelineService = new AsyncPipelineService(cpuConcurrencyLimit: (int)VLMConcurrencySlider.Value, gpuConcurrencyLimit: (int)VLMConcurrencySlider.Value);
-            asyncPipelineService.LogUpdated += UpdatePipelineLog;
-
-            var totalImages = _imageInfos.Count;
-            var stopwatch = Stopwatch.StartNew();
-            asyncPipelineService.ProgressUpdated += (counters) => {
-                double loadedImagesPerSecond = counters[0].Value / (stopwatch.ElapsedMilliseconds / 1000.0);
-                double predictImagesPerSecond = counters[1].Value / (stopwatch.ElapsedMilliseconds / 1000.0);
-                double totalImagesPerSecond = counters[2].Value / (stopwatch.ElapsedMilliseconds / 1000.0);
-                ProcessingSpeed = $"VLM - Load: {loadedImagesPerSecond:F1} Predict: {predictImagesPerSecond:F1} Complete: {totalImagesPerSecond:F1} 枚/秒";
-                Dispatcher.Invoke(() => {
-                    UpdateProgressBar(counters[2].Value / (double)totalImages);
-                    UpdateUIAfterTagsChange();
-                });
-            };
-
+            
             var pipelineStages = new List<PipelineStage>{
 
                 // 画像を非同期にロードし、テンソルを準備する
@@ -3705,10 +3689,29 @@ namespace tagmane
                 })
             };
 
+            var asyncPipelineService = new AsyncPipelineService(
+                cpuConcurrencyLimit: (int)VLMConcurrencySlider.Value, 
+                gpuConcurrencyLimit: (int)VLMConcurrencySlider.Value,
+                pipelineStages
+            );
+            asyncPipelineService.LogUpdated += UpdatePipelineLog;
+
+            var totalImages = _imageInfos.Count;
+            var stopwatch = Stopwatch.StartNew();
+            asyncPipelineService.ProgressUpdated += (counters) => {
+                double loadedImagesPerSecond = counters[0].Value / (stopwatch.ElapsedMilliseconds / 1000.0);
+                double predictImagesPerSecond = counters[1].Value / (stopwatch.ElapsedMilliseconds / 1000.0);
+                double totalImagesPerSecond = counters[2].Value / (stopwatch.ElapsedMilliseconds / 1000.0);
+                ProcessingSpeed = $"VLM - Load: {loadedImagesPerSecond:F1} Predict: {predictImagesPerSecond:F1} Complete: {totalImagesPerSecond:F1} 枚/秒";
+                Dispatcher.Invoke(() => {
+                    UpdateProgressBar(counters[2].Value / (double)totalImages);
+                    UpdateUIAfterTagsChange();
+                });
+            };
+
             try {
                 await asyncPipelineService.ProcessAsync<(ImageInfo, BitmapImage), ImageInfo>(
-                    LoadAllBitmapImagesAsync(), 
-                    pipelineStages, 
+                    LoadAllBitmapImagesAsync(),
                     _cts);
             } catch (OperationCanceledException) {
                 AddMainLogEntry("VLM推論がキャンセルされました");
