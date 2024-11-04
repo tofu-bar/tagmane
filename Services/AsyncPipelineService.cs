@@ -23,6 +23,10 @@ public class AsyncPipelineService
     private readonly Dictionary<int, Queue<double>> _previousStageTimings = new();
     private const int TIMING_WINDOW_SIZE = 10;
 
+    private const int MIN_RECORDS_FOR_ADJUSTMENT = 10; // 調整開始までに必要な最小レコード数
+    private const int ADJUSTMENT_INTERVAL_MS = 5000;   // 調整間隔（ミリ秒）
+    private DateTime _lastAdjustmentTime = DateTime.MinValue;
+
     private void AddLogEntry(string message)
     {
         string logMessage = $"Pipeline: {DateTime.Now:HH:mm:ss} - {message}";
@@ -62,17 +66,37 @@ public class AsyncPipelineService
         var previousStageTime = GetAveragePreviousStageTime(stageIndex);
         if (previousStageTime <= 0) return;
 
+        // 十分なレコードが蓄積されているか確認
+        if (!_previousStageTimings.ContainsKey(stageIndex - 1) || 
+            _previousStageTimings[stageIndex - 1].Count < MIN_RECORDS_FOR_ADJUSTMENT)
+        {
+            return;
+        }
+
+        // 前回の調整から十分な時間が経過しているか確認
+        if ((DateTime.Now - _lastAdjustmentTime).TotalMilliseconds < ADJUSTMENT_INTERVAL_MS)
+        {
+            return;
+        }
+
         lock (_concurrencyLock)
         {
             var newLimit = _currentGpuConcurrencyLimit;
             
-            if (currentProcessingTimeMs > previousStageTime * 1.2)
+            // 調整ロジックをより慎重に
+            var ratio = currentProcessingTimeMs / previousStageTime;
+            
+            if (ratio > 1.2)
             {
+                // 処理時間が20%以上長い場合は減少
                 newLimit = Math.Max(1, _currentGpuConcurrencyLimit - 1);
+                AddLogEntry($"GPU並列度を下げます: {_currentGpuConcurrencyLimit} → {newLimit} (比率: {ratio:F2})");
             }
-            else if (currentProcessingTimeMs < previousStageTime)
+            else if (ratio < 0.9)
             {
+                // 処理時間が10%以上短い場合は増加
                 newLimit = Math.Min(_initialGpuConcurrencyLimit, _currentGpuConcurrencyLimit + 1);
+                AddLogEntry($"GPU並列度を上げます: {_currentGpuConcurrencyLimit} → {newLimit} (比率: {ratio:F2})");
             }
 
             newLimit = Math.Max(1, Math.Min(_initialGpuConcurrencyLimit, newLimit));
@@ -80,6 +104,7 @@ public class AsyncPipelineService
             if (newLimit != _currentGpuConcurrencyLimit)
             {
                 _currentGpuConcurrencyLimit = newLimit;
+                _lastAdjustmentTime = DateTime.Now;
             }
         }
     }
@@ -267,7 +292,7 @@ public class AsyncPipelineService
         finally
         {
             _isProcessing = false;
-            AddLogEntry("パイプラインの処理が完了しました。");
+            AddLogEntry("パイプ���インの処理が完了しました。");
             await statusReportTask;
             foreach (var block in blocks)
             {
