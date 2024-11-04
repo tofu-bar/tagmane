@@ -79,6 +79,8 @@ public class AsyncPipelineService
 
         lock (_concurrencyLock)
         {
+            _lastAdjustmentTime = DateTime.Now;
+
             var newLimit = _currentGpuConcurrencyLimit;
             
             // 調整ロジックをより慎重に
@@ -102,7 +104,6 @@ public class AsyncPipelineService
             if (newLimit != _currentGpuConcurrencyLimit)
             {
                 _currentGpuConcurrencyLimit = newLimit;
-                _lastAdjustmentTime = DateTime.Now;
             }
         }
     }
