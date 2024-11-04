@@ -21,6 +21,9 @@ public class AsyncPipelineService
     private readonly Counter[] _processedItemsCounter;
     private readonly List<PipelineStage> _pipelineStages;
 
+    // 並列度調整のために占有するGPUセマフォのカウント
+    private int _gpuNoopSemaphoreCount = 0;
+
     // 前段のパイプラインの処理時間を追跡
     private readonly Dictionary<int, RingBuffer<double>> _stageProcessingTimes = new();
     private const int TIMING_WINDOW_SIZE = 10;
@@ -65,17 +68,17 @@ public class AsyncPipelineService
         _stageProcessingTimes[stageIndex].Enqueue(processingTimeMs);
     }
 
-    private void AdjustGpuConcurrency(int stageIndex, double currentProcessingTimeMs)
+    private int AdjustGpuConcurrency(int stageIndex, double currentProcessingTimeMs)
     {
         var previousStageProcessingTime = GetAveragePreviousStageProcessingTime(stageIndex);
-        if (previousStageProcessingTime <= 0) return;
+        if (previousStageProcessingTime <= 0) return 0;
 
         // 十分なレコードが蓄積されているか確認
         var previousStageIndex = stageIndex - 1;
-        if (_stageProcessingTimes[previousStageIndex].Count < MIN_RECORDS_FOR_ADJUSTMENT) return;
+        if (_stageProcessingTimes[previousStageIndex].Count < MIN_RECORDS_FOR_ADJUSTMENT) return 0;
 
         // 前回の調整から十分な時間が経過しているか確認
-        if ((DateTime.Now - _lastAdjustmentTime).TotalMilliseconds < ADJUSTMENT_INTERVAL_MS) return;
+        if ((DateTime.Now - _lastAdjustmentTime).TotalMilliseconds < ADJUSTMENT_INTERVAL_MS) return 0;
 
         lock (_concurrencyLock)
         {
@@ -105,6 +108,7 @@ public class AsyncPipelineService
             {
                 _currentGpuConcurrencyLimit = newLimit;
             }
+            return newLimit;
         }
     }
 
@@ -160,25 +164,22 @@ public class AsyncPipelineService
 
                                 if (stage.IsGpuStage)
                                 {
-                                    AdjustGpuConcurrency(stageIndex, processingTime);
-                                    
-                                    // セマフォの調整を安全に行う
-                                    try
+                                    var newLimit = AdjustGpuConcurrency(stageIndex, processingTime);
+                                    if (newLimit == 0) return result;
+                                    if (newLimit != _currentGpuConcurrencyLimit)
                                     {
-                                        var currentCount = semaphore.CurrentCount;
-                                        var targetCount = _currentGpuConcurrencyLimit;
-                                        
-                                        if (currentCount < targetCount)
+                                        _currentGpuConcurrencyLimit = newLimit;
+                                        var targetLocksToTake = _initialGpuConcurrencyLimit - _currentGpuConcurrencyLimit;
+                                        while (_gpuNoopSemaphoreCount < targetLocksToTake)
                                         {
-                                            for (int j = currentCount; j < targetCount; j++)
-                                            {
-                                                semaphore.Release();
-                                            }
+                                            await semaphore.WaitAsync(cts.Token);
+                                            _gpuNoopSemaphoreCount++;
                                         }
-                                    }
-                                    catch (SemaphoreFullException)
-                                    {
-                                        // セマフォが既に最大値に達している場合は無視
+                                        while (_gpuNoopSemaphoreCount > targetLocksToTake)
+                                        {
+                                            semaphore.Release();
+                                            _gpuNoopSemaphoreCount--;
+                                        }
                                     }
                                 }
 
