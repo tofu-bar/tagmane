@@ -21,12 +21,27 @@ public class Counter
             _count++;
         }
     }
+    public void Decrement()
+    {
+        lock (_lock)
+        {
+            _count--;
+        }
+    }
 
     public void Reset()
     {
         lock (_lock)
         {
             _count = 0;
+        }
+    }
+
+    public int Count()
+    {
+        lock (_lock)
+        {
+            return _count;
         }
     }
 }

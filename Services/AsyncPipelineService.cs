@@ -20,9 +20,9 @@ public class AsyncPipelineService
     private bool _isProcessing = false;
     private readonly Counter[] _processedItemsCounter;
     private readonly List<PipelineStage> _pipelineStages;
-
-    // 並列度調整のために占有するGPUセマフォのカウント
-    private int _gpuNoopSemaphoreCount = 0;
+    
+    private readonly Dictionary<int, SemaphoreSlim> _gpuSemaphores = new();
+    private readonly Dictionary<int, Counter> _gpuSemaphoreNoopObtainedCounters = new();
 
     // 前段のパイプラインの処理時間を追跡
     private readonly Dictionary<int, RingBuffer<double>> _stageProcessingTimes = new();
@@ -50,6 +50,10 @@ public class AsyncPipelineService
         for (int i = 0; i < _pipelineStages.Count; i++) {
             _stageProcessingTimes[i] = new RingBuffer<double>(TIMING_WINDOW_SIZE);
             _processedItemsCounter[i] = new Counter();
+            if (_pipelineStages[i].IsGpuStage) {
+                _gpuSemaphores[i] = new SemaphoreSlim(gpuConcurrencyLimit);
+                _gpuSemaphoreNoopObtainedCounters[i] = new Counter();
+            }
         }
     }
 
@@ -133,6 +137,7 @@ public class AsyncPipelineService
 
         var blocks = new List<TransformBlock<object?, object?>>();
         using var semaphoreCPU = new SemaphoreSlim(_cpuConcurrencyLimit);
+        _currentGpuConcurrencyLimit = 1;
 
         try
         {
@@ -144,8 +149,18 @@ public class AsyncPipelineService
                 var stageIndex = i; // ブロック内でインデックスを使用するためにキャプチャ
                 var counter = _processedItemsCounter[i];
                 var semaphore = stage.IsGpuStage
-                    ? new SemaphoreSlim(Math.Max(1, _currentGpuConcurrencyLimit))
+                    ? _gpuSemaphores[i]
                     : semaphoreCPU;
+
+                if (stage.IsGpuStage)
+                {
+                    var noopObtainedCounter = _gpuSemaphoreNoopObtainedCounters[i];
+                    while (noopObtainedCounter.Count() < _initialGpuConcurrencyLimit - 1)
+                    {
+                        noopObtainedCounter.Increment();
+                        await semaphore.WaitAsync(cts.Token);
+                    }
+                }
                 // Blockは構成した瞬間に中身の評価（依存関数の実行）が走るので、初期化処理はブロックの外で行う
                 blocks.Add(
                     new TransformBlock<object?, object?>(
@@ -164,21 +179,24 @@ public class AsyncPipelineService
 
                                 if (stage.IsGpuStage)
                                 {
+                                    var oldLimit = _currentGpuConcurrencyLimit;
                                     var newLimit = AdjustGpuConcurrency(stageIndex, processingTime);
                                     if (newLimit == 0) return result;
-                                    if (newLimit != _currentGpuConcurrencyLimit)
+                                    // ロックを取得してないがスレッドセーフ（AdjustGpuConcurrencyの副作用）
+                                    if (newLimit != oldLimit)
                                     {
-                                        _currentGpuConcurrencyLimit = newLimit;
-                                        var targetLocksToTake = _initialGpuConcurrencyLimit - _currentGpuConcurrencyLimit;
-                                        while (_gpuNoopSemaphoreCount < targetLocksToTake)
+                                        AddLogEntry($"GPU並列度: {oldLimit} → {newLimit}");
+                                        var targetLocksToTake = _initialGpuConcurrencyLimit - newLimit;
+                                        var noopCounter = _gpuSemaphoreNoopObtainedCounters[stageIndex];
+                                        while (noopCounter.Count() < targetLocksToTake)
                                         {
+                                            noopCounter.Increment();
                                             await semaphore.WaitAsync(cts.Token);
-                                            _gpuNoopSemaphoreCount++;
                                         }
-                                        while (_gpuNoopSemaphoreCount > targetLocksToTake)
+                                        while (noopCounter.Count() > targetLocksToTake)
                                         {
+                                            noopCounter.Decrement();
                                             semaphore.Release();
-                                            _gpuNoopSemaphoreCount--;
                                         }
                                     }
                                 }
@@ -192,9 +210,7 @@ public class AsyncPipelineService
                         },
                         new ExecutionDataflowBlockOptions
                         {
-                            MaxDegreeOfParallelism = stage.IsGpuStage ? 
-                                Math.Max(1, _currentGpuConcurrencyLimit) : 
-                                _cpuConcurrencyLimit,
+                            MaxDegreeOfParallelism = _cpuConcurrencyLimit,
                             CancellationToken = cts.Token,
                             SingleProducerConstrained = true,
                         }
@@ -293,73 +309,6 @@ public class AsyncPipelineService
             {
                 block.Complete();
             }
-        }
-    }
-
-    private TransformBlock<object?, object?> CreateTransformBlock(
-        PipelineStage stage,
-        int stageIndex,
-        Counter counter,
-        SemaphoreSlim semaphore,
-        CancellationTokenSource cts)
-    {
-        return new TransformBlock<object?, object?>(
-            async input =>
-            {
-                await semaphore.WaitAsync(cts.Token);
-                counter.Increment();
-                try
-                {
-                    if (input == null) return null;
-
-                    var sw = Stopwatch.StartNew();
-                    var result = await stage.ProcessFunc(input);
-                    sw.Stop();
-
-                    var processingTime = sw.ElapsedMilliseconds;
-                    ReportStageProcessingTime(stageIndex, processingTime);
-
-                    if (stage.IsGpuStage)
-                    {
-                        AdjustGpuConcurrency(stageIndex, processingTime);
-                        await AdjustSemaphore(semaphore);
-                    }
-
-                    return result;
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
-            },
-            new ExecutionDataflowBlockOptions
-            {
-                MaxDegreeOfParallelism = stage.IsGpuStage
-                    ? Math.Max(1, _currentGpuConcurrencyLimit)
-                    : _cpuConcurrencyLimit,
-                CancellationToken = cts.Token,
-                SingleProducerConstrained = true,
-            });
-    }
-
-    private async Task AdjustSemaphore(SemaphoreSlim semaphore)
-    {
-        try
-        {
-            var currentCount = semaphore.CurrentCount;
-            var targetCount = _currentGpuConcurrencyLimit;
-
-            if (currentCount < targetCount)
-            {
-                for (int j = currentCount; j < targetCount; j++)
-                {
-                    semaphore.Release();
-                }
-            }
-        }
-        catch (SemaphoreFullException)
-        {
-            // セマフォが既に最大値に達している場合は無視
         }
     }
 }

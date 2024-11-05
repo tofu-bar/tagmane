@@ -1689,6 +1689,8 @@ namespace tagmane
         {
             if (_allTags == null) { _allTags = new Dictionary<string, int>(); }
             _allTags.Clear();
+            // TODO: 変更の衝突問題
+            // System.InvalidOperationException: 'Collection was modified; enumeration operation may not execute.'
             _imageInfos.ForEach(imageInfo =>
             {
                 imageInfo.Tags.ForEach(tag =>
