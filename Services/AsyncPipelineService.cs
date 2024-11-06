@@ -38,12 +38,16 @@ public class AsyncPipelineService
         _cpuConcurrencyLimit = cpuConcurrencyLimit;
         _initialGpuConcurrencyLimit = gpuConcurrencyLimit;
         _currentGpuConcurrencyLimit = gpuConcurrencyLimit;
+        _lastAdjustmentTime = DateTime.MinValue;
+        _previousStageTimings = new Dictionary<int, Queue<double>>();  // ここで初期化
     }
 
     private double GetAveragePreviousStageTime(int stageIndex)
     {
         if (stageIndex <= 0 || !_previousStageTimings.ContainsKey(stageIndex - 1))
+        {
             return 0;
+        }
 
         var timings = _previousStageTimings[stageIndex - 1];
         return timings.Count > 0 ? timings.Average() : 0;
@@ -292,7 +296,7 @@ public class AsyncPipelineService
         finally
         {
             _isProcessing = false;
-            AddLogEntry("パイプ���インの処理が完了しました。");
+            AddLogEntry("パイプインの処理が完了しました。");
             await statusReportTask;
             foreach (var block in blocks)
             {
