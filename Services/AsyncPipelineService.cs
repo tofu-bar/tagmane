@@ -18,9 +18,11 @@ public class AsyncPipelineService
     private volatile int _currentGpuConcurrencyLimit;
     private readonly object _concurrencyLock = new object();
     private bool _isProcessing = false;
+    private readonly Counter[] _processedItemsCounter;
+    private readonly List<PipelineStage> _pipelineStages;
 
     // 前段のパイプラインの処理時間を追跡
-    private readonly Dictionary<int, Queue<double>> _previousStageTimings = new();
+    private readonly Dictionary<int, RingBuffer<double>> _stageProcessingTimes = new();
     private const int TIMING_WINDOW_SIZE = 10;
 
     private const int MIN_RECORDS_FOR_ADJUSTMENT = 10; // 調整開始までに必要な最小レコード数
@@ -33,62 +35,55 @@ public class AsyncPipelineService
         LogUpdated?.Invoke(this, logMessage);
     }
 
-    public AsyncPipelineService(int cpuConcurrencyLimit = 14, int gpuConcurrencyLimit = 14)
+    public AsyncPipelineService(int cpuConcurrencyLimit, int gpuConcurrencyLimit, List<PipelineStage> pipelineStages)
     {
         _cpuConcurrencyLimit = cpuConcurrencyLimit;
         _initialGpuConcurrencyLimit = gpuConcurrencyLimit;
-        _currentGpuConcurrencyLimit = gpuConcurrencyLimit;
-        _lastAdjustmentTime = DateTime.MinValue;
-        _previousStageTimings = new Dictionary<int, Queue<double>>();  // ここで初期化
-    }
+        _currentGpuConcurrencyLimit = gpuConcurrencyLimit;        
+        _pipelineStages = pipelineStages;
 
-    private double GetAveragePreviousStageTime(int stageIndex)
-    {
-        if (stageIndex <= 0 || !_previousStageTimings.ContainsKey(stageIndex - 1))
-        {
-            return 0;
+        _processedItemsCounter = new Counter[_pipelineStages.Count];
+        for (int i = 0; i < _pipelineStages.Count; i++) {
+            _stageProcessingTimes[i] = new RingBuffer<double>(TIMING_WINDOW_SIZE);
+            _processedItemsCounter[i] = new Counter();
         }
-
-        var timings = _previousStageTimings[stageIndex - 1];
-        return timings.Count > 0 ? timings.Average() : 0;
     }
 
-    private void UpdatePreviousStageTime(int stageIndex, double processingTimeMs)
+    private double GetAveragePreviousStageProcessingTime(int stageIndex)
     {
-        if (!_previousStageTimings.ContainsKey(stageIndex))
-            _previousStageTimings[stageIndex] = new Queue<double>();
+        var previousStageIndex = stageIndex - 1;
+        if (previousStageIndex < 0 || !_stageProcessingTimes.ContainsKey(previousStageIndex))
+            return 0; // 無効を返り値0で表現
 
-        var timings = _previousStageTimings[stageIndex];
-        timings.Enqueue(processingTimeMs);
-        
-        while (timings.Count > TIMING_WINDOW_SIZE)
-            timings.Dequeue();
+        var processingTimes = _stageProcessingTimes[previousStageIndex];
+        return processingTimes.Count > 0 ? processingTimes.Average() : 0;
+    }
+
+    private void ReportStageProcessingTime(int stageIndex, double processingTimeMs)
+    {
+        _stageProcessingTimes[stageIndex].Enqueue(processingTimeMs);
     }
 
     private void AdjustGpuConcurrency(int stageIndex, double currentProcessingTimeMs)
     {
-        var previousStageTime = GetAveragePreviousStageTime(stageIndex);
-        if (previousStageTime <= 0) return;
+        var previousStageProcessingTime = GetAveragePreviousStageProcessingTime(stageIndex);
+        if (previousStageProcessingTime <= 0) return;
 
         // 十分なレコードが蓄積されているか確認
-        if (!_previousStageTimings.ContainsKey(stageIndex - 1) || 
-            _previousStageTimings[stageIndex - 1].Count < MIN_RECORDS_FOR_ADJUSTMENT)
-        {
-            return;
-        }
+        var previousStageIndex = stageIndex - 1;
+        if (_stageProcessingTimes[previousStageIndex].Count < MIN_RECORDS_FOR_ADJUSTMENT) return;
 
         // 前回の調整から十分な時間が経過しているか確認
-        if ((DateTime.Now - _lastAdjustmentTime).TotalMilliseconds < ADJUSTMENT_INTERVAL_MS)
-        {
-            return;
-        }
+        if ((DateTime.Now - _lastAdjustmentTime).TotalMilliseconds < ADJUSTMENT_INTERVAL_MS) return;
 
         lock (_concurrencyLock)
         {
+            _lastAdjustmentTime = DateTime.Now;
+
             var newLimit = _currentGpuConcurrencyLimit;
             
             // 調整ロジックをより慎重に
-            var ratio = currentProcessingTimeMs / previousStageTime;
+            var ratio = currentProcessingTimeMs / previousStageProcessingTime;
             
             if (ratio > 1.2)
             {
@@ -108,28 +103,18 @@ public class AsyncPipelineService
             if (newLimit != _currentGpuConcurrencyLimit)
             {
                 _currentGpuConcurrencyLimit = newLimit;
-                _lastAdjustmentTime = DateTime.Now;
             }
         }
     }
 
     public async Task ProcessAsync<TInput, TOutput>(
         IAsyncEnumerable<TInput> inputs,
-        List<PipelineStage> stages,
         CancellationTokenSource cts)
     {
         AddLogEntry("パイプラインの処理を開始します。");
 
-        var blocks = new List<TransformBlock<object?, object?>>();
-        var processedItemsCounter = new Counter[stages.Count];
-        using var semaphoreCPU = new SemaphoreSlim(_cpuConcurrencyLimit);
-
-        for (int i = 0; i < stages.Count; i++)
-        {
-            processedItemsCounter[i] = new Counter();
-        }
-
         _isProcessing = true;
+        _lastAdjustmentTime = DateTime.Now;
         var progressObservable = Observable.Interval(TimeSpan.FromMilliseconds(_statusUpdateIntervalMs))
             .ToAsyncEnumerable();
         var statusReportTask = Task.Run(async () =>
@@ -137,22 +122,26 @@ public class AsyncPipelineService
             await foreach (var _ in progressObservable)
             {
                 if (!_isProcessing) break;
-                ProgressUpdated?.Invoke(processedItemsCounter);
+                ProgressUpdated?.Invoke(_processedItemsCounter);
             }
         });
+
+        var blocks = new List<TransformBlock<object?, object?>>();
+        using var semaphoreCPU = new SemaphoreSlim(_cpuConcurrencyLimit);
 
         try
         {
             AddLogEntry("パイプラインの構築を開始します。");
 
             // パイプラインを定義する
-            for (int i = 0; i < stages.Count; i++) {
-                var stage = stages[i];
+            for (int i = 0; i < _pipelineStages.Count; i++) {
+                var stage = _pipelineStages[i];
                 var stageIndex = i; // ブロック内でインデックスを使用するためにキャプチャ
-                var counter = processedItemsCounter[i];
+                var counter = _processedItemsCounter[i];
                 var semaphore = stage.IsGpuStage
                     ? new SemaphoreSlim(Math.Max(1, _currentGpuConcurrencyLimit))
                     : semaphoreCPU;
+                // Blockは構成した瞬間に中身の評価（依存関数の実行）が走るので、初期化処理はブロックの外で行う
                 blocks.Add(
                     new TransformBlock<object?, object?>(
                         async input => {
@@ -166,7 +155,7 @@ public class AsyncPipelineService
                                 sw.Stop();
 
                                 var processingTime = sw.ElapsedMilliseconds;
-                                UpdatePreviousStageTime(stageIndex, processingTime);
+                                ReportStageProcessingTime(stageIndex, processingTime);
 
                                 if (stage.IsGpuStage)
                                 {
@@ -296,7 +285,7 @@ public class AsyncPipelineService
         finally
         {
             _isProcessing = false;
-            AddLogEntry("パイプインの処理が完了しました。");
+            AddLogEntry("パイプラインの処理が完了しました。");
             await statusReportTask;
             foreach (var block in blocks)
             {
@@ -326,7 +315,7 @@ public class AsyncPipelineService
                     sw.Stop();
 
                     var processingTime = sw.ElapsedMilliseconds;
-                    UpdatePreviousStageTime(stageIndex, processingTime);
+                    ReportStageProcessingTime(stageIndex, processingTime);
 
                     if (stage.IsGpuStage)
                     {
