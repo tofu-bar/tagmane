@@ -1,7 +1,8 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 
-public class RingBuffer<T>
+public class RingBuffer<T> : IEnumerable<T>
 {
     private readonly T[] _buffer;
     private int _head;
@@ -76,4 +77,26 @@ public class RingBuffer<T>
     }
 
     public int Capacity => _buffer.Length;
+    
+    public IEnumerator<T> GetEnumerator()
+    {
+        _lock.EnterReadLock();
+        try
+        {
+            for (int i = 0; i < _count; i++)
+            {
+                int index = (_head + i) % _buffer.Length;
+                yield return _buffer[index];
+            }
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return GetEnumerator();
+    }
 }
