@@ -1299,6 +1299,85 @@ namespace tagmane
             }
         }
 
+        private void SelectedImage_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.LeftButton == MouseButtonState.Pressed)
+            {
+                _startPoint = e.GetPosition(null);
+            }
+        }
+
+        private void SelectedImage_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton == MouseButtonState.Pressed && SelectedImage.Source != null)
+            {
+                Point currentPosition = e.GetPosition(null);
+                // Vector型の明示的なキャストを追加
+                Vector diff = (Vector)(currentPosition - _startPoint);
+
+                if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance ||
+                    Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
+                {
+                    var bitmap = SelectedImage.Source as BitmapSource;
+                    if (bitmap == null) return;
+
+                    string tempFile = Path.Combine(Path.GetTempPath(), $"dragdrop_image_{Guid.NewGuid()}.png");
+                    
+                    try
+                    {
+                        using (var fileStream = new FileStream(tempFile, FileMode.Create))
+                        {
+                            BitmapEncoder encoder = new PngBitmapEncoder();
+                            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                            encoder.Save(fileStream);
+                        }
+
+                        var dataObject = new DataObject();
+                        dataObject.SetData(DataFormats.FileDrop, new[] { tempFile });
+                        dataObject.SetData(DataFormats.Bitmap, bitmap);
+
+                        // DoDragDropの後の処理を修正
+                        DragDrop.DoDragDrop(SelectedImage, dataObject, DragDropEffects.Copy);
+                        
+                        // 別のタスクとして一時ファイルの削除を実行
+                        Task.Run(async () =>
+                        {
+                            try
+                            {
+                                // 1秒待機
+                                await Task.Delay(1000);
+                                
+                                await Application.Current.Dispatcher.InvokeAsync(() =>
+                                {
+                                    if (File.Exists(tempFile))
+                                    {
+                                        try
+                                        {
+                                            File.Delete(tempFile);
+                                        }
+                                        catch { /* 削除に失敗しても続行 */ }
+                                    }
+                                });
+                            }
+                            catch { /* エラーは無視 */ }
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"画像のドラッグ中にエラーが発生しました: {ex.Message}");
+                        if (File.Exists(tempFile))
+                        {
+                            try
+                            {
+                                File.Delete(tempFile);
+                            }
+                            catch { /* 削除に失敗しても続行 */ }
+                        }
+                    }
+                }
+            }
+        }
+
         // 元に戻す
         private void UndoButton_Click(object sender, RoutedEventArgs e)
         {
