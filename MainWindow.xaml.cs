@@ -4313,13 +4313,19 @@ namespace tagmane
 
         private async void ShuffleTagsButton_Click(object sender, RoutedEventArgs e)
         {
+            var categories = _tagCategories.Keys.ToList();
+            if (!categories.Contains("Unknown"))
+            {
+                categories.Add("Unknown");  // Unknownカテゴリを追加
+            }
+
             var window = new TagShuffleWindow(
                 async (startPos, endPos, startCategory, endCategory, applyToAll) =>
                 {
                     var progress = new Progress<double>(value => UpdateProgressBar(value));
                     await ShuffleTagsAsync(startPos, endPos, startCategory, endCategory, applyToAll, progress);
                 },
-                _tagCategories.Keys.ToList()  // _tagCategoriesがDictionaryの場合
+                categories  // 修正したカテゴリリストを渡す
             );
             
             window.Owner = this;
@@ -4344,29 +4350,62 @@ namespace tagmane
             foreach (var image in images)
             {
                 var tags = image.Tags.ToList();
+
+                AddMainLogEntry($"画像 '{image.ImagePath}' のタグをシャッフルします。");
+                AddMainLogEntry($"tags: {string.Join(", ", tags)}");
                 
                 // カテゴリに基づく開始位置の調整
                 if (!string.IsNullOrEmpty(startCategory))
                 {
-                    var categoryLastPos = tags
-                        .Select((tag, index) => new { Tag = tag, Index = index })
-                        .Where(x => _tagCategories.ContainsKey(x.Tag))  // ContainsをContainsKeyに変更
-                        .LastOrDefault()?.Index ?? -1;
-                    
-                    if (categoryLastPos >= 0)
-                        startPos = Math.Max(startPos, categoryLastPos + 1);
+                    if (startCategory == "Unknown")
+                    {
+                        // Unknownの場合：どのカテゴリにも属していないタグを探す
+                        var categoryLastPos = tags
+                            .Select((tag, index) => new { Tag = tag, Index = index })
+                            .Where(x => !_tagCategories.Any(cat => cat.Value?.Tags?.ContainsKey(x.Tag) == true))
+                            .LastOrDefault()?.Index ?? -1;
+                        
+                        if (categoryLastPos >= 0)
+                            startPos = Math.Max(startPos, categoryLastPos + 1);
+                    }
+                    else if (_tagCategories.ContainsKey(startCategory))
+                    {
+                        var categoryTags = _tagCategories[startCategory].Tags.Keys.ToHashSet();
+                        var categoryLastPos = tags
+                            .Select((tag, index) => new { Tag = tag, Index = index })
+                            .Where(x => categoryTags.Contains(x.Tag))
+                            .LastOrDefault()?.Index ?? -1;
+                        
+                        if (categoryLastPos >= 0)
+                            startPos = Math.Max(startPos, categoryLastPos + 1);
+                    }
                 }
 
                 // カテゴリに基づく終了位置の調整
                 if (!string.IsNullOrEmpty(endCategory))
                 {
-                    var categoryFirstPos = tags
-                        .Select((tag, index) => new { Tag = tag, Index = index })
-                        .Where(x => _tagCategories.ContainsKey(x.Tag))  // ContainsをContainsKeyに変更
-                        .FirstOrDefault()?.Index ?? tags.Count;
-                    
-                    if (categoryFirstPos < tags.Count)
-                        endPos = Math.Min(endPos, categoryFirstPos - 1);
+                    if (endCategory == "Unknown")
+                    {
+                        // Unknownの場合：どのカテゴリにも属していないタグを探す
+                        var categoryFirstPos = tags
+                            .Select((tag, index) => new { Tag = tag, Index = index })
+                            .Where(x => !_tagCategories.Any(cat => cat.Value?.Tags?.ContainsKey(x.Tag) == true))
+                            .FirstOrDefault()?.Index ?? tags.Count;
+                        
+                        if (categoryFirstPos < tags.Count)
+                            endPos = Math.Min(endPos, categoryFirstPos - 1);
+                    }
+                    else if (_tagCategories.ContainsKey(endCategory))
+                    {
+                        var categoryTags = _tagCategories[endCategory].Tags.Keys.ToHashSet();
+                        var categoryFirstPos = tags
+                            .Select((tag, index) => new { Tag = tag, Index = index })
+                            .Where(x => categoryTags.Contains(x.Tag))
+                            .FirstOrDefault()?.Index ?? tags.Count;
+                        
+                        if (categoryFirstPos < tags.Count)
+                            endPos = Math.Min(endPos, categoryFirstPos - 1);
+                    }
                 }
 
                 // 実際のシャッフル範囲の決定
