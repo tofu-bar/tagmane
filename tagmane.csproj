@@ -30,6 +30,7 @@
     <None Remove="icon\replace.png" />
     <None Remove="icon\save.png" />
     <None Remove="icon\search.png" />
+    <None Remove="icon\shuffle.png" />
     <None Remove="icon\sort.png" />
     <None Remove="icon\trash.png" />
     <None Remove="icon\undo.png" />
@@ -56,6 +57,7 @@
     <Resource Include="icon\down.png" />
     <Resource Include="icon\filter.png" />
     <Resource Include="icon\florence.png" />
+    <Resource Include="icon\shuffle.png" />
   </ItemGroup>
 
   <ItemGroup>

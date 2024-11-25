@@ -22,6 +22,7 @@ using System.Collections.Concurrent;
 using Microsoft.ML.OnnxRuntime;  // Float16のため
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Threading.Tasks.Dataflow;
+using tagmane.Features.TagShuffle;  // 追加：名前空間のusing
 
 namespace tagmane
 {
@@ -4309,5 +4310,90 @@ namespace tagmane
         /*
         ここまでタグカテゴリ関連メソッド
         */
+
+        private async void ShuffleTagsButton_Click(object sender, RoutedEventArgs e)
+        {
+            var window = new TagShuffleWindow(
+                async (startPos, endPos, startCategory, endCategory, applyToAll) =>
+                {
+                    var progress = new Progress<double>(value => UpdateProgressBar(value));
+                    await ShuffleTagsAsync(startPos, endPos, startCategory, endCategory, applyToAll, progress);
+                },
+                _tagCategories.Keys.ToList()  // _tagCategoriesがDictionaryの場合
+            );
+            
+            window.Owner = this;
+            window.ShowDialog();
+        }
+
+        private async Task ShuffleTagsAsync(
+            int startPos, 
+            int endPos, 
+            string startCategory, 
+            string endCategory, 
+            bool applyToAll, 
+            IProgress<double> progress)
+        {
+            if (_isAsyncProcessing) { return; }
+            _isAsyncProcessing = true;
+
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            var images = applyToAll ? _imageInfos : new List<ImageInfo> { selectedImage };
+            int processed = 0;
+
+            foreach (var image in images)
+            {
+                var tags = image.Tags.ToList();
+                
+                // カテゴリに基づく開始位置の調整
+                if (!string.IsNullOrEmpty(startCategory))
+                {
+                    var categoryLastPos = tags
+                        .Select((tag, index) => new { Tag = tag, Index = index })
+                        .Where(x => _tagCategories.ContainsKey(x.Tag))  // ContainsをContainsKeyに変更
+                        .LastOrDefault()?.Index ?? -1;
+                    
+                    if (categoryLastPos >= 0)
+                        startPos = Math.Max(startPos, categoryLastPos + 1);
+                }
+
+                // カテゴリに基づく終了位置の調整
+                if (!string.IsNullOrEmpty(endCategory))
+                {
+                    var categoryFirstPos = tags
+                        .Select((tag, index) => new { Tag = tag, Index = index })
+                        .Where(x => _tagCategories.ContainsKey(x.Tag))  // ContainsをContainsKeyに変更
+                        .FirstOrDefault()?.Index ?? tags.Count;
+                    
+                    if (categoryFirstPos < tags.Count)
+                        endPos = Math.Min(endPos, categoryFirstPos - 1);
+                }
+
+                // 実際のシャッフル範囲の決定
+                int actualStartPos = Math.Min(startPos, tags.Count);
+                int actualEndPos = Math.Min(endPos, tags.Count);
+                
+                if (actualStartPos < actualEndPos)
+                {
+                    // 指定範囲のタグをシャッフル
+                    var range = tags.GetRange(actualStartPos, actualEndPos - actualStartPos);
+                    var shuffled = range.OrderBy(x => Guid.NewGuid()).ToList();
+                    tags.RemoveRange(actualStartPos, actualEndPos - actualStartPos);
+                    tags.InsertRange(actualStartPos, shuffled);
+                    
+                    // タグを更新
+                    image.Tags = tags;
+                }
+
+                processed++;
+                UpdateProgressBar((double)processed / images.Count);
+            }
+
+            // UI更新
+            await Dispatcher.InvokeAsync(() => UpdateUIAfterTagsChange());
+
+            UpdateProgressBar(0);
+            _isAsyncProcessing = false;
+        }
     }
 }

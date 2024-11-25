@@ -520,6 +520,14 @@
                     <TextBlock Text="フォルダ名をタグに追加(Ctrl+Shift+F)"/>
                 </Button.ToolTip>
             </Button>
+            <Button x:Name="ShuffleTagsButton" Click="ShuffleTagsButton_Click">
+                <Button.Content>
+                    <Image Source="/icon/shuffle.png" Width="32" Height="32"/>
+                </Button.Content>
+                <Button.ToolTip>
+                    <TextBlock Text="タグをシャッフル(Ctrl+Shift+S)"/>
+                </Button.ToolTip>
+            </Button>
             <Button x:Name="CSDClusteringButton" Click="CSDClusteringButton_Click">
                 <Button.Content>
                     <Image Source="/icon/csd.png" Width="32" Height="32"/>

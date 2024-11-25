@@ -1,0 +1,70 @@
+<Window x:Class="tagmane.Features.TagShuffle.TagShuffleWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="タグシャッフル設定" 
+        SizeToContent="Height"
+        Width="400" 
+        WindowStartupLocation="CenterOwner" 
+        ResizeMode="NoResize">
+    <StackPanel Margin="10">
+        <!-- 開始位置 -->
+        <DockPanel Margin="0,5">
+            <TextBox x:Name="StartPositionTextBox" 
+                    DockPanel.Dock="Right"
+                    Width="60" 
+                    Height="23"
+                    VerticalAlignment="Center"
+                    PreviewTextInput="NumberValidationTextBox"/>
+            <Label Content="開始位置（空白の場合は先頭から）" 
+                   VerticalAlignment="Center"/>
+        </DockPanel>
+
+        <!-- 終了位置 -->
+        <DockPanel Margin="0,5">
+            <TextBox x:Name="EndPositionTextBox" 
+                    DockPanel.Dock="Right"
+                    Width="60" 
+                    Height="23"
+                    VerticalAlignment="Center"
+                    PreviewTextInput="NumberValidationTextBox"/>
+            <Label Content="終了位置（空白の場合は末尾まで）" 
+                   VerticalAlignment="Center"/>
+        </DockPanel>
+
+        <!-- カテゴリ開始位置オプション -->
+        <StackPanel Margin="0,5">
+            <CheckBox x:Name="UseStartCategoryCheckBox" 
+                     Content="カテゴリの最後の出現位置から開始"/>
+            <ComboBox x:Name="StartCategoryComboBox" 
+                     Margin="20,5,0,0" 
+                     IsEnabled="{Binding IsChecked, ElementName=UseStartCategoryCheckBox}"/>
+        </StackPanel>
+
+        <!-- カテゴリ終了位置オプション -->
+        <StackPanel Margin="0,5">
+            <CheckBox x:Name="UseEndCategoryCheckBox" 
+                     Content="カテゴリの最初の出現位置まで"/>
+            <ComboBox x:Name="EndCategoryComboBox" 
+                     Margin="20,5,0,0"
+                     IsEnabled="{Binding IsChecked, ElementName=UseEndCategoryCheckBox}"/>
+        </StackPanel>
+
+        <!-- 全画像に適用 -->
+        <CheckBox x:Name="ApplyToAllCheckBox" 
+                 Content="全画像に適用" 
+                 Margin="0,10"/>
+
+        <!-- ボタン -->
+        <StackPanel Orientation="Horizontal" 
+                    HorizontalAlignment="Right" 
+                    Margin="0,10">
+            <Button Content="キャンセル" 
+                    Width="80" 
+                    Margin="0,0,10,0" 
+                    Click="CancelButton_Click"/>
+            <Button Content="実行" 
+                    Width="80" 
+                    Click="ExecuteButton_Click"/>
+        </StackPanel>
+    </StackPanel>
+</Window> 
