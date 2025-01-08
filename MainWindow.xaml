@@ -135,22 +135,45 @@
                     </Button.ToolTip>
                 </Button>
             </Grid>
-            <Image x:Name="SelectedImage" 
-                   Grid.Row="1"
-                   Stretch="Uniform"
-                   MouseMove="SelectedImage_MouseMove"
-                   MouseDown="SelectedImage_MouseDown"
-                   RenderOptions.BitmapScalingMode="HighQuality">
-                <Image.Style>
-                    <Style TargetType="Image">
-                        <Style.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Cursor" Value="Hand"/>
-                            </Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </Image.Style>
-            </Image>
+            <Grid Grid.Row="1">
+                <Image x:Name="SelectedImage" 
+                       Stretch="Uniform"
+                       MouseMove="SelectedImage_MouseMove"
+                       MouseDown="SelectedImage_MouseDown"
+                       PreviewMouseMove="SelectedImage_PreviewMouseMove"
+                       RenderOptions.BitmapScalingMode="HighQuality">
+                    <Image.Style>
+                        <Style TargetType="Image">
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Cursor" Value="Hand"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Image.Style>
+                </Image>
+                <Canvas x:Name="SelectionCanvas" 
+                        Background="#01FFFFFF"
+                        IsHitTestVisible="True"
+                        MouseLeftButtonDown="SelectionCanvas_MouseLeftButtonDown"
+                        MouseMove="SelectionCanvas_MouseMove"
+                        MouseLeftButtonUp="SelectionCanvas_MouseLeftButtonUp">
+                    <Rectangle x:Name="SelectionRectangle"
+                              Stroke="Red"
+                              StrokeThickness="2"
+                              Fill="#3FFF0000"
+                              Visibility="Collapsed"/>
+                </Canvas>
+                <TextBlock x:Name="SelectionHint"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Top"
+                           Margin="0,10,0,0"
+                           Foreground="Gray"
+                           Text="Ctrl+ドラッグで範囲選択"
+                           Visibility="Collapsed"
+                           Panel.ZIndex="1"
+                           Opacity="0.7"/>
+            </Grid>
             <TextBox x:Name="AssociatedText" Grid.Row="2" IsReadOnly="True" TextWrapping="Wrap"/>
             
             <!-- オプション欄 -->
@@ -354,13 +377,18 @@
                         <TextBlock Text="カテゴリ順に並び替え(Ctrl+R)"/>
                     </Button.ToolTip>
                 </Button>
-                <Button x:Name="VLMPredictButton" Click="VLMPredictButton_Click">
+                <Button x:Name="VLMPredictButton">
                     <Button.Content>
                         <Image Source="/icon/vlm.png" Width="32" Height="32"/>
                     </Button.Content>
                     <Button.ToolTip>
                         <TextBlock Text="VLMでタグを作成(Ctrl+P)"/>
                     </Button.ToolTip>
+                    <Button.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="選択範囲のみ推論" Click="PredictSelectedRegion_Click"/>
+                        </ContextMenu>
+                    </Button.ContextMenu>
                 </Button>
             </StackPanel>
             <ListView x:Name="TagListView" Grid.Row="1" SelectionMode="Multiple" 

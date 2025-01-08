@@ -31,7 +31,7 @@ namespace tagmane
     /// </summary>
     public partial class MainWindow : Window
     {
-        private string _currentVersion = "1.0.3";
+        private string _currentVersion = "1.0.6";
         private CancellationTokenSource _logCancellationTokenSource;
         private RingBuffer<string> _logQueue = new RingBuffer<string>(20);
         private RingBuffer<string> _debugLogQueue = new RingBuffer<string>(20);
@@ -190,6 +190,11 @@ namespace tagmane
         private int _loadImgProcessedImagesCount;
         private int _predictProcessedImagesCount;
         private int _totalProcessedImagesCount;
+
+        private Point? _startPoint;  // nullableに変更
+        private bool _isSelecting;
+        private bool _isInSelectionMode;
+        private bool _isDragging;
 
         public MainWindow()
         {
@@ -1304,17 +1309,151 @@ namespace tagmane
         {
             if (e.LeftButton == MouseButtonState.Pressed)
             {
-                _startPoint = e.GetPosition(null);
+                if (Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl))
+                {
+                    // 範囲選択モードの場合は、通常のドラッグを防ぐ
+                    e.Handled = true;
+                }
+                else
+                {
+                    // 通常のドラッグ処理
+                    _startPoint = e.GetPosition(null);
+                }
             }
         }
 
         private void SelectedImage_MouseMove(object sender, MouseEventArgs e)
         {
-            if (e.LeftButton == MouseButtonState.Pressed && SelectedImage.Source != null)
+            if (e.LeftButton == MouseButtonState.Pressed && !_isSelecting && SelectedImage.Source != null)
             {
+                if (_startPoint.HasValue)  // nullチェックを追加
+                {
+                    Point currentPosition = e.GetPosition(null);
+                    Vector diff = currentPosition - _startPoint.Value;
+
+                    if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance ||
+                        Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
+                    {
+                        var bitmap = SelectedImage.Source as BitmapSource;
+                        if (bitmap == null) return;
+
+                        string tempFile = Path.Combine(Path.GetTempPath(), $"dragdrop_image_{Guid.NewGuid()}.png");
+                        
+                        try
+                        {
+                            using (var fileStream = new FileStream(tempFile, FileMode.Create))
+                            {
+                                BitmapEncoder encoder = new PngBitmapEncoder();
+                                encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                                encoder.Save(fileStream);
+                            }
+
+                            var dataObject = new DataObject();
+                            dataObject.SetData(DataFormats.FileDrop, new[] { tempFile });
+                            dataObject.SetData(DataFormats.Bitmap, bitmap);
+
+                            // DoDragDropの後の処理を修正
+                            DragDrop.DoDragDrop(SelectedImage, dataObject, DragDropEffects.Copy);
+                            
+                            // 別のタスクとして一時ファイルの削除を実行
+                            Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    // 1秒待機
+                                    await Task.Delay(1000);
+                                    
+                                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                                    {
+                                        if (File.Exists(tempFile))
+                                        {
+                                            try
+                                            {
+                                                File.Delete(tempFile);
+                                            }
+                                            catch { /* 削除に失敗しても続行 */ }
+                                        }
+                                    });
+                                }
+                                catch { /* エラーは無視 */ }
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show($"画像のドラッグ中にエラーが発生しました: {ex.Message}");
+                            if (File.Exists(tempFile))
+                            {
+                                try
+                                {
+                                    File.Delete(tempFile);
+                                }
+                                catch { /* 削除に失敗しても続行 */ }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private void SelectedImage_PreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            if (Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl))
+            {
+                SelectionHint.Visibility = Visibility.Visible;
+                SelectionCanvas.IsHitTestVisible = true;
+                SelectionCanvas.Background = Brushes.Transparent;  // 追加
+            }
+            else
+            {
+                SelectionHint.Visibility = Visibility.Collapsed;
+                SelectionCanvas.IsHitTestVisible = false;
+                SelectionCanvas.Background = null;  // 追加: 通常のマウス操作を可能にする
+            }
+        }
+
+        private void SelectionCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _startPoint = e.GetPosition(SelectionCanvas);
+            
+            if (Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl))
+            {
+                _isSelecting = true;
+                SelectionRectangle.Visibility = Visibility.Visible;
+                Canvas.SetLeft(SelectionRectangle, _startPoint.Value.X);
+                Canvas.SetTop(SelectionRectangle, _startPoint.Value.Y);
+                SelectionRectangle.Width = 0;
+                SelectionRectangle.Height = 0;
+            }
+            else
+            {
+                _isDragging = true;
+            }
+            e.Handled = true;
+        }
+
+        private void SelectionCanvas_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (!_startPoint.HasValue) return;
+
+            if (_isSelecting)
+            {
+                // 範囲選択の処理
+                var currentPoint = e.GetPosition(SelectionCanvas);
+                var x = Math.Min(_startPoint.Value.X, currentPoint.X);
+                var y = Math.Min(_startPoint.Value.Y, currentPoint.Y);
+                var width = Math.Abs(currentPoint.X - _startPoint.Value.X);
+                var height = Math.Abs(currentPoint.Y - _startPoint.Value.Y);
+
+                Canvas.SetLeft(SelectionRectangle, x);
+                Canvas.SetTop(SelectionRectangle, y);
+                SelectionRectangle.Width = width;
+                SelectionRectangle.Height = height;
+            }
+            else if (_isDragging && e.LeftButton == MouseButtonState.Pressed && SelectedImage.Source != null)
+            {
+                // ドラッグ処理
                 Point currentPosition = e.GetPosition(null);
-                // Vector型の明示的なキャストを追加
-                Vector diff = (Vector)(currentPosition - _startPoint);
+                Vector diff = currentPosition - _startPoint.Value;
 
                 if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance ||
                     Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
@@ -1337,25 +1476,19 @@ namespace tagmane
                         dataObject.SetData(DataFormats.FileDrop, new[] { tempFile });
                         dataObject.SetData(DataFormats.Bitmap, bitmap);
 
-                        // DoDragDropの後の処理を修正
                         DragDrop.DoDragDrop(SelectedImage, dataObject, DragDropEffects.Copy);
                         
-                        // 別のタスクとして一時ファイルの削除を実行
+                        // 一時ファイルの削除を別タスクで実行
                         Task.Run(async () =>
                         {
                             try
                             {
-                                // 1秒待機
                                 await Task.Delay(1000);
-                                
                                 await Application.Current.Dispatcher.InvokeAsync(() =>
                                 {
                                     if (File.Exists(tempFile))
                                     {
-                                        try
-                                        {
-                                            File.Delete(tempFile);
-                                        }
+                                        try { File.Delete(tempFile); }
                                         catch { /* 削除に失敗しても続行 */ }
                                     }
                                 });
@@ -1368,14 +1501,72 @@ namespace tagmane
                         MessageBox.Show($"画像のドラッグ中にエラーが発生しました: {ex.Message}");
                         if (File.Exists(tempFile))
                         {
-                            try
-                            {
-                                File.Delete(tempFile);
-                            }
+                            try { File.Delete(tempFile); }
                             catch { /* 削除に失敗しても続行 */ }
                         }
                     }
                 }
+            }
+            e.Handled = true;
+        }
+
+        private void SelectionCanvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (_isSelecting)
+            {
+                _isSelecting = false;
+                // 選択範囲が十分な大きさかチェック
+                if (SelectionRectangle.Width < 10 || SelectionRectangle.Height < 10)
+                {
+                    SelectionRectangle.Visibility = Visibility.Collapsed;
+                    AddDebugLogEntry("選択範囲が小さすぎるため、キャンセルされました");
+                }
+                else
+                {
+                    AddDebugLogEntry($"範囲選択完了: {SelectionRectangle.Width:F0}x{SelectionRectangle.Height:F0}");
+                }
+            }
+            
+            _isDragging = false;
+            _startPoint = null;
+            e.Handled = true;
+        }
+
+        // キーボードイベントを監視して、Ctrlキーの状態に応じてカーソルを変更
+        private void SelectionCanvas_MouseEnter(object sender, MouseEventArgs e)
+        {
+            if (Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl))
+            {
+                SelectionCanvas.Cursor = Cursors.Cross;
+            }
+        }
+
+        private void SelectionCanvas_MouseLeave(object sender, MouseEventArgs e)
+        {
+            SelectionCanvas.Cursor = Cursors.Arrow;
+        }
+
+        private void Window_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape && SelectionRectangle.Visibility == Visibility.Visible)
+            {
+                SelectionRectangle.Visibility = Visibility.Collapsed;
+                _isSelecting = false;
+                _isInSelectionMode = false;
+                SelectionCanvas.ReleaseMouseCapture();
+                AddDebugLogEntry("範囲選択がキャンセルされました");
+            }
+            else if (e.Key == Key.LeftCtrl || e.Key == Key.RightCtrl)
+            {
+                SelectionCanvas.Cursor = Cursors.Cross;
+            }
+        }
+
+        private void Window_KeyUp(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.LeftCtrl || e.Key == Key.RightCtrl)
+            {
+                SelectionCanvas.Cursor = Cursors.Arrow;
             }
         }
 
@@ -3321,8 +3512,6 @@ namespace tagmane
         */
 
         private ListViewItem _draggedItem;
-        private Point? _startPoint;
-        private bool _isDragging;
 
         private void TagListView_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
@@ -3668,6 +3857,110 @@ namespace tagmane
                 _cts = null;
                 _vlmPredictor.Dispose();
 
+                _isAsyncProcessing = false;
+            }
+        }
+
+        private async Task<BitmapImage> ConvertToImage(BitmapSource bitmapSource)
+        {
+            if (bitmapSource == null) return null;
+
+            var bitmapImage = new BitmapImage();
+            var bitmapEncoder = new PngBitmapEncoder();
+            bitmapEncoder.Frames.Add(BitmapFrame.Create(bitmapSource));
+
+            using (var stream = new MemoryStream())
+            {
+                bitmapEncoder.Save(stream);
+                stream.Seek(0, SeekOrigin.Begin);
+
+                bitmapImage.BeginInit();
+                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                bitmapImage.StreamSource = stream;
+                bitmapImage.EndInit();
+                bitmapImage.Freeze(); // UIスレッド以外でも使用可能にする
+            }
+
+            return bitmapImage;
+        }
+
+        private async void PredictSelectedRegion_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isAsyncProcessing) return;
+            _isAsyncProcessing = true;
+
+            try
+            {
+                if (SelectionRectangle.Visibility != Visibility.Visible)
+                {
+                    AddMainLogEntry("範囲が選択されていません。");
+                    return;
+                }
+
+                var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+                if (selectedImage == null)
+                {
+                    AddMainLogEntry("画像が選択されていません。");
+                    return;
+                }
+
+                VLMPredictButton.IsEnabled = false;
+                _cts = new CancellationTokenSource();
+
+                await _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false);
+
+                // 選択範囲の画像を取得
+                var croppedImage = await GetSelectedRegion();
+                if (croppedImage == null)
+                {
+                    AddMainLogEntry("選択範囲の取得に失敗しました。");
+                    return;
+                }
+
+                // BitmapSourceからBitmapImageに変換
+                var bitmapImage = await ConvertToImage(croppedImage);
+                if (bitmapImage == null)
+                {
+                    AddMainLogEntry("画像の変換に失敗しました。");
+                    return;
+                }
+
+                // 変換後のBitmapImageを使用してVLM推論
+                var predictedTags = await Task.Run(() =>
+                {
+                    return PredictVLMFromTensor(
+                        _vlmPredictor.PrepareTensor(bitmapImage)!,
+                        _cts.Token
+                    );
+                }, _cts.Token);
+
+                if (predictedTags.Any())
+                {
+                    var newTags = predictedTags.Except(selectedImage.Tags).ToList();
+                    if (newTags.Any())
+                    {
+                        var action = CreateAddTagsAction(selectedImage, newTags);
+                        action.DoAction();
+                        _undoStack.Push(action);
+                        _redoStack.Clear();
+                        UpdateUIAfterTagsChange();
+                        AddMainLogEntry($"選択範囲から{newTags.Count}個のタグを追加しました。");
+                    }
+                    else
+                    {
+                        AddMainLogEntry("選択範囲から新しいタグは見つかりませんでした。");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"選択範囲のVLM推論中にエラーが発生しました: {ex.Message}");
+            }
+            finally
+            {
+                VLMPredictButton.IsEnabled = true;
+                _cts = null;
+                _vlmPredictor.Dispose();
                 _isAsyncProcessing = false;
             }
         }
@@ -4433,6 +4726,53 @@ namespace tagmane
 
             UpdateProgressBar(0);
             _isAsyncProcessing = false;
+        }
+
+        private async Task<BitmapSource> GetSelectedRegion()
+        {
+            var image = SelectedImage.Source as BitmapSource;
+            if (image == null || SelectionRectangle.Visibility != Visibility.Visible) return null;
+
+            try
+            {
+                // 画像とCanvas/Imageのサイズ比を計算
+                double scaleX = image.PixelWidth / SelectedImage.ActualWidth;
+                double scaleY = image.PixelHeight / SelectedImage.ActualHeight;
+
+                // 選択範囲の座標を取得
+                double x = Canvas.GetLeft(SelectionRectangle);
+                double y = Canvas.GetTop(SelectionRectangle);
+
+                // 画像の実際の表示位置とサイズを計算
+                double imageX = (SelectedImage.ActualWidth - image.PixelWidth / scaleX) / 2;
+                double imageY = (SelectedImage.ActualHeight - image.PixelHeight / scaleY) / 2;
+
+                // 選択範囲を画像の座標系に変換
+                int pixelX = (int)Math.Max(0, (x - imageX) * scaleX);
+                int pixelY = (int)Math.Max(0, (y - imageY) * scaleY);
+                int pixelWidth = (int)Math.Min(image.PixelWidth - pixelX, SelectionRectangle.Width * scaleX);
+                int pixelHeight = (int)Math.Min(image.PixelHeight - pixelY, SelectionRectangle.Height * scaleY);
+
+                // 範囲が有効かチェック
+                if (pixelWidth <= 0 || pixelHeight <= 0)
+                {
+                    AddMainLogEntry("選択範囲が画像の有効な領域にありません。");
+                    return null;
+                }
+
+                // 選択範囲を切り出し
+                var croppedBitmap = new CroppedBitmap(
+                    image,
+                    new Int32Rect(pixelX, pixelY, pixelWidth, pixelHeight)
+                );
+
+                return croppedBitmap;
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"選択範囲の切り出しに失敗しました: {ex.Message}");
+                return null;
+            }
         }
     }
 }
