@@ -377,7 +377,7 @@
                         <TextBlock Text="カテゴリ順に並び替え(Ctrl+R)"/>
                     </Button.ToolTip>
                 </Button>
-                <Button x:Name="VLMPredictButton">
+                <Button x:Name="VLMPredictButton" Click="VLMPredictButton_Click">
                     <Button.Content>
                         <Image Source="/icon/vlm.png" Width="32" Height="32"/>
                     </Button.Content>
