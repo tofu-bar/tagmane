@@ -151,7 +151,7 @@ namespace tagmane
         }
 
         public ObservableCollection<string> Tags { get; set; }    
-        private enum FilterMode { Off, And, Or }
+        private enum FilterMode { Off, And, Or, Empty }
         private FilterMode _currentFilterMode = FilterMode.Off;
         private enum ClusterMode { Off, CSD }
         private ClusterMode _currentClusterMode = ClusterMode.Off;
@@ -2331,6 +2331,18 @@ namespace tagmane
                     }
                     break;
                 case FilterMode.Or:
+                    _currentFilterMode = FilterMode.Empty;
+                    _filterTags = new HashSet<string>();
+                    if (_currentClusterMode == ClusterMode.CSD)
+                    {
+                        _imageInfos = _clusteredImageInfos.Where(image => image.Tags.Count == 0).ToList();
+                    }
+                    else
+                    {
+                        _imageInfos = _originalImageInfos.Where(image => image.Tags.Count == 0).ToList();
+                    }
+                    break;
+                case FilterMode.Empty:
                     _currentFilterMode = FilterMode.Off;
                     _filterTags = new HashSet<string>();
                     if (_currentClusterMode == ClusterMode.CSD)
@@ -2366,6 +2378,10 @@ namespace tagmane
                 case FilterMode.Or:
                     filterButton.Content = new Image { Source = new BitmapImage(new Uri("/icon/or.png", UriKind.Relative)), Width = 32, Height = 32 };
                     filterButton.ToolTip = "フィルタリング: OR";
+                    break;
+                case FilterMode.Empty:
+                    filterButton.Content = new Image { Source = new BitmapImage(new Uri("/icon/empty.png", UriKind.Relative)), Width = 32, Height = 32 };
+                    filterButton.ToolTip = "フィルタリング: Empty";
                     break;
             }
         }
