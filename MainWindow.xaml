@@ -136,6 +136,32 @@
                 </Button>
             </Grid>
             <Grid Grid.Row="1">
+                <!-- チェッカーボードパターンの背景 -->
+                <Rectangle>
+                    <Rectangle.Fill>
+                        <DrawingBrush TileMode="Tile" Viewport="0,0,16,16" ViewportUnits="Absolute">
+                            <DrawingBrush.Drawing>
+                                <DrawingGroup>
+                                    <GeometryDrawing Brush="#FFF5F5F5">
+                                        <GeometryDrawing.Geometry>
+                                            <RectangleGeometry Rect="0,0,16,16"/>
+                                        </GeometryDrawing.Geometry>
+                                    </GeometryDrawing>
+                                    <GeometryDrawing Brush="#FFE5E5E5">
+                                        <GeometryDrawing.Geometry>
+                                            <GeometryGroup>
+                                                <RectangleGeometry Rect="0,0,8,8"/>
+                                                <RectangleGeometry Rect="8,8,8,8"/>
+                                            </GeometryGroup>
+                                        </GeometryDrawing.Geometry>
+                                    </GeometryDrawing>
+                                </DrawingGroup>
+                            </DrawingBrush.Drawing>
+                        </DrawingBrush>
+                    </Rectangle.Fill>
+                </Rectangle>
+                
+                <!-- 既存のImage要素 -->
                 <Image x:Name="SelectedImage" 
                        Stretch="Uniform"
                        MouseMove="SelectedImage_MouseMove"
