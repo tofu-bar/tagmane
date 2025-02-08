@@ -3,7 +3,10 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Threading.Tasks;
+using System.Windows.Threading;
 
 namespace tagmane.Features.ImageProcessing
 {
@@ -13,90 +16,148 @@ namespace tagmane.Features.ImageProcessing
         /// 対象画像群に対して透過部分の塗りつぶし処理を行います。
         /// 対応形式は PNG および WebP です。
         /// </summary>
-        public static int ProcessImages(IEnumerable<ImageInfo> images, System.Drawing.Color fillColor, Action<string> logger)
+        public static async Task<int> ProcessImagesAsync(
+            IEnumerable<ImageInfo> images, 
+            System.Drawing.Color fillColor, 
+            WebPHandler webPHandler, 
+            Action<string> logger,
+            IProgress<double> progress = null)
         {
             int processedCount = 0;
+            int totalCount = images.Count();
+            int currentCount = 0;
+
             foreach (var imageInfo in images)
             {
+                currentCount++;
+                progress?.Report((double)currentCount / totalCount * 100);
+
                 string ext = Path.GetExtension(imageInfo.ImagePath).ToLower();
                 if (ext != ".png" && ext != ".webp")
                     continue;
 
-                logger($"処理中: {imageInfo.ImagePath}");
+                logger($"処理中: {imageInfo.ImagePath} ({currentCount}/{totalCount})");
                 try
                 {
-                    string tempPath = Path.GetTempFileName();
-                    bool success = false;
-                    Bitmap bitmap = null;
+                    await Task.Run(() =>
+                    {
+                        bool hasTransparency = false;
 
-                    // 形式に応じた読み込み方法
-                    if (ext == ".png")
-                    {
-                        bitmap = new Bitmap(imageInfo.ImagePath);
-                    }
-                    else if (ext == ".webp")
-                    {
-                        var webpHandler = new WebPHandler("libwebp.dll");
-                        BitmapSource bmpSource = webpHandler.LoadWebPImage(imageInfo.ImagePath);
-                        bitmap = BitmapFromSource(bmpSource);
-                    }
-
-                    if (bitmap == null)
-                    {
-                        logger($"画像読み込み失敗: {imageInfo.ImagePath}");
-                        continue;
-                    }
-
-                    using (bitmap)
-                    {
-                        if (HasTransparency(bitmap))
+                        // 形式に応じた透過チェック
+                        if (ext == ".png")
                         {
-                            logger($"透過部分あり: {imageInfo.ImagePath}");
-                            using (var newBitmap = FillTransparency(bitmap, fillColor))
+                            using (var bitmap = new Bitmap(imageInfo.ImagePath))
                             {
-                                if (ext == ".png")
-                                {
-                                    logger($"一時ファイルに保存（PNG）: {tempPath}");
-                                    newBitmap.Save(tempPath, System.Drawing.Imaging.ImageFormat.Png);
-                                }
-                                else if (ext == ".webp")
-                                {
-                                    logger($"WebPエンコード開始: {imageInfo.ImagePath}");
-                                    var webpHandler = new WebPHandler("libwebp.dll");
-                                    // 例として品質75を使用
-                                    byte[] encoded = webpHandler.EncodeWebPImage(newBitmap, 75.0f);
-                                    logger($"WebPエンコード完了: {encoded.Length} バイト");
-                                    File.WriteAllBytes(tempPath, encoded);
-                                }
-                                success = true;
+                                hasTransparency = HasTransparency(bitmap);
                             }
                         }
-                        else
+                        else if (ext == ".webp")
+                        {
+                            // 既存のLoadWebPImageを使用して透過チェック
+                            var bmpSource = webPHandler.LoadWebPImage(imageInfo.ImagePath);
+                            hasTransparency = HasTransparency(bmpSource);
+                            
+                            if (!hasTransparency)
+                            {
+                                logger($"透過部分なし: {imageInfo.ImagePath}");
+                                return;
+                            }
+                            
+                            // 透過部分があった場合は、既に読み込んだBitmapSourceを再利用
+                            logger($"透過部分あり: {imageInfo.ImagePath}");
+                            string tempPath = Path.GetTempFileName();
+                            string tempPngPath = Path.ChangeExtension(tempPath, ".png");
+                            bool success = false;
+
+                            try
+                            {
+                                // 既に読み込んだBitmapSourceをPNGとして保存
+                                using (var fs = new FileStream(tempPngPath, FileMode.Create))
+                                {
+                                    BitmapEncoder encoder = new PngBitmapEncoder();
+                                    encoder.Frames.Add(BitmapFrame.Create(bmpSource));
+                                    encoder.Save(fs);
+                                }
+
+                                using (var bitmap = new Bitmap(tempPngPath))
+                                {
+                                    using (var newBitmap = FillTransparency(bitmap, fillColor))
+                                    {
+                                        byte[] encoded = webPHandler.EncodeWebPImage(newBitmap, 75.0f);
+                                        File.WriteAllBytes(tempPath, encoded);
+                                        success = true;
+                                    }
+                                }
+
+                                if (success)
+                                {
+                                    logger($"元ファイル削除開始: {imageInfo.ImagePath}");
+                                    File.Delete(imageInfo.ImagePath);
+                                    logger("元ファイル削除完了");
+
+                                    logger($"ファイル移動開始: {tempPath} → {imageInfo.ImagePath}");
+                                    File.Move(tempPath, imageInfo.ImagePath);
+                                    logger("ファイル移動完了");
+
+                                    processedCount++;
+                                }
+                            }
+                            finally
+                            {
+                                if (File.Exists(tempPngPath)) File.Delete(tempPngPath);
+                                if (!success && File.Exists(tempPath)) File.Delete(tempPath);
+                            }
+                            return;
+                        }
+
+                        if (!hasTransparency)
                         {
                             logger($"透過部分なし: {imageInfo.ImagePath}");
+                            return;
                         }
-                    }
 
-                    if (success)
-                    {
-                        logger($"元ファイル削除開始: {imageInfo.ImagePath}");
-                        File.Delete(imageInfo.ImagePath);
-                        logger("元ファイル削除完了");
-                        logger($"ファイル移動開始: {tempPath} → {imageInfo.ImagePath}");
-                        File.Move(tempPath, imageInfo.ImagePath);
-                        logger("ファイル移動完了");
-                        processedCount++;
-                    }
-                    else if (File.Exists(tempPath))
-                    {
-                        File.Delete(tempPath);
-                    }
+                        // PNG用の処理（変更なし）
+                        logger($"透過部分あり: {imageInfo.ImagePath}");
+                        string pngTempPath = Path.GetTempFileName();
+                        bool pngSuccess = false;
+
+                        try
+                        {
+                            using (var bitmap = new Bitmap(imageInfo.ImagePath))
+                            {
+                                using (var newBitmap = FillTransparency(bitmap, fillColor))
+                                {
+                                    newBitmap.Save(pngTempPath, System.Drawing.Imaging.ImageFormat.Png);
+                                    pngSuccess = true;
+                                }
+                            }
+
+                            if (pngSuccess)
+                            {
+                                logger($"元ファイル削除開始: {imageInfo.ImagePath}");
+                                File.Delete(imageInfo.ImagePath);
+                                logger("元ファイル削除完了");
+
+                                logger($"ファイル移動開始: {pngTempPath} → {imageInfo.ImagePath}");
+                                File.Move(pngTempPath, imageInfo.ImagePath);
+                                logger("ファイル移動完了");
+
+                                processedCount++;
+                            }
+                        }
+                        finally
+                        {
+                            if (!pngSuccess && File.Exists(pngTempPath)) File.Delete(pngTempPath);
+                        }
+                    });
                 }
                 catch (Exception ex)
                 {
                     logger($"個別処理でエラー: {ex.Message} at {imageInfo.ImagePath}");
                 }
             }
+
+            progress?.Report(100);
             return processedCount;
         }
 
@@ -116,7 +177,27 @@ namespace tagmane.Features.ImageProcessing
 
         /// <summary>
         /// Bitmapに透過部分があるかどうかをチェックします。
+        /// WebPの場合はBitmapSourceから直接チェックします。
         /// </summary>
+        public static bool HasTransparency(BitmapSource bitmapSource)
+        {
+            // ピクセルフォーマットがアルファチャンネルを含むか確認
+            if (bitmapSource.Format != PixelFormats.Bgra32 && bitmapSource.Format != PixelFormats.Pbgra32)
+                return false;
+
+            int stride = (bitmapSource.PixelWidth * bitmapSource.Format.BitsPerPixel + 7) / 8;
+            byte[] pixels = new byte[stride * bitmapSource.PixelHeight];
+            bitmapSource.CopyPixels(pixels, stride, 0);
+
+            // アルファチャンネルをチェック (4バイトごとの4番目のバイト)
+            for (int i = 3; i < pixels.Length; i += 4)
+            {
+                if (pixels[i] < 255)
+                    return true;
+            }
+            return false;
+        }
+
         public static bool HasTransparency(Bitmap bitmap)
         {
             for (int y = 0; y < bitmap.Height; y++)

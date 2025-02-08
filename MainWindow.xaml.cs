@@ -4821,47 +4821,75 @@ namespace tagmane
             );
             if (result != MessageBoxResult.Yes) return;
 
-            // チェックボックスの状態で処理対象を決定
-            bool applyToAll = ApplyToAllImagesCheckBox.IsChecked ?? false;
-            List<ImageInfo> imagesToProcess = new List<ImageInfo>();
-            ImageInfo currentImage = null;
-            if (applyToAll)
+            try
             {
-                imagesToProcess = _imageInfos.ToList();
-            }
-            else
-            {
-                currentImage = ImageListBox.SelectedItem as ImageInfo;
-                if (currentImage == null)
+                // UI要素を無効化
+                FillTransparencyButton.IsEnabled = false;
+                UpdateProgressBar(0);  // プログレスバーを0%に初期化
+
+                // チェックボックスの状態で処理対象を決定
+                bool applyToAll = ApplyToAllImagesCheckBox.IsChecked ?? false;
+                List<ImageInfo> imagesToProcess = new List<ImageInfo>();
+                ImageInfo currentImage = null;
+                if (applyToAll)
                 {
-                    AddMainLogEntry("画像が選択されていません。");
-                    return;
+                    imagesToProcess = _imageInfos.ToList();
                 }
-                imagesToProcess.Add(currentImage);
+                else
+                {
+                    currentImage = ImageListBox.SelectedItem as ImageInfo;
+                    if (currentImage == null)
+                    {
+                        AddMainLogEntry("画像が選択されていません。");
+                        return;
+                    }
+                    imagesToProcess.Add(currentImage);
+                }
+
+                AddMainLogEntry("処理開始: 画像表示をクリア");
+                SelectedImage.Source = null;
+
+                // 進捗報告用のProgress<T>オブジェクトを作成
+                var progress = new Progress<double>(value =>
+                {
+                    UpdateProgressBar(value / 100);  // 0-1の範囲に変換
+                });
+
+                // 外部化した処理メソッドを非同期で呼び出す
+                var fillColor = System.Drawing.Color.FromArgb(r, g, b);
+                int processedCount = await TransparencyProcessor.ProcessImagesAsync(
+                    imagesToProcess, 
+                    fillColor, 
+                    _webPHandler, 
+                    AddMainLogEntry,
+                    progress
+                );
+
+                AddMainLogEntry("画像の再読み込み開始");
+                if (!applyToAll && currentImage != null)
+                {
+                    SelectedImage.Source = LoadImage(currentImage.ImagePath);
+                }
+                else if (applyToAll && ImageListBox.SelectedItem is ImageInfo selectedImage)
+                {
+                    SelectedImage.Source = LoadImage(selectedImage.ImagePath);
+                }
+
+                UpdateCentralDisplay();
+                UpdateUIAfterImageInfosChange();
+                AddMainLogEntry($"{processedCount}個の画像の透過部分を塗りつぶしました。");
             }
-
-            AddMainLogEntry("処理開始: 画像表示をクリア");
-            SelectedImage.Source = null;
-
-            // 外部化した処理メソッドを呼び出す
-            var fillColor = System.Drawing.Color.FromArgb(r, g, b);
-            int processedCount = tagmane.Features.ImageProcessing.TransparencyProcessor.ProcessImages(imagesToProcess, fillColor, AddMainLogEntry);
-
-            AddMainLogEntry("画像の再読み込み開始");
-            // 単体の場合は選択中の画像の再読み込みを実施
-            if (!applyToAll && currentImage != null)
+            catch (Exception ex)
             {
-                SelectedImage.Source = LoadImage(currentImage.ImagePath);
+                MessageBox.Show($"処理中にエラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                AddMainLogEntry($"透過部分の塗りつぶし中にエラーが発生: {ex.Message}");
             }
-            // 全体の場合は、ImageListBoxの選択状態の画像を再読み込み
-            else if (applyToAll && ImageListBox.SelectedItem is ImageInfo selectedImage)
+            finally
             {
-                SelectedImage.Source = LoadImage(selectedImage.ImagePath);
+                // UI要素を再有効化
+                FillTransparencyButton.IsEnabled = true;
+                UpdateProgressBar(0);  // プログレスバーをリセット
             }
-
-            UpdateCentralDisplay();
-            UpdateUIAfterImageInfosChange();
-            AddMainLogEntry($"{processedCount}個の画像の透過部分を塗りつぶしました。");
         }
     }
 }
