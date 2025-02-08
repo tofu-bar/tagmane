@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
-namespace tagmane
+namespace tagmane.Features.ImageProcessing
 {
     public class WebPHandler
     {
@@ -15,11 +15,14 @@ namespace tagmane
             _webpDllPath = webpDllPath;
         }
 
+        /// <summary>
+        /// WebP画像を読み込み、BitmapSourceとして返す。
+        /// </summary>
         public BitmapSource LoadWebPImage(string imagePath)
         {
             if (string.IsNullOrEmpty(_webpDllPath) || !File.Exists(_webpDllPath))
             {
-                throw new FileNotFoundException($"WebP.dllが見つかりません。設定で正しいパスを指定してください。現在のパス: {_webpDllPath}");
+                throw new FileNotFoundException($"WebP DLLが見つかりません。指定されたパス: {_webpDllPath}");
             }
 
             byte[] webpData = File.ReadAllBytes(imagePath);
@@ -28,29 +31,23 @@ namespace tagmane
             IntPtr outputBuffer = IntPtr.Zero;
             try
             {
-                // WebP画像の情報を取得
                 IntPtr sizeInfo = NativeMethods.WebPGetInfo(webpData, webpData.Length, out width, out height);
                 if (sizeInfo == IntPtr.Zero)
                 {
                     throw new InvalidOperationException($"WebP画像の情報取得に失敗しました。画像ファイル: {imagePath}");
                 }
 
-                Console.WriteLine($"画像サイズ: 幅 {width}, 高さ {height}");
-
                 int stride = width * 4;
                 int outputSize = stride * height;
 
-                // 出力バッファを確保
                 outputBuffer = Marshal.AllocHGlobal(outputSize);
 
-                // WebP画像をデコード
                 IntPtr result = NativeMethods.WebPDecodeBGRAInto(webpData, webpData.Length, outputBuffer, outputSize, stride);
                 if (result == IntPtr.Zero)
                 {
                     throw new InvalidOperationException($"WebP画像のデコードに失敗しました。画像ファイル: {imagePath}");
                 }
 
-                // ピクセルデータをバイト配列にコピー
                 byte[] pixelData = new byte[outputSize];
                 Marshal.Copy(outputBuffer, pixelData, 0, outputSize);
 
@@ -58,8 +55,8 @@ namespace tagmane
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"例外が発生しました: {ex.Message}");
-                Console.WriteLine($"スタックトレース: {ex.StackTrace}");
+                Console.WriteLine($"例外が発生: {ex.Message}");
+                Console.WriteLine(ex.StackTrace);
                 throw;
             }
             finally
@@ -69,6 +66,33 @@ namespace tagmane
                     Marshal.FreeHGlobal(outputBuffer);
                 }
             }
+        }
+
+        /// <summary>
+        /// 指定したBitmapをWebP形式にエンコードし、byte[]として返す。
+        /// </summary>
+        public byte[] EncodeWebPImage(System.Drawing.Bitmap bitmap, float qualityFactor)
+        {
+            // BitmapからBGRAバイト配列に変換
+            var rect = new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height);
+            System.Drawing.Imaging.BitmapData bmpData = bitmap.LockBits(rect, System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            int stride = bmpData.Stride;
+            int bufferSize = stride * bitmap.Height;
+            byte[] pixelData = new byte[bufferSize];
+            Marshal.Copy(bmpData.Scan0, pixelData, 0, bufferSize);
+            bitmap.UnlockBits(bmpData);
+
+            // libwebp.dll の WebPEncodeBGRA を使用してエンコード
+            IntPtr outputPtr;
+            UIntPtr outputSize = NativeMethods.WebPEncodeBGRA(pixelData, bitmap.Width, bitmap.Height, stride, qualityFactor, out outputPtr);
+            int size = (int)outputSize;
+            if (size == 0 || outputPtr == IntPtr.Zero)
+                throw new InvalidOperationException("WebP画像のエンコードに失敗しました。");
+
+            byte[] result = new byte[size];
+            Marshal.Copy(outputPtr, result, 0, size);
+            NativeMethods.WebPFree(outputPtr);
+            return result;
         }
 
         private static class NativeMethods
@@ -87,6 +111,18 @@ namespace tagmane
                 IntPtr output_buffer,
                 int output_buffer_size,
                 int output_stride);
+
+            [DllImport("libwebp.dll", CallingConvention = CallingConvention.Cdecl)]
+            public static extern UIntPtr WebPEncodeBGRA(
+                [In] byte[] bgra,
+                int width,
+                int height,
+                int stride,
+                float qualityFactor,
+                out IntPtr output);
+
+            [DllImport("libwebp.dll", CallingConvention = CallingConvention.Cdecl)]
+            public static extern void WebPFree(IntPtr p);
         }
     }
-}
+} 

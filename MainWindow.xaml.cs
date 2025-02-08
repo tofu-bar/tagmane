@@ -23,6 +23,7 @@ using Microsoft.ML.OnnxRuntime;  // Float16のため
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Threading.Tasks.Dataflow;
 using tagmane.Features.TagShuffle;  // 追加：名前空間のusing
+using tagmane.Features.ImageProcessing;
 
 namespace tagmane
 {
@@ -465,26 +466,20 @@ namespace tagmane
             base.OnClosing(e);
         }
 
-        private BitmapSource LoadImage(string imagePath)
+        private ImageSource LoadImage(string imagePath)
         {
-            string extension = Path.GetExtension(imagePath).ToLower();
-
             try
             {
-                if (extension == ".webp")
-                {
-                    return _webPHandler.LoadWebPImage(imagePath);
-                }
-                else
-                {
-                    BitmapSource bitmapSource = new BitmapImage(new Uri(imagePath));
-                    bitmapSource.Freeze();
-                    return bitmapSource;
-                }
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.UriSource = new Uri(imagePath);
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;  // 重要: これによりファイルのストリームが即座に閉じられる
+                bitmap.EndInit();
+                return bitmap;
             }
             catch (Exception ex)
             {
-                AddMainLogEntry($"画像の読み込みに失敗しました: {imagePath}. エラー: {ex.Message}");
+                AddMainLogEntry($"画像の読み込みに失敗: {ex.Message}");
                 return null;
             }
         }
@@ -1267,6 +1262,16 @@ namespace tagmane
         }
 
         // 中央ペイン: 選択された画像の表示と関連テキストの表示
+        private void UpdateCentralDisplay()
+        {
+            if (ImageListBox.SelectedItem is ImageInfo selectedImage)
+            {
+                // 最新の画像ファイルを読み込む
+                SelectedImage.Source = LoadImage(selectedImage.ImagePath);
+                AssociatedText.Text = selectedImage.AssociatedText;
+            }
+        }
+        
         private void ImageListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_isUpdatingSelection) return;
@@ -1280,8 +1285,7 @@ namespace tagmane
                 try
                 {
                     _isUpdatingSelection = true;
-                    SelectedImage.Source = LoadImage(selectedImage.ImagePath);
-                    AssociatedText.Text = selectedImage.AssociatedText;
+                    UpdateCentralDisplay();
                     _currentImageTags = new HashSet<string>(selectedImage.Tags);
                     
                     // タグの更新は不要なのでfalseにして若干UIの更新処理を軽くする
@@ -4789,6 +4793,75 @@ namespace tagmane
                 AddMainLogEntry($"選択範囲の切り出しに失敗しました: {ex.Message}");
                 return null;
             }
+        }
+
+        private async void FillTransparencyButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("対象の画像がありません。");
+                return;
+            }
+
+            // RGB値の取得と検証
+            if (!byte.TryParse(FillRedTextBox.Text, out byte r) ||
+                !byte.TryParse(FillGreenTextBox.Text, out byte g) ||
+                !byte.TryParse(FillBlueTextBox.Text, out byte b))
+            {
+                MessageBox.Show("RGB値は0-255の範囲で入力してください。", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var result = MessageBox.Show(
+                $"フィルタされた画像の透過部分を RGB({r},{g},{b})で塗りつぶしますか？",
+                "確認",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question,
+                MessageBoxResult.No
+            );
+            if (result != MessageBoxResult.Yes) return;
+
+            // チェックボックスの状態で処理対象を決定
+            bool applyToAll = ApplyToAllImagesCheckBox.IsChecked ?? false;
+            List<ImageInfo> imagesToProcess = new List<ImageInfo>();
+            ImageInfo currentImage = null;
+            if (applyToAll)
+            {
+                imagesToProcess = _imageInfos.ToList();
+            }
+            else
+            {
+                currentImage = ImageListBox.SelectedItem as ImageInfo;
+                if (currentImage == null)
+                {
+                    AddMainLogEntry("画像が選択されていません。");
+                    return;
+                }
+                imagesToProcess.Add(currentImage);
+            }
+
+            AddMainLogEntry("処理開始: 画像表示をクリア");
+            SelectedImage.Source = null;
+
+            // 外部化した処理メソッドを呼び出す
+            var fillColor = System.Drawing.Color.FromArgb(r, g, b);
+            int processedCount = tagmane.Features.ImageProcessing.TransparencyProcessor.ProcessImages(imagesToProcess, fillColor, AddMainLogEntry);
+
+            AddMainLogEntry("画像の再読み込み開始");
+            // 単体の場合は選択中の画像の再読み込みを実施
+            if (!applyToAll && currentImage != null)
+            {
+                SelectedImage.Source = LoadImage(currentImage.ImagePath);
+            }
+            // 全体の場合は、ImageListBoxの選択状態の画像を再読み込み
+            else if (applyToAll && ImageListBox.SelectedItem is ImageInfo selectedImage)
+            {
+                SelectedImage.Source = LoadImage(selectedImage.ImagePath);
+            }
+
+            UpdateCentralDisplay();
+            UpdateUIAfterImageInfosChange();
+            AddMainLogEntry($"{processedCount}個の画像の透過部分を塗りつぶしました。");
         }
     }
 }

@@ -99,8 +99,9 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="2*"/>
                 <RowDefinition Height="1*"/>
-                <RowDefinition Height="Auto"/> <!-- オプション欄用に新しい行を追加 -->
+                <RowDefinition Height="Auto"/> <!-- オプション欄用 -->
                 <RowDefinition Height="Auto"/> <!-- 高度な削除用 -->
+                <RowDefinition Height="Auto"/> <!-- 画像編集用 -->
             </Grid.RowDefinitions>
             <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
@@ -203,14 +204,14 @@
             <TextBox x:Name="AssociatedText" Grid.Row="2" IsReadOnly="True" TextWrapping="Wrap"/>
             
             <!-- オプション欄 -->
-            <Grid Grid.Row="3" Margin="5">
+            <Grid Grid.Row="3">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="1*"/>
                     <ColumnDefinition Width="1*"/>
                 </Grid.ColumnDefinitions>
                 
                 <!-- 左側のオプション -->
-                <StackPanel Grid.Column="0">
+                <StackPanel Grid.Column="0" Margin="5,0,0,0">
                     <StackPanel Orientation="Horizontal" Margin="0,5">
                         <TextBlock Text="VLMモデル:" VerticalAlignment="Center" Margin="0,0,5,0"/>
                         <ComboBox x:Name="VLMModelComboBox" Width="200" SelectionChanged="VLMModelComboBox_SelectionChanged"/>
@@ -302,50 +303,71 @@
                 </Grid>
             </Grid>
 
-
-            <!-- 高度な削除セクション -->
-            <Expander Grid.Row="4" Header="高度な削除" Margin="5">
-                <StackPanel>
-                    <!-- 孤立したタグファイルの削除 -->
-                    <GroupBox Header="孤立したタグファイル" Margin="0,5">
-                        <StackPanel Margin="5">
-                            <TextBlock Text="紐づいている画像が存在しないtxtファイルをすべて削除します" TextWrapping="Wrap"/>
-                            <Button x:Name="DeleteOrphanedTagsButton" Content="孤立タグファイルを削除" 
-                                    Margin="0,5" Padding="5" Click="DeleteOrphanedTagsButton_Click"/>
-                        </StackPanel>
-                    </GroupBox>
-
-                    <!-- 低解像度画像の削除 -->
-                    <GroupBox Header="低解像度画像" Margin="0,5">
-                        <StackPanel Margin="5">
-                            <TextBlock Text="指定された解像度以下の画像とタグファイルを削除します" TextWrapping="Wrap"/>
-                            <StackPanel Orientation="Horizontal" Margin="0,5">
-                                <RadioButton x:Name="LongSideRadio" Content="長辺" IsChecked="True" Margin="0,0,10,0"/>
-                                <RadioButton x:Name="ShortSideRadio" Content="短辺" Margin="0,0,10,0"/>
-                                <TextBlock Text="が" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                                <TextBox x:Name="ResolutionTextBox" Text="480" Width="60" Margin="0,0,5,0"/>
-                                <TextBlock Text="ピクセル以下" VerticalAlignment="Center"/>
+            <!-- 高度な削除と画像編集のStackPanel -->
+            <StackPanel Grid.Row="4">
+                <!-- 高度な削除 -->
+                <Expander Header="高度な削除" Margin="5">
+                    <StackPanel>
+                        <!-- 孤立したタグファイルの削除 -->
+                        <GroupBox Header="孤立したタグファイル" Margin="0,5">
+                            <StackPanel Margin="5">
+                                <TextBlock Text="紐づいている画像が存在しないtxtファイルをすべて削除します" TextWrapping="Wrap"/>
+                                <Button x:Name="DeleteOrphanedTagsButton" Content="孤立タグファイルを削除" 
+                                        Margin="0,5" Padding="5" Click="DeleteOrphanedTagsButton_Click"/>
                             </StackPanel>
-                            <Button x:Name="DeleteLowResButton" Content="低解像度画像を削除" 
-                                    Margin="0,5" Padding="5" Click="DeleteLowResButton_Click"/>
-                        </StackPanel>
-                    </GroupBox>
+                        </GroupBox>
 
-                    <!-- タグ数が少ない画像の削除 -->
-                    <GroupBox Header="タグ数が少ない画像" Margin="0,5">
-                        <StackPanel Margin="5">
-                            <TextBlock Text="指定された数以下のタグを持つ画像とタグファイルを削除します（タグがない画像は除外）" 
-                                    TextWrapping="Wrap"/>
-                            <StackPanel Orientation="Horizontal" Margin="0,5">
-                                <TextBox x:Name="TagCountTextBox" Text="3" Width="60" Margin="0,0,5,0"/>
-                                <TextBlock Text="個以下のタグ" VerticalAlignment="Center"/>
+                        <!-- 低解像度画像の削除 -->
+                        <GroupBox Header="低解像度画像" Margin="0,5">
+                            <StackPanel Margin="5">
+                                <TextBlock Text="指定された解像度以下の画像とタグファイルを削除します" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,5">
+                                    <RadioButton x:Name="LongSideRadio" Content="長辺" IsChecked="True" Margin="0,0,10,0"/>
+                                    <RadioButton x:Name="ShortSideRadio" Content="短辺" Margin="0,0,10,0"/>
+                                    <TextBlock Text="が" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="ResolutionTextBox" Text="480" Width="60" Margin="0,0,5,0"/>
+                                    <TextBlock Text="ピクセル以下" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <Button x:Name="DeleteLowResButton" Content="低解像度画像を削除" Margin="0,5" Padding="5" Click="DeleteLowResButton_Click"/>
                             </StackPanel>
-                            <Button x:Name="DeleteLowTagCountButton" Content="タグ数が少ない画像を削除" 
-                                    Margin="0,5" Padding="5" Click="DeleteLowTagCountButton_Click"/>
-                        </StackPanel>
-                    </GroupBox>
-                </StackPanel>
-            </Expander>
+                        </GroupBox>
+
+                        <!-- タグ数が少ない画像の削除 -->
+                        <GroupBox Header="タグ数が少ない画像" Margin="0,5">
+                            <StackPanel Margin="5">
+                                <TextBlock Text="指定された数以下のタグを持つ画像とタグファイルを削除します（タグがない画像は除外）" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,5">
+                                    <TextBox x:Name="TagCountTextBox" Text="3" Width="60" Margin="0,0,5,0"/>
+                                    <TextBlock Text="個以下のタグ" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <Button x:Name="DeleteLowTagCountButton" Content="タグ数が少ない画像を削除" Margin="0,5" Padding="5" Click="DeleteLowTagCountButton_Click"/>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </Expander>
+
+                <!-- 画像編集 -->
+                <Expander Header="画像編集" Margin="5">
+                    <StackPanel>
+                        <GroupBox Header="透過部分の塗りつぶし" Margin="0,5">
+                            <StackPanel Margin="5">
+                                <TextBlock Text="透過部分を指定した色で塗りつぶします" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,5">
+                                    <TextBlock Text="R:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                    <TextBox x:Name="FillRedTextBox" Text="255" Width="40" Margin="0,0,10,0"/>
+                                    <TextBlock Text="G:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                    <TextBox x:Name="FillGreenTextBox" Text="255" Width="40" Margin="0,0,10,0"/>
+                                    <TextBlock Text="B:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                    <TextBox x:Name="FillBlueTextBox" Text="255" Width="40"/>
+                                </StackPanel>
+                                <!-- チェックボックスを追加：全画像に適用 -->
+                                <CheckBox x:Name="ApplyToAllImagesCheckBox" Content="全画像に適用" Margin="0,5"/>
+                                <Button x:Name="FillTransparencyButton" Content="透過部分を塗りつぶす" Margin="0,5" Padding="5" Click="FillTransparencyButton_Click"/>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </Expander>
+            </StackPanel>
         </Grid>
 
         <!-- 右ペイン1: 個別タグ -->
