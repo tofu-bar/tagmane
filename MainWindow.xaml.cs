@@ -245,6 +245,24 @@ namespace tagmane
                 _isInitializeSuccess = true;
 
                 StartLogProcessing(); // ログ処理を開始
+
+                // リサイズモードの設定
+                ResizeModeComboBox.Items.Clear();
+                ResizeModeComboBox.Items.Add(new ComboBoxItem { Content = "縮小のみ", IsSelected = true });
+                ResizeModeComboBox.Items.Add(new ComboBoxItem { Content = "拡大のみ" });
+                ResizeModeComboBox.Items.Add(new ComboBoxItem { Content = "リサイズ" });
+
+                // リサンプルモードの設定
+                ResampleModeComboBox.Items.Clear();
+                ResampleModeComboBox.Items.Add(new ComboBoxItem { Content = "Lanczos2", IsSelected = true });
+                ResampleModeComboBox.Items.Add(new ComboBoxItem { Content = "Lanczos3" });
+                ResampleModeComboBox.Items.Add(new ComboBoxItem { Content = "Bilinear" });
+
+                // 出力形式の設定
+                OutputFormatComboBox.Items.Clear();
+                OutputFormatComboBox.Items.Add(new ComboBoxItem { Content = "WebP", IsSelected = true });
+                OutputFormatComboBox.Items.Add(new ComboBoxItem { Content = "PNG" });
+                OutputFormatComboBox.Items.Add(new ComboBoxItem { Content = "JPEG" });
             }
             catch (Exception ex)
             {
@@ -4889,6 +4907,116 @@ namespace tagmane
                 // UI要素を再有効化
                 FillTransparencyButton.IsEnabled = true;
                 UpdateProgressBar(0);  // プログレスバーをリセット
+            }
+        }
+
+        private async void ResizeButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("対象の画像がありません。");
+                return;
+            }
+
+            // サイズのバリデーション
+            if (!int.TryParse(ResizeWidthTextBox.Text, out int width) || width <= 0 ||
+                !int.TryParse(ResizeHeightTextBox.Text, out int height) || height <= 0)
+            {
+                MessageBox.Show("サイズは1以上の整数で入力してください。", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            // パラメータの取得
+            var mode = (ResizeModeComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "縮小のみ";
+            var format = (OutputFormatComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "WebP";
+            var resample = (ResampleModeComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "Lanczos2";
+            bool applyToAll = ResizeApplyToAllCheckBox.IsChecked ?? false;
+
+            // 処理対象の決定
+            List<ImageInfo> imagesToProcess = new List<ImageInfo>();
+            if (applyToAll)
+            {
+                imagesToProcess = _imageInfos.ToList();
+            }
+            else
+            {
+                var currentImage = ImageListBox.SelectedItem as ImageInfo;
+                if (currentImage == null)
+                {
+                    AddMainLogEntry("画像が選択されていません。");
+                    return;
+                }
+                imagesToProcess.Add(currentImage);
+            }
+
+            // 確認ダイアログ
+            var message = $"以下の設定でリサイズを実行しますか？\n\n" +
+                         $"サイズ: {width}x{height}px\n" +
+                         $"モード: {mode}\n" +
+                         $"出力形式: {format}\n" +
+                         $"リサンプル: {resample}\n" +
+                         $"対象: {(applyToAll ? "すべての画像" : "選択中の画像")}";
+
+            var result = MessageBox.Show(
+                message,
+                "確認",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question,
+                MessageBoxResult.No
+            );
+
+            if (result != MessageBoxResult.Yes) return;
+
+            try
+            {
+                // UI要素を無効化
+                ResizeButton.IsEnabled = false;
+                UpdateProgressBar(0);
+
+                // 進捗報告用のProgress<T>オブジェクトを作成
+                var progress = new Progress<double>(value =>
+                {
+                    UpdateProgressBar(value / 100);
+                });
+
+                // リサイズ処理の実行
+                var resizeParams = new ResizeParameters
+                {
+                    TargetWidth = width,
+                    TargetHeight = height,
+                    Mode = mode,
+                    OutputFormat = format,
+                    ResampleMode = resample
+                };
+
+                int processedCount = await ImageProcessor.ResizeImagesAsync(
+                    imagesToProcess,
+                    resizeParams,
+                    _webPHandler,
+                    AddMainLogEntry,
+                    progress
+                );
+
+                AddMainLogEntry($"{processedCount}個の画像をリサイズしました。");
+                
+                // 画像の再読み込みと表示の更新
+                if (!applyToAll && ImageListBox.SelectedItem is ImageInfo selectedImage)
+                {
+                    SelectedImage.Source = LoadImage(selectedImage.ImagePath);
+                }
+                UpdateCentralDisplay();
+                UpdateUIAfterImageInfosChange();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"処理中にエラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                AddMainLogEntry($"リサイズ中にエラーが発生: {ex.Message}");
+            }
+            finally
+            {
+                // UI要素を再有効化
+                ResizeButton.IsEnabled = true;
+                UpdateProgressBar(0);
             }
         }
     }

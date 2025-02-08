@@ -349,7 +349,8 @@
                 <!-- 画像編集 -->
                 <Expander Header="画像編集" Margin="5">
                     <StackPanel>
-                        <GroupBox Header="透過部分の塗りつぶし" Margin="0,5">
+                        <!-- 既存の透過部分の塗りつぶし設定 -->
+                        <GroupBox Header="透過部分の塗りつぶし">
                             <StackPanel Margin="5">
                                 <TextBlock Text="透過部分を指定した色で塗りつぶします" TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,5">
@@ -360,15 +361,71 @@
                                     <TextBlock Text="B:" VerticalAlignment="Center" Margin="0,0,5,0"/>
                                     <TextBox x:Name="FillBlueTextBox" Text="255" Width="40"/>
                                 </StackPanel>
-                                <!-- チェックボックスを追加：全画像に適用 -->
                                 <CheckBox x:Name="ApplyToAllImagesCheckBox" Content="全画像に適用" Margin="0,5"/>
                                 <Button x:Name="FillTransparencyButton" Content="透過部分を塗りつぶす" Margin="0,5" Padding="5" Click="FillTransparencyButton_Click"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- リサイズ設定 -->
+                        <GroupBox Header="リサイズ" Margin="5">
+                            <StackPanel>
+                                <Grid Margin="0,5,0,5">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="60"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="60"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="サイズ: 横" VerticalAlignment="Center" Grid.Column="0"/>
+                                    <TextBox x:Name="ResizeWidthTextBox" Text="1024" Grid.Column="1" Margin="5,0"/>
+                                    <TextBlock Text="縦" VerticalAlignment="Center" Grid.Column="2"/>
+                                    <TextBox x:Name="ResizeHeightTextBox" Text="1024" Grid.Column="3" Margin="5,0"/>
+                                    <TextBlock Text="px" VerticalAlignment="Center" Grid.Column="4"/>
+                                </Grid>
+                                
+                                <Grid Margin="0,5">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="80"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    
+                                    <TextBlock Text="モード:" VerticalAlignment="Center" Grid.Row="0" Grid.Column="0"/>
+                                    <ComboBox x:Name="ResizeModeComboBox" Grid.Row="0" Grid.Column="1" Margin="0,2">
+                                        <ComboBoxItem Content="縮小のみ" IsSelected="True"/>
+                                        <ComboBoxItem Content="拡大/縮小"/>
+                                    </ComboBox>
+                                    
+                                    <TextBlock Text="出力形式:" VerticalAlignment="Center" Grid.Row="1" Grid.Column="0"/>
+                                    <ComboBox x:Name="OutputFormatComboBox" Grid.Row="1" Grid.Column="1" Margin="0,2">
+                                        <ComboBoxItem Content="WebP" IsSelected="True"/>
+                                        <ComboBoxItem Content="PNG"/>
+                                        <ComboBoxItem Content="JPEG"/>
+                                    </ComboBox>
+                                    
+                                    <TextBlock Text="リサンプル:" VerticalAlignment="Center" Grid.Row="2" Grid.Column="0"/>
+                                    <ComboBox x:Name="ResampleModeComboBox" Grid.Row="2" Grid.Column="1" Margin="0,2">
+                                        <ComboBoxItem Content="Lanczos2" IsSelected="True"/>
+                                        <ComboBoxItem Content="Lanczos3"/>
+                                        <ComboBoxItem Content="Bilinear"/>
+                                        <ComboBoxItem Content="NearestNeighbor"/>
+                                    </ComboBox>
+                                </Grid>
+                                
+                                <CheckBox x:Name="ResizeApplyToAllCheckBox" Content="すべての画像に適用" Margin="0,5"/>
+                                <Button x:Name="ResizeButton" Content="リサイズを実行" Margin="0,5" Padding="5" Click="ResizeButton_Click"/>
                             </StackPanel>
                         </GroupBox>
                     </StackPanel>
                 </Expander>
             </StackPanel>
         </Grid>
+
 
         <!-- 右ペイン1: 個別タグ -->
         <Grid Grid.Column="2">
