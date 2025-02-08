@@ -24,6 +24,16 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Threading.Tasks.Dataflow;
 using tagmane.Features.TagShuffle;  // 追加：名前空間のusing
 using tagmane.Features.ImageProcessing;
+using System.Drawing; // System.Drawing.Imageのために追加
+using DrawingPoint = System.Drawing.Point;
+using DrawingImage = System.Drawing.Image;
+using DrawingColor = System.Drawing.Color;
+using DrawingBrushes = System.Drawing.Brushes;
+
+using WindowsPoint = System.Windows.Point;
+using WindowsImage = System.Windows.Controls.Image;
+using WindowsColor = System.Windows.Media.Color;
+using WindowsBrushes = System.Windows.Media.Brushes;
 
 namespace tagmane
 {
@@ -192,7 +202,7 @@ namespace tagmane
         private int _predictProcessedImagesCount;
         private int _totalProcessedImagesCount;
 
-        private Point? _startPoint;  // nullableに変更
+        private WindowsPoint? _startPoint;  // WPF用のPoint
         private bool _isSelecting;
         private bool _isInSelectionMode;
         private bool _isDragging;
@@ -1148,7 +1158,7 @@ namespace tagmane
                 {
                     try
                     {
-                        using (var image = System.Drawing.Image.FromFile(imageFile))
+                        using (var image = DrawingImage.FromFile(imageFile))
                         {
                             int relevantSize = LongSideRadio.IsChecked == true ?
                                 Math.Max(image.Width, image.Height) :
@@ -1303,13 +1313,16 @@ namespace tagmane
                 try
                 {
                     _isUpdatingSelection = true;
-                    UpdateCentralDisplay();
+                    
+                    // UpdateCentralDisplay()の代わりにUpdateSelectedImageを使用
+                    UpdateSelectedImage(selectedImage);
+                    
                     _currentImageTags = new HashSet<string>(selectedImage.Tags);
                     
                     // タグの更新は不要なのでfalseにして若干UIの更新処理を軽くする
                     UpdateUIAfterSelectionChange(updateAllTagSelection: false);
 
-                    if (_currentClusterMode != ClusterMode.Off) // そんなに重くないので、_umapEmbeddings, _clusterAssignmentsがある場合でもいいかも
+                    if (_currentClusterMode != ClusterMode.Off)
                     {
                         DrawSelectedImagePoint(_umapEmbeddings, _clusterAssignments);
                     }
@@ -1325,6 +1338,115 @@ namespace tagmane
                     _isUpdatingSelection = false;
                 }
             }
+            else
+            {
+                // 選択が解除された場合
+                UpdateSelectedImage(null);
+            }
+        }
+
+        private void UpdateSelectedImage(ImageInfo imageInfo)
+        {
+            if (imageInfo == null)
+            {
+                SelectedImage.Source = null;
+                AssociatedText.Text = string.Empty;
+                UpdateImageInfo(null);  // この呼び出しが実行されているか確認
+                return;
+            }
+
+            try
+            {
+                // 画像の読み込みと表示
+                SelectedImage.Source = LoadImage(imageInfo.ImagePath);
+                
+                // テキストの更新
+                AssociatedText.Text = imageInfo.AssociatedText;
+                
+                // 画像情報の更新 - この呼び出しが実行されているか確認
+                UpdateImageInfo(imageInfo);
+                
+                // デバッグログの追加
+                AddDebugLogEntry($"画像情報を更新: {imageInfo.ImagePath}");
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"画像の表示に失敗: {ex.Message}");
+                SelectedImage.Source = null;
+                AssociatedText.Text = string.Empty;
+                UpdateImageInfo(null);
+            }
+        }
+
+        private void UpdateImageInfo(ImageInfo imageInfo)
+        {
+            // デバッグログの追加
+            AddDebugLogEntry($"UpdateImageInfo called with: {(imageInfo?.ImagePath ?? "null")}");
+
+            if (imageInfo == null)
+            {
+                ImagePathTextBox.Text = string.Empty;
+                ImageExtensionTextBox.Text = string.Empty;
+                ImageWidthTextBox.Text = string.Empty;
+                ImageHeightTextBox.Text = string.Empty;
+                ImageFileSizeTextBox.Text = string.Empty;
+                return;
+            }
+
+            try
+            {
+                // フルパスと拡張子
+                ImagePathTextBox.Text = imageInfo.ImagePath;
+                ImageExtensionTextBox.Text = Path.GetExtension(imageInfo.ImagePath);
+
+                // ファイルサイズ
+                var fileInfo = new FileInfo(imageInfo.ImagePath);
+                ImageFileSizeTextBox.Text = FormatFileSize(fileInfo.Length);
+
+                // 画像サイズ
+                using (var fs = new FileStream(imageInfo.ImagePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    if (Path.GetExtension(imageInfo.ImagePath).ToLower() == ".webp")
+                    {
+                        var bitmapSource = _webPHandler.LoadWebPImage(imageInfo.ImagePath);
+                        ImageWidthTextBox.Text = $"{bitmapSource.PixelWidth}px";
+                        ImageHeightTextBox.Text = $"{bitmapSource.PixelHeight}px";
+                    }
+                    else
+                    {
+                        using (var bitmap = new System.Drawing.Bitmap(fs))
+                        {
+                            ImageWidthTextBox.Text = $"{bitmap.Width}px";
+                            ImageHeightTextBox.Text = $"{bitmap.Height}px";
+                        }
+                    }
+                }
+
+                // デバッグログの追加
+                AddDebugLogEntry($"画像情報を更新完了: {imageInfo.ImagePath}");
+            }
+            catch (Exception ex)
+            {
+                ImageWidthTextBox.Text = "エラー";
+                ImageHeightTextBox.Text = "エラー";
+                ImageFileSizeTextBox.Text = "エラー";
+                AddMainLogEntry($"画像情報の取得に失敗: {ex.Message}");
+            }
+        }
+
+        private string FormatFileSize(long bytes)
+        {
+            string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+            int order = 0;
+            double size = bytes;
+            
+            while (size >= 1024 && order < sizes.Length - 1)
+            {
+                order++;
+                size = size / 1024;
+            }
+
+            return $"{size:0.##} {sizes[order]}";
         }
 
         private void SelectedImage_MouseDown(object sender, MouseButtonEventArgs e)
@@ -1339,7 +1461,7 @@ namespace tagmane
                 else
                 {
                     // 通常のドラッグ処理
-                    _startPoint = e.GetPosition(null);
+                    _startPoint = e.GetPosition(null);  // WPFのマウスイベントはSystem.Windows.Pointを返す
                 }
             }
         }
@@ -1350,8 +1472,8 @@ namespace tagmane
             {
                 if (_startPoint.HasValue)  // nullチェックを追加
                 {
-                    Point currentPosition = e.GetPosition(null);
-                    Vector diff = currentPosition - _startPoint.Value;
+                    WindowsPoint currentPoint = e.GetPosition(null);
+                    Vector diff = currentPoint - _startPoint.Value;
 
                     if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance ||
                         Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
@@ -1423,7 +1545,7 @@ namespace tagmane
             {
                 SelectionHint.Visibility = Visibility.Visible;
                 SelectionCanvas.IsHitTestVisible = true;
-                SelectionCanvas.Background = Brushes.Transparent;  // 追加
+                SelectionCanvas.Background = WindowsBrushes.Transparent;  // 追加
             }
             else
             {
@@ -1460,7 +1582,7 @@ namespace tagmane
             if (_isSelecting)
             {
                 // 範囲選択の処理
-                var currentPoint = e.GetPosition(SelectionCanvas);
+                WindowsPoint currentPoint = e.GetPosition(SelectionCanvas);
                 var x = Math.Min(_startPoint.Value.X, currentPoint.X);
                 var y = Math.Min(_startPoint.Value.Y, currentPoint.Y);
                 var width = Math.Abs(currentPoint.X - _startPoint.Value.X);
@@ -1474,8 +1596,8 @@ namespace tagmane
             else if (_isDragging && e.LeftButton == MouseButtonState.Pressed && SelectedImage.Source != null)
             {
                 // ドラッグ処理
-                Point currentPosition = e.GetPosition(null);
-                Vector diff = currentPosition - _startPoint.Value;
+                WindowsPoint currentPoint = e.GetPosition(null);
+                Vector diff = currentPoint - _startPoint.Value;
 
                 if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance ||
                     Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
@@ -2390,19 +2512,19 @@ namespace tagmane
             switch (_currentFilterMode)
             {
                 case FilterMode.Off:
-                    filterButton.Content = new Image { Source = new BitmapImage(new Uri("/icon/filter.png", UriKind.Relative)), Width = 32, Height = 32 };
+                    filterButton.Content = new WindowsImage { Source = new BitmapImage(new Uri("/icon/filter.png", UriKind.Relative)), Width = 32, Height = 32 };
                     filterButton.ToolTip = "フィルタリング: オフ";
                     break;
                 case FilterMode.And:
-                    filterButton.Content = new Image { Source = new BitmapImage(new Uri("/icon/and.png", UriKind.Relative)), Width = 32, Height = 32 };
+                    filterButton.Content = new WindowsImage { Source = new BitmapImage(new Uri("/icon/and.png", UriKind.Relative)), Width = 32, Height = 32 };
                     filterButton.ToolTip = "フィルタリング: AND";
                     break;
                 case FilterMode.Or:
-                    filterButton.Content = new Image { Source = new BitmapImage(new Uri("/icon/or.png", UriKind.Relative)), Width = 32, Height = 32 };
+                    filterButton.Content = new WindowsImage { Source = new BitmapImage(new Uri("/icon/or.png", UriKind.Relative)), Width = 32, Height = 32 };
                     filterButton.ToolTip = "フィルタリング: OR";
                     break;
                 case FilterMode.Empty:
-                    filterButton.Content = new Image { Source = new BitmapImage(new Uri("/icon/empty.png", UriKind.Relative)), Width = 32, Height = 32 };
+                    filterButton.Content = new WindowsImage { Source = new BitmapImage(new Uri("/icon/empty.png", UriKind.Relative)), Width = 32, Height = 32 };
                     filterButton.ToolTip = "フィルタリング: Empty";
                     break;
             }
@@ -3044,7 +3166,7 @@ namespace tagmane
 
             var random = new Random(42);
             var clusterColors = Enumerable.Range(0, clusters.Max() + 1)
-                .Select(_ => Color.FromRgb((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256)))
+                .Select(_ => WindowsColor.FromRgb((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256)))
                 .ToArray();
 
             // タグモード時の透明度を計算
@@ -3088,9 +3210,9 @@ namespace tagmane
             {
                 int x = (int)(Normalize(reducedEmbeddings[i][0], minX, maxX) * (width - 1));
                 int y = (int)(Normalize(reducedEmbeddings[i][1], minY, maxY) * (height - 1));
-                Color baseColor = clusterColors[clusters[i]];
-                
-                Color color = Color.FromArgb(
+                WindowsColor baseColor = clusterColors[clusters[i]];
+
+                WindowsColor color = WindowsColor.FromArgb(
                     (byte)(255 * opacities[i]),
                     baseColor.R,
                     baseColor.G,
@@ -3144,7 +3266,7 @@ namespace tagmane
 
             int x = (int)(Normalize(reducedEmbeddings[selectedIndex][0], minX, maxX) * (width - 1));
             int y = (int)(Normalize(reducedEmbeddings[selectedIndex][1], minY, maxY) * (height - 1));
-            Color color = Colors.Black;
+            WindowsColor color = Colors.Black;
 
             bitmap.Lock();
 
@@ -3566,8 +3688,8 @@ namespace tagmane
         {
             if (e.LeftButton == MouseButtonState.Pressed && _startPoint.HasValue && _draggedItem != null)
             {
-                Point currentPosition = e.GetPosition(null);
-                Vector diff = _startPoint.Value - currentPosition;
+                WindowsPoint currentPoint = e.GetPosition(null);
+                Vector diff = _startPoint.Value - currentPoint;
 
                 if (Math.Abs(diff.X) > SystemParameters.MinimumHorizontalDragDistance ||
                     Math.Abs(diff.Y) > SystemParameters.MinimumVerticalDragDistance)
@@ -4893,7 +5015,7 @@ namespace tagmane
                     SelectedImage.Source = LoadImage(selectedImage.ImagePath);
                 }
 
-                UpdateCentralDisplay();
+                UpdateSelectedImage(currentImage);
                 UpdateUIAfterImageInfosChange();
                 AddMainLogEntry($"{processedCount}個の画像の透過部分を塗りつぶしました。");
             }
