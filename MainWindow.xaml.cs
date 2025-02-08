@@ -3839,13 +3839,13 @@ namespace tagmane
         ここからVLM関連メソッド
         */
 
-        private void VLMModelComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private async void VLMModelComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (VLMModelComboBox.SelectedItem is string selectedModel)
             {
                 var modelInfo = _vlmModels.First(m => m.Name == selectedModel);
                 UpdateThresholds(modelInfo.GeneralThreshold, DefaultCharacterThreshold);
-                LoadVLMModel(selectedModel);
+                await LoadVLMModel(selectedModel);
 
                 // 設定を保存
                 SaveSettings();
@@ -3870,7 +3870,7 @@ namespace tagmane
             // 必要に応じて、この値をVLMPredictorに渡す
         }
 
-        private void UseGPUCheckBox_Checked(object sender, RoutedEventArgs e)
+        private async void UseGPUCheckBox_Checked(object sender, RoutedEventArgs e)
         {
             if (VLMConcurrencySlider != null)
             {
@@ -3879,7 +3879,7 @@ namespace tagmane
 
             if (_isInitializeSuccess)
             {
-                LoadVLMModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false);
+                await LoadVLMModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false);
             }
         }
 
@@ -3890,7 +3890,7 @@ namespace tagmane
             _vlmPredictor.LogUpdated += UpdateVLMLog;
         }
 
-        private async void LoadVLMModel(string modelName, bool useGpu = true)
+        private async Task LoadVLMModel(string modelName, bool useGpu = true)
         {
             if (_isLoadingVLMModel) { return; }
             _isLoadingVLMModel = true;
