@@ -1,4 +1,4 @@
-<Window x:Class="tagmane.ReplaceTagWindow"
+<Window x:Class="tagmane.Subwindows.ReplaceTagWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="タグ置換" Height="350" Width="400">

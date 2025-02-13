@@ -2,7 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 
-namespace tagmane
+namespace tagmane.Subwindows
 {
     public partial class AddFolderNameWindow : Window
     {

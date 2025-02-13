@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Windows;
 
-namespace tagmane
+namespace tagmane.Subwindows
 {
     public partial class LicenseAgreementWindow : Window
     {

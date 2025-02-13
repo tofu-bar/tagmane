@@ -24,6 +24,7 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Threading.Tasks.Dataflow;
 using tagmane.Features.TagShuffle;  // 追加：名前空間のusing
 using tagmane.Features.ImageProcessing;
+using tagmane.Subwindows;
 using System.Drawing; // System.Drawing.Imageのために追加
 using DrawingPoint = System.Drawing.Point;
 using DrawingImage = System.Drawing.Image;

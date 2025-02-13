@@ -4,7 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 
-namespace tagmane
+namespace tagmane.Subwindows
 {
     public partial class ReplaceTagWindow : Window
     {

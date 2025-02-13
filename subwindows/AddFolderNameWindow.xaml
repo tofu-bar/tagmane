@@ -1,7 +1,7 @@
 <Window
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="tagmane.AddFolderNameWindow"
+        x:Class="tagmane.Subwindows.AddFolderNameWindow"
         Title="フォルダ名をタグとして追加" Height="400" Width="400">
     <Grid Margin="10">
         <Grid.RowDefinitions>
