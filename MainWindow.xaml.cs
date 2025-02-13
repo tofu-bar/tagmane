@@ -5060,6 +5060,8 @@ namespace tagmane
             var format = (OutputFormatComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "WebP";
             var resample = (ResampleModeComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "Lanczos2";
             bool applyToAll = ResizeApplyToAllCheckBox.IsChecked ?? false;
+            var randomScaleVariation = double.TryParse(RandomScaleVariationTextBox.Text, out double variation) ? variation : 0;
+            var randomScaleStep = double.TryParse(RandomScaleStepTextBox.Text, out double step) ? step : 0.05;
 
             // 処理対象の決定
             List<ImageInfo> imagesToProcess = new List<ImageInfo>();
@@ -5123,7 +5125,9 @@ namespace tagmane
                     resizeParams,
                     _webPHandler,
                     AddMainLogEntry,
-                    progress
+                    progress,
+                    randomScaleVariation,
+                    randomScaleStep
                 );
 
                 AddMainLogEntry($"{processedCount}個の画像をリサイズしました。");

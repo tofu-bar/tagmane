@@ -501,6 +501,13 @@
                                         <ComboBoxItem Content="NearestNeighbor"/>
                                     </ComboBox>
                                 </Grid>
+
+                                <StackPanel Orientation="Horizontal" Margin="5,0">
+                                    <TextBlock Text="ランダム倍率差分:" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="RandomScaleVariationTextBox" Text="0.0" Width="40" Margin="5,0"/>
+                                    <TextBlock Text="刻み:" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                    <TextBox x:Name="RandomScaleStepTextBox" Text="0.05" Width="40" Margin="5,0"/>
+                                </StackPanel>
                                 
                                 <CheckBox x:Name="ResizeApplyToAllCheckBox" Content="すべての画像に適用" Margin="0,5"/>
                                 <Button x:Name="ResizeButton" Content="リサイズを実行" Margin="0,5" Padding="5" Click="ResizeButton_Click"/>

@@ -16,7 +16,10 @@ namespace tagmane.Features.ImageProcessing
             ResizeParameters parameters,
             WebPHandler webPHandler,
             Action<string> logger,
-            IProgress<double> progress = null)
+            IProgress<double> progress = null,
+            double randomScaleVariation = 0,
+            double randomScaleStep = 0.05
+            )
         {
             int processedCount = 0;
             int totalCount = images.Count();
@@ -68,6 +71,23 @@ namespace tagmane.Features.ImageProcessing
                                 {
                                     logger($"リサイズ不要: {imageInfo.ImagePath}");
                                     return;
+                                }
+
+                                // リサイズ後のサイズにランダム倍率を適用
+                                if (randomScaleVariation > 0)
+                                {
+                                    double minFactor = 1 - randomScaleVariation;
+                                    double maxFactor = 1 + randomScaleVariation;
+                                    double step = randomScaleStep > 0 ? randomScaleStep : 0.05;
+                                    int stepCount = (int)Math.Round((maxFactor - minFactor) / step);
+
+                                    // 画像ごとに新規乱数生成（使いまわしNG）
+                                    Random localRand = new Random(Guid.NewGuid().GetHashCode());
+                                    double multiplier = minFactor + localRand.Next(0, stepCount + 1) * step;
+
+                                    newWidth = (int)Math.Round(newWidth * multiplier);
+                                    newHeight = (int)Math.Round(newHeight * multiplier);
+                                    logger($"ランダム倍率 {multiplier:F2} 適用 → 新サイズ: {newWidth}x{newHeight} ({imageInfo.ImagePath})");
                                 }
 
                                 logger($"リサイズ実行: {originalBitmap.Width}x{originalBitmap.Height} → {newWidth}x{newHeight}");
