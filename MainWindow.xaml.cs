@@ -4952,6 +4952,7 @@ namespace tagmane
                 return;
             }
 
+            // 透過塗りつぶしの確認ダイアログ
             var result = MessageBox.Show(
                 $"フィルタされた画像の透過部分を RGB({r},{g},{b})で塗りつぶしますか？",
                 "確認",
@@ -4963,11 +4964,11 @@ namespace tagmane
 
             try
             {
-                // UI要素を無効化
+                // UI要素の無効化とプログレスバーの初期化
                 FillTransparencyButton.IsEnabled = false;
-                UpdateProgressBar(0);  // プログレスバーを0%に初期化
+                UpdateProgressBar(0);
 
-                // チェックボックスの状態で処理対象を決定
+                // 対象画像の決定（全画像または選択画像）
                 bool applyToAll = ApplyToAllImagesCheckBox.IsChecked ?? false;
                 List<ImageInfo> imagesToProcess = new List<ImageInfo>();
                 ImageInfo currentImage = null;
@@ -4989,23 +4990,29 @@ namespace tagmane
                 AddMainLogEntry("処理開始: 画像表示をクリア");
                 SelectedImage.Source = null;
 
-                // 進捗報告用のProgress<T>オブジェクトを作成
+                // 進捗報告用のProgress<T>オブジェクト
                 var progress = new Progress<double>(value =>
                 {
-                    UpdateProgressBar(value / 100);  // 0-1の範囲に変換
+                    UpdateProgressBar(value / 100);
                 });
 
-                // 外部化した処理メソッドを非同期で呼び出す
+                // ユーザー指定の塗りつぶし色及び「ランダム色反転」オプションの取得
                 var fillColor = System.Drawing.Color.FromArgb(r, g, b);
+                bool randomInvert = RandomColorInvertCheckBox.IsChecked ?? false;
+
+                // TransparencyProcessor 内部で画像ごとに乱数処理を実施
                 int processedCount = await TransparencyProcessor.ProcessImagesAsync(
-                    imagesToProcess, 
-                    fillColor, 
-                    _webPHandler, 
+                    imagesToProcess,
+                    fillColor,
+                    _webPHandler,
                     AddMainLogEntry,
-                    progress
+                    progress,
+                    enableRandomColorInversion: randomInvert
                 );
 
-                AddMainLogEntry("画像の再読み込み開始");
+                AddMainLogEntry($"{processedCount} 個の画像の透過部分を塗りつぶしました。");
+
+                // 画像の再読み込みと表示の更新
                 if (!applyToAll && currentImage != null)
                 {
                     SelectedImage.Source = LoadImage(currentImage.ImagePath);
@@ -5026,9 +5033,9 @@ namespace tagmane
             }
             finally
             {
-                // UI要素を再有効化
+                // UI要素の再有効化とプログレスバーのリセット
                 FillTransparencyButton.IsEnabled = true;
-                UpdateProgressBar(0);  // プログレスバーをリセット
+                UpdateProgressBar(0);
             }
         }
 

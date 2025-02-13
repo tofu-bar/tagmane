@@ -434,9 +434,8 @@
 
                 <!-- 画像編集 -->
                 <Expander Header="画像編集" Margin="5">
-                    <StackPanel>
-                        <!-- 既存の透過部分の塗りつぶし設定 -->
-                        <GroupBox Header="透過部分の塗りつぶし">
+                    <StackPanel Orientation="Horizontal">
+                        <GroupBox Header="透過部分の塗りつぶし" Margin="5">
                             <StackPanel Margin="5">
                                 <TextBlock Text="透過部分を指定した色で塗りつぶします" TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,5">
@@ -447,12 +446,12 @@
                                     <TextBlock Text="B:" VerticalAlignment="Center" Margin="0,0,5,0"/>
                                     <TextBox x:Name="FillBlueTextBox" Text="255" Width="40"/>
                                 </StackPanel>
+                                <CheckBox x:Name="RandomColorInvertCheckBox" Content="ランダム色反転" Margin="0,5"/>
                                 <CheckBox x:Name="ApplyToAllImagesCheckBox" Content="全画像に適用" Margin="0,5"/>
                                 <Button x:Name="FillTransparencyButton" Content="透過部分を塗りつぶす" Margin="0,5" Padding="5" Click="FillTransparencyButton_Click"/>
                             </StackPanel>
                         </GroupBox>
 
-                        <!-- リサイズ設定 -->
                         <GroupBox Header="リサイズ" Margin="5">
                             <StackPanel>
                                 <Grid Margin="0,5,0,5">

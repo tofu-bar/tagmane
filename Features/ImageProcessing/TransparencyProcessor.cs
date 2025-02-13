@@ -12,16 +12,30 @@ namespace tagmane.Features.ImageProcessing
 {
     public static class TransparencyProcessor
     {
+        // 乱数生成用（マルチスレッド環境でも安全な程度に）
+        private static readonly Random _rand = new Random();
+
         /// <summary>
         /// 対象画像群に対して透過部分の塗りつぶし処理を行います。
         /// 対応形式は PNG および WebP です。
         /// </summary>
+        /// <param name="images">画像情報のコレクション</param>
+        /// <param name="fillColor">基本の塗りつぶし色</param>
+        /// <param name="webPHandler">WebP画像用ハンドラー</param>
+        /// <param name="logger">ログ出力用デリゲート</param>
+        /// <param name="progress">進捗報告用</param>
+        /// <param name="enableRandomColorInversion">
+        /// trueの場合、各画像ごとに50%の確率で塗りつぶし色を反転します
+        /// </param>
+        /// <returns>処理した画像の総数</returns>
         public static async Task<int> ProcessImagesAsync(
             IEnumerable<ImageInfo> images, 
             System.Drawing.Color fillColor, 
             WebPHandler webPHandler, 
             Action<string> logger,
-            IProgress<double> progress = null)
+            IProgress<double> progress = null,
+            bool enableRandomColorInversion = false
+        )
         {
             int processedCount = 0;
             int totalCount = images.Count();
@@ -41,6 +55,25 @@ namespace tagmane.Features.ImageProcessing
                 {
                     await Task.Run(() =>
                     {
+                        // 画像ごとに適用する塗りつぶし色を決定
+                        System.Drawing.Color effectiveFillColor = fillColor;
+                        if (enableRandomColorInversion)
+                        {
+                            // ロックをかけて乱数取得（シンプルな実装）
+                            lock (_rand)
+                            {
+                                if (_rand.NextDouble() < 0.5)
+                                {
+                                    effectiveFillColor = System.Drawing.Color.FromArgb(255 - fillColor.R, 255 - fillColor.G, 255 - fillColor.B);
+                                    logger($"ランダムに色が反転されました: {fillColor} → {effectiveFillColor} at {imageInfo.ImagePath}");
+                                }
+                                else
+                                {
+                                    logger($"ランダム色反転は発生しませんでした: {fillColor} at {imageInfo.ImagePath}");
+                                }
+                            }
+                        }
+
                         bool hasTransparency = false;
 
                         // 形式に応じた透過チェック
@@ -53,17 +86,16 @@ namespace tagmane.Features.ImageProcessing
                         }
                         else if (ext == ".webp")
                         {
-                            // 既存のLoadWebPImageを使用して透過チェック
+                            // WebPの場合、BitmapSourceを生成して透過チェック
                             var bmpSource = webPHandler.LoadWebPImage(imageInfo.ImagePath);
                             hasTransparency = HasTransparency(bmpSource);
-                            
+
                             if (!hasTransparency)
                             {
                                 logger($"透過部分なし: {imageInfo.ImagePath}");
                                 return;
                             }
-                            
-                            // 透過部分があった場合は、既に読み込んだBitmapSourceを再利用
+
                             logger($"透過部分あり: {imageInfo.ImagePath}");
                             string tempPath = Path.GetTempFileName();
                             string tempPngPath = Path.ChangeExtension(tempPath, ".png");
@@ -71,7 +103,7 @@ namespace tagmane.Features.ImageProcessing
 
                             try
                             {
-                                // 既に読み込んだBitmapSourceをPNGとして保存
+                                // BitmapSourceをPNGとして保存
                                 using (var fs = new FileStream(tempPngPath, FileMode.Create))
                                 {
                                     BitmapEncoder encoder = new PngBitmapEncoder();
@@ -81,7 +113,7 @@ namespace tagmane.Features.ImageProcessing
 
                                 using (var bitmap = new Bitmap(tempPngPath))
                                 {
-                                    using (var newBitmap = FillTransparency(bitmap, fillColor))
+                                    using (var newBitmap = FillTransparency(bitmap, effectiveFillColor))
                                     {
                                         byte[] encoded = webPHandler.EncodeWebPImage(newBitmap, 75.0f);
                                         File.WriteAllBytes(tempPath, encoded);
@@ -116,7 +148,7 @@ namespace tagmane.Features.ImageProcessing
                             return;
                         }
 
-                        // PNG用の処理（変更なし）
+                        // PNGの場合の処理
                         logger($"透過部分あり: {imageInfo.ImagePath}");
                         string pngTempPath = Path.GetTempFileName();
                         bool pngSuccess = false;
@@ -125,7 +157,7 @@ namespace tagmane.Features.ImageProcessing
                         {
                             using (var bitmap = new Bitmap(imageInfo.ImagePath))
                             {
-                                using (var newBitmap = FillTransparency(bitmap, fillColor))
+                                using (var newBitmap = FillTransparency(bitmap, effectiveFillColor))
                                 {
                                     newBitmap.Save(pngTempPath, System.Drawing.Imaging.ImageFormat.Png);
                                     pngSuccess = true;
