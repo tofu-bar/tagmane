@@ -761,6 +761,14 @@
                     <TextBlock Text="CSDでクラスタリングを行う(Ctrl+Shift+C)"/>
                 </Button.ToolTip>
             </Button>
+            <Button x:Name="CreateDaughterDatasetButton" Click="CreateDaughterDatasetButton_Click" >
+                <Button.Content>
+                    <Image Source="/icon/daughter.png" Width="32" Height="32"/>
+                </Button.Content>
+                <Button.ToolTip>
+                    <TextBlock Text="娘データセット作成(Ctrl+Shift+D)"/>
+                </Button.ToolTip>
+            </Button>
         </StackPanel>
 
         <!-- 右ペイン3: ログ、動作処理リス、選択されたタグ -->

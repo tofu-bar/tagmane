@@ -1,0 +1,42 @@
+<Window x:Class="tagmane.Subwindows.DaughterDatasetWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="娘データセット作成" Height="350" Width="400">
+  <Grid Margin="10">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="Auto"/>
+      <ColumnDefinition Width="*"/>
+      <ColumnDefinition Width="Auto"/>
+    </Grid.ColumnDefinitions>
+
+    <!-- クラスタリング手法の指定 -->
+    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,5,0" Text="クラスタリング:"/>
+    <ComboBox x:Name="ClusteringMethodComboBox" Grid.Row="0" Grid.Column="1" Margin="0,5,0,5">
+      <ComboBoxItem Content="Hierarchical" IsSelected="True"/>
+      <ComboBoxItem Content="K-Means"/>
+    </ComboBox>
+
+    <!-- サンプリング率 -->
+    <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,5,0" Text="サンプリング率:"/>
+    <TextBox x:Name="SamplingRatioTextBox" Grid.Row="1" Grid.Column="1" Margin="0,5,0,5" Text="0.1"/>
+
+    <!-- 保存先ディレクトリ -->
+    <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,5,0" Text="保存先:"/>
+    <TextBox x:Name="TargetDirectoryTextBox" Grid.Row="2" Grid.Column="1" Margin="0,5,0,5"/>
+    <Button x:Name="BrowseButton" Grid.Row="2" Grid.Column="2" Margin="5,5,0,5" Click="BrowseButton_Click" Content="参照"/>
+    
+    <!-- OK / Cancel ボタン -->
+    <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+      <Button x:Name="OKButton" Width="75" Margin="0,0,10,0" Click="OKButton_Click" Content="OK"/>
+      <Button x:Name="CancelButton" Width="75" Click="CancelButton_Click" Content="キャンセル"/>
+    </StackPanel>
+
+  </Grid>
+</Window>

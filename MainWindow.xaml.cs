@@ -5153,5 +5153,17 @@ namespace tagmane
                 UpdateProgressBar(0);
             }
         }
+
+        // 例：サイドボタンエリアのイベントハンドラ
+        private void CreateDaughterDatasetButton_Click(object sender, RoutedEventArgs e)
+        {
+            // _imageInfos は MainWindow 内の全画像リストとします
+            var daughterWindow = new DaughterDatasetWindow(_imageInfos);
+            daughterWindow.Owner = this;
+            if (daughterWindow.ShowDialog() == true)
+            {
+                AddMainLogEntry("娘データセットの作成と保存が完了しました。");
+            }
+        }
     }
 }
