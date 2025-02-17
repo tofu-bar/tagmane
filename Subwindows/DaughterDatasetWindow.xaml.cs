@@ -198,11 +198,31 @@ namespace tagmane.Subwindows
                 case "Hierarchical":
                     // 階層クラスタリングを実施し、デンドログラム順の画像リストを取得
                     List<ImageInfo> dendroOrdering = PerformHierarchicalClusteringDendrogram(images, ct);
-
                     if (dendroOrdering == null) { return null; }
                     
-                    // その順番からランダムにサンプル抽出
-                    return dendroOrdering.OrderBy(x => rnd.Next()).Take(sampleCount).ToList();
+                    // 均等に分布するようにサンプルを抽出する
+                    int totalCount = dendroOrdering.Count;
+                    if (sampleCount >= totalCount)
+                    {
+                        return dendroOrdering;
+                    }
+
+                    List<ImageInfo> sampledImages = new List<ImageInfo>();
+                    if (sampleCount == 1)
+                    {
+                        // サンプル数が1なら最初の1枚を選ぶ
+                        sampledImages.Add(dendroOrdering[0]);
+                    }
+                    else
+                    {
+                        double step = (double)(totalCount - 1) / (sampleCount - 1);
+                        for (int i = 0; i < sampleCount; i++)
+                        {
+                            int index = (int)Math.Round(i * step);
+                            sampledImages.Add(dendroOrdering[index]);
+                        }
+                    }
+                    return sampledImages;
 
                 case "K-Means":
                     MessageBox.Show("K-Means は未実装です。ランダムサンプリングを代わりに実施します。",
