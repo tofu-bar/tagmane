@@ -5160,6 +5160,13 @@ namespace tagmane
             // _imageInfos は MainWindow 内の全画像リストとします
             var daughterWindow = new DaughterDatasetWindow(_imageInfos);
             daughterWindow.Owner = this;
+
+            // MainWindow 側のGPU並列度（例：VLMConcurrencySliderの値）をそのまま流用
+            if (VLMConcurrencySlider != null)
+            {
+                daughterWindow.CPUConcurrencyLimit = (int)VLMConcurrencySlider.Value;
+            }
+
             if (daughterWindow.ShowDialog() == true)
             {
                 AddMainLogEntry("娘データセットの作成と保存が完了しました。");
