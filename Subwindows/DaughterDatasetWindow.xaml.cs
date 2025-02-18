@@ -176,6 +176,12 @@ namespace tagmane.Subwindows
                         return OptimizeDiversitySampling(imgs, cnt, distanceFunc);
                     };
                     break;
+                case "KMeans":
+                    samplingLogic = (imgs, cnt, token) =>
+                    {
+                        return KMeansTagSampling(imgs, samplingRatio);
+                    };
+                    break;
                 default:
                     samplingLogic = (imgs, cnt, token) =>
                     {
@@ -603,32 +609,33 @@ namespace tagmane.Subwindows
         {
             AppendDebugMessage("OptimizeDiversitySampling 開始");
 
-            if (images.Count <= sampleCount)
+            // 早期リターンケースの統一処理
+            if (images.Count <= sampleCount || sampleCount == 1)
             {
                 Dispatcher.Invoke(() => { ProcessingProgressBar.Value = 100; });
-                return new List<ImageInfo>(images);
+                return sampleCount == 1 
+                    ? new List<ImageInfo> { images[0] }
+                    : new List<ImageInfo>(images);
             }
 
             List<ImageInfo> selected = new List<ImageInfo>();
-
-            if (sampleCount == 1)
-            {
-                selected.Add(images[0]);
-                Dispatcher.Invoke(() => { ProcessingProgressBar.Value = 100; });
-                return selected;
-            }
-
-            // 並列処理用のオプション（CPU並列数の制限を適用）
             
+            // 初期選択部分（0-20%）は変更なし
             ParallelOptions parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = CPUConcurrencyLimit };
-
             double maxDistance = -1;
             ImageInfo first = null, second = null;
-
-            // 初期探索の進捗更新用
             int totalComparisons = images.Count * (images.Count - 1) / 2;
             int currentComparison = 0;
             object lockObj = new object();
+
+            AppendDebugMessage("最遠ペア探索開始 並列度 = " + CPUConcurrencyLimit);
+
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                ProcessingProgressBar.IsIndeterminate = false;
+                ProcessingProgressBar.Minimum = 0;
+                ProcessingProgressBar.Maximum = 100;
+            }));
 
             // 最遠ペア探索を並列化（進捗は0～20%の範囲で更新）
             Parallel.For(0, images.Count, parallelOptions, i =>
@@ -644,14 +651,16 @@ namespace tagmane.Subwindows
                         localFirst = images[i];
                         localSecond = images[j];
                     }
-                    // 並列処理でも安全にカウンタを更新
+
+                    // 進捗更新を追加
                     int comp = Interlocked.Increment(ref currentComparison);
-                    if (comp % 100 == 0)
+                    if (comp % 100 == 0)  // パフォーマンスのため100回に1回更新
                     {
-                        double progressValue = 20 * (double)comp / totalComparisons;
+                        double progressValue = 20.0 * comp / totalComparisons;
                         Dispatcher.Invoke(() => { ProcessingProgressBar.Value = progressValue; });
                     }
                 }
+
                 lock (lockObj)
                 {
                     if (localMaxDistance > maxDistance)
@@ -671,13 +680,11 @@ namespace tagmane.Subwindows
             selected.Add(first);
             selected.Add(second);
 
-            // 初期選択後は、進捗をサンプル数に合わせて更新（20～100%の範囲）
-            Dispatcher.Invoke(() =>
-            {
-                ProcessingProgressBar.Value = (selected.Count / (double)sampleCount) * 100;
-            });
+            // Greedyアプローチの進捗計算用の変数
+            int remainingSelections = sampleCount - 2; // 残り選択回数
+            int currentSelection = 0;
 
-            // Greedy アプローチで順次候補を追加（候補選定部分を並列化）
+            // Greedy アプローチで順次候補を追加（20-100%の範囲で進捗を表示）
             while (selected.Count < sampleCount)
             {
                 ImageInfo bestCandidate = null;
@@ -705,10 +712,15 @@ namespace tagmane.Subwindows
 
                 if (bestCandidate == null)
                     break;
+
                 selected.Add(bestCandidate);
+                currentSelection++;
+
+                // 進捗を20-100%の範囲で更新
                 Dispatcher.Invoke(() =>
                 {
-                    ProcessingProgressBar.Value = (selected.Count / (double)sampleCount) * 100;
+                    double progressValue = 20.0 + (80.0 * currentSelection / remainingSelections);
+                    ProcessingProgressBar.Value = Math.Min(progressValue, 100);
                 });
             }
 
@@ -870,6 +882,180 @@ namespace tagmane.Subwindows
                     });
                 }
             }
+        }
+
+        private List<ImageInfo> KMeansTagSampling(List<ImageInfo> images, double samplingRatio)
+        {
+            // 全画像のタグ情報から、全タグのインデックスを作成
+            Dictionary<string, int> tagIndex = new Dictionary<string, int>();
+            foreach (var img in images)
+            {
+                if (img.Tags == null)
+                    continue;
+                foreach (var tag in img.Tags)
+                {
+                    if (!tagIndex.ContainsKey(tag))
+                    {
+                        tagIndex.Add(tag, tagIndex.Count);
+                    }
+                }
+            }
+            
+            // クラスタ数の決定: 画像数 × サンプリング率 (最低1クラスタ)
+            int k = Math.Max(1, (int)Math.Round(images.Count * samplingRatio));
+            AppendDebugMessage($"KMeansTagSampling 開始: クラスタ数 = {k}");
+            
+            if (k >= images.Count)
+            {
+                Dispatcher.Invoke(() => { ProcessingProgressBar.Value = 100; });
+                return images.OrderBy(x => Guid.NewGuid()).ToList();
+            }
+
+            Random rand = new Random();
+            
+            // 初期セントロイドの選択: ランダムに選んだ k 個の画像のベクトルを使用
+            List<double[]> centroids = new List<double[]>();
+            var initialCentroids = images.OrderBy(x => rand.Next()).Take(k).ToList();
+            foreach (var img in initialCentroids)
+            {
+                centroids.Add(ExtractTagVector(img, tagIndex));
+            }
+            
+            int maxIterations = 20;
+            int[] assignments = new int[images.Count];
+
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                ProcessingProgressBar.IsIndeterminate = false;
+                ProcessingProgressBar.Minimum = 0;
+                ProcessingProgressBar.Maximum = 100;
+            }));
+
+            // k-meansクラスタリングの反復処理（クラスタリング部分で全体の80%の進捗を利用）
+            for (int iter = 0; iter < maxIterations; iter++)
+            {
+                bool assignmentChanged = false;
+                // 各画像を最も近いセントロイドに割り当てる
+                for (int i = 0; i < images.Count; i++)
+                {
+                    double minDist = double.MaxValue;
+                    int cluster = 0;
+                    double[] vec = ExtractTagVector(images[i], tagIndex);
+                    for (int j = 0; j < k; j++)
+                    {
+                        double d = EuclideanDistance(vec, centroids[j]);
+                        if (d < minDist)
+                        {
+                            minDist = d;
+                            cluster = j;
+                        }
+                    }
+                    if (assignments[i] != cluster)
+                    {
+                        assignments[i] = cluster;
+                        assignmentChanged = true;
+                    }
+                }
+                
+                // 各クラスタについてセントロイドを更新する
+                List<double[]> newCentroids = new List<double[]>();
+                for (int j = 0; j < k; j++)
+                {
+                    var clusterMembers = images.Where((img, index) => assignments[index] == j).ToList();
+                    if (clusterMembers.Count == 0)
+                    {
+                        newCentroids.Add(centroids[j]);
+                    }
+                    else
+                    {
+                        int dims = tagIndex.Count;
+                        double[] avg = new double[dims];
+                        foreach (var img in clusterMembers)
+                        {
+                            double[] vec = ExtractTagVector(img, tagIndex);
+                            for (int d = 0; d < dims; d++)
+                            {
+                                avg[d] += vec[d];
+                            }
+                        }
+                        for (int d = 0; d < dims; d++)
+                        {
+                            avg[d] /= clusterMembers.Count;
+                        }
+                        newCentroids.Add(avg);
+                    }
+                }
+                
+                double totalShift = 0;
+                for (int j = 0; j < k; j++)
+                {
+                    totalShift += EuclideanDistance(centroids[j], newCentroids[j]);
+                }
+                centroids = newCentroids;
+
+                // 反復毎に進捗バーを更新 (クラスタリング部分で最大80%まで)
+                Dispatcher.Invoke(() =>
+                {
+                    double progressValue = 80.0 * (iter + 1) / maxIterations;
+                    ProcessingProgressBar.Value = Math.Min(progressValue, 80);
+                });
+                
+                if (!assignmentChanged || totalShift < 1e-5)
+                    break;
+            }
+            
+            // 各クラスタからランダムに1枚を選出し、最終的にサンプルセットを生成（残り20%の進捗を利用）
+            List<ImageInfo> sampled = new List<ImageInfo>();
+            for (int j = 0; j < k; j++)
+            {
+                var clusterMembers = images.Where((img, index) => assignments[index] == j).ToList();
+                if (clusterMembers.Any())
+                {
+                    sampled.Add(clusterMembers[rand.Next(clusterMembers.Count)]);
+                }
+                // クラスタ毎に進捗バーを更新（80%～100%）
+                Dispatcher.Invoke(() =>
+                {
+                    double progressValue = 80.0 + (20.0 * (j + 1) / k);
+                    ProcessingProgressBar.Value = Math.Min(progressValue, 100);
+                });
+            }
+            
+            Dispatcher.Invoke(() => { ProcessingProgressBar.Value = 100; });
+            return sampled;
+        }
+
+        /// <summary>
+        /// 画像のタグ情報から、全体タグリストに基づいたOne-Hotの配列を生成します。
+        /// </summary>
+        /// <param name="image">対象のImageInfo</param>
+        /// <param name="tagIndex">全タグとそのインデックスのディクショナリ</param>
+        /// <returns>生成されたベクトル</returns>
+        private double[] ExtractTagVector(ImageInfo image, Dictionary<string, int> tagIndex)
+        {
+            double[] vector = new double[tagIndex.Count];
+            if (image.Tags != null)
+            {
+                foreach (var tag in image.Tags)
+                {
+                    if (tagIndex.TryGetValue(tag, out int idx))
+                    {
+                        vector[idx] = 1.0;
+                    }
+                }
+            }
+            return vector;
+        }
+
+        private double EuclideanDistance(double[] vec1, double[] vec2)
+        {
+            double sum = 0;
+            for (int i = 0; i < vec1.Length; i++)
+            {
+                double d = vec1[i] - vec2[i];
+                sum += d * d;
+            }
+            return Math.Sqrt(sum);
         }
     }
 } 

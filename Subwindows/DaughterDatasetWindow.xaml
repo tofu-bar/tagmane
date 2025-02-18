@@ -35,6 +35,7 @@
         <ComboBoxItem Content="Hierarchical-Fixed" />
         <ComboBoxItem Content="Hierarchical-Farthest" />
         <ComboBoxItem Content="OptimizedDiversity" IsSelected="True"/>
+        <ComboBoxItem Content="KMeans" />
     </ComboBox>
 
     <!-- 重み付け (Row 2) -->
