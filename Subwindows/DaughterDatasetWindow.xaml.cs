@@ -144,49 +144,64 @@ namespace tagmane.Subwindows
             AppendDebugMessage("サンプリング方法: " + samplingMethod);
 
             // サンプリングロジックを、選択されたサンプリング方法に応じた delegate にまとめる
-            Func<List<ImageInfo>, int, CancellationToken, List<ImageInfo>> samplingLogic;
+            Func<List<ImageInfo>, int, CancellationToken, Task<List<ImageInfo>>> samplingLogic;
             switch (samplingMethod)
             {
                 case "Random":
                     samplingLogic = (imgs, cnt, token) =>
                     {
-                        Random rnd = new Random();
-                        return imgs.OrderBy(x => rnd.Next()).Take(cnt).ToList();
+                        return Task.Run(() =>
+                        {
+                            Random rnd = new Random();
+                            return imgs.OrderBy(x => rnd.Next()).Take(cnt).ToList();
+                        });
                     };
                     break;
                 case "Hierarchical-Fixed":
                     samplingLogic = (imgs, cnt, token) =>
                     {
-                        List<ImageInfo> ordering = PerformHierarchicalClusteringDendrogram(imgs, token, distanceFunc);
-                        if (ordering == null) { throw new OperationCanceledException(); }
-                        return FixedIntervalSampling(ordering, cnt);
+                        return Task.Run(() =>
+                        {
+                            List<ImageInfo> ordering = PerformHierarchicalClusteringDendrogram(imgs, token, distanceFunc);
+                            if (ordering == null) { throw new OperationCanceledException(); }
+                            return FixedIntervalSampling(ordering, cnt);
+                        });
                     };
                     break;
                 case "Hierarchical-Farthest":
                     samplingLogic = (imgs, cnt, token) =>
                     {
-                        List<ImageInfo> ordering = PerformHierarchicalClusteringDendrogram(imgs, token, distanceFunc);
-                        if (ordering == null) { throw new OperationCanceledException(); }
-                        return FarthestPointSampling(ordering, cnt, distanceFunc);
+                        return Task.Run(() =>
+                        {
+                            List<ImageInfo> ordering = PerformHierarchicalClusteringDendrogram(imgs, token, distanceFunc);
+                            if (ordering == null) { throw new OperationCanceledException(); }
+                            return FarthestPointSampling(ordering, cnt, distanceFunc);
+                        });
                     };
                     break;
                 case "OptimizedDiversity":
                     samplingLogic = (imgs, cnt, token) =>
                     {
-                        return OptimizeDiversitySampling(imgs, cnt, distanceFunc);
+                        return Task.Run(() =>
+                        {
+                            return OptimizeDiversitySampling(imgs, cnt, distanceFunc);
+                        });
                     };
                     break;
                 case "KMeans":
-                    samplingLogic = (imgs, cnt, token) =>
+                    samplingLogic = async (imgs, cnt, token) =>
                     {
-                        return KMeansTagSampling(imgs, samplingRatio);
+                        return await KMeansTagSamplingUserK(imgs);
                     };
                     break;
                 default:
                     samplingLogic = (imgs, cnt, token) =>
                     {
-                        Random rnd = new Random();
-                        return imgs.OrderBy(x => rnd.Next()).Take(cnt).ToList();
+                        return Task.Run(() =>
+                        {
+                            Random rnd = new Random();
+                            return imgs.OrderBy(x => rnd.Next()).Take(cnt).ToList();
+                        });
                     };
                     break;
             }
@@ -216,7 +231,7 @@ namespace tagmane.Subwindows
                 // サンプリング処理を非同期実行
                 List<ImageInfo> sampledImages = await Task.Run(() =>
                 {
-                    return samplingLogic(_imageInfos, sampleCount, _cts.Token);
+                    return samplingLogic(_imageInfos, sampleCount, _cts.Token).Result;
                 }, _cts.Token);
 
                 AppendDebugMessage("サンプリング完了（サンプル枚数: " + sampledImages.Count + "）");
@@ -863,7 +878,7 @@ namespace tagmane.Subwindows
                     // 画像ファイルのコピー
                     string sourceImagePath = imageInfo.ImagePath;
                     string destImagePath = GetUniquePath(targetDirectory, sourceImagePath);
-                    File.Copy(sourceImagePath, destImagePath);
+                    File.Copy(sourceImagePath, destImagePath, overwrite: true);
 
                     // タグファイルのパスを、画像と同名の .txt として取得
                     string tagFilePath = Path.ChangeExtension(imageInfo.ImagePath, ".txt");
@@ -884,9 +899,49 @@ namespace tagmane.Subwindows
             }
         }
 
-        private List<ImageInfo> KMeansTagSampling(List<ImageInfo> images, double samplingRatio)
+        /// <summary>
+        /// ユーザー指定クラスタ数とサンプル割合を利用した k-means 法によるタグクラスタリングサンプリング
+        /// ※ 総画像数×サンプル割合で最終サンプル数を算出し、各クラスターから均等にサンプルを選出します。
+        /// </summary>
+        /// <param name="images">画像のリスト</param>
+        /// <returns>各クラスタから選出したサンプル集合</returns>
+        private async Task<List<ImageInfo>> KMeansTagSamplingUserK(List<ImageInfo> images)
         {
-            // 全画像のタグ情報から、全タグのインデックスを作成
+            SetProgressBarToDeterminate(); // プログレスバーを決定モードに変更
+
+            // UI スレッド上でクラスタ数テキストボックスの値を取得する
+            string kValueText = "";
+            await Dispatcher.InvokeAsync(() =>
+            {
+                kValueText = KValueTextBox.Text;
+            });
+            int k;
+            if (!int.TryParse(kValueText, out k) || k < 1)
+            {
+                // 不正な場合はデフォルト：画像数×0.1（最低1クラスタ）
+                k = Math.Max(1, (int)Math.Round(images.Count * 0.1));
+            }
+
+            // UI スレッド上でサンプル割合 (SamplingRatioSlider) の値を取得する
+            double sampleRatio = 0.1; // デフォルト値
+            await Dispatcher.InvokeAsync(() =>
+            {
+                sampleRatio = SamplingRatioSlider.Value;
+            });
+
+            AppendDebugMessage($"KMeansTagSamplingUserK 開始: ユーザー指定クラスタ数 = {k}, サンプル割合 = {sampleRatio:F2}");
+
+            // もしクラスタ数が画像数以上ならランダムサンプリングを実施
+            if (k >= images.Count)
+            {
+                await Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    ProcessingProgressBar.Value = 100;
+                }));
+                return images.OrderBy(x => Guid.NewGuid()).ToList();
+            }
+
+            // タグ情報から、全体タグリストのインデックスを作成する
             Dictionary<string, int> tagIndex = new Dictionary<string, int>();
             foreach (var img in images)
             {
@@ -900,38 +955,21 @@ namespace tagmane.Subwindows
                     }
                 }
             }
-            
-            // クラスタ数の決定: 画像数 × サンプリング率 (最低1クラスタ)
-            int k = Math.Max(1, (int)Math.Round(images.Count * samplingRatio));
-            AppendDebugMessage($"KMeansTagSampling 開始: クラスタ数 = {k}");
-            
-            if (k >= images.Count)
-            {
-                Dispatcher.Invoke(() => { ProcessingProgressBar.Value = 100; });
-                return images.OrderBy(x => Guid.NewGuid()).ToList();
-            }
 
             Random rand = new Random();
-            
-            // 初期セントロイドの選択: ランダムに選んだ k 個の画像のベクトルを使用
+
+            // 初期セントロイドの選択（ランダムに選んだ k 個の画像のベクトルを使用）
             List<double[]> centroids = new List<double[]>();
             var initialCentroids = images.OrderBy(x => rand.Next()).Take(k).ToList();
             foreach (var img in initialCentroids)
             {
                 centroids.Add(ExtractTagVector(img, tagIndex));
             }
-            
+
             int maxIterations = 20;
             int[] assignments = new int[images.Count];
 
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                ProcessingProgressBar.IsIndeterminate = false;
-                ProcessingProgressBar.Minimum = 0;
-                ProcessingProgressBar.Maximum = 100;
-            }));
-
-            // k-meansクラスタリングの反復処理（クラスタリング部分で全体の80%の進捗を利用）
+            // k-means の反復処理（進捗は 0～80% で更新）
             for (int iter = 0; iter < maxIterations; iter++)
             {
                 bool assignmentChanged = false;
@@ -956,12 +994,12 @@ namespace tagmane.Subwindows
                         assignmentChanged = true;
                     }
                 }
-                
-                // 各クラスタについてセントロイドを更新する
+
+                // 各クラスタに所属する画像の重心を計算してセントロイドを更新
                 List<double[]> newCentroids = new List<double[]>();
                 for (int j = 0; j < k; j++)
                 {
-                    var clusterMembers = images.Where((img, index) => assignments[index] == j).ToList();
+                    var clusterMembers = images.Where((img, idx) => assignments[idx] == j).ToList();
                     if (clusterMembers.Count == 0)
                     {
                         newCentroids.Add(centroids[j]);
@@ -985,7 +1023,7 @@ namespace tagmane.Subwindows
                         newCentroids.Add(avg);
                     }
                 }
-                
+
                 double totalShift = 0;
                 for (int j = 0; j < k; j++)
                 {
@@ -993,40 +1031,70 @@ namespace tagmane.Subwindows
                 }
                 centroids = newCentroids;
 
-                // 反復毎に進捗バーを更新 (クラスタリング部分で最大80%まで)
-                Dispatcher.Invoke(() =>
+                // 進捗更新（クラスタリング部分：最大80%）
+                await Dispatcher.InvokeAsync(() =>
                 {
                     double progressValue = 80.0 * (iter + 1) / maxIterations;
                     ProcessingProgressBar.Value = Math.Min(progressValue, 80);
                 });
-                
+
                 if (!assignmentChanged || totalShift < 1e-5)
                     break;
             }
-            
-            // 各クラスタからランダムに1枚を選出し、最終的にサンプルセットを生成（残り20%の進捗を利用）
-            List<ImageInfo> sampled = new List<ImageInfo>();
+
+            // --- クラスタごとにサンプル数を配分する ---
+            // 総サンプル数を、総画像数×サンプル割合から算出する
+            int targetSampleCount = (int)Math.Round(images.Count * sampleRatio);
+            AppendDebugMessage($"総サンプル数 (targetSampleCount) = {targetSampleCount}");
+
+            // 各クラスタごとに画像のグループを作成する
+            List<List<ImageInfo>> clusters = new List<List<ImageInfo>>();
             for (int j = 0; j < k; j++)
             {
-                var clusterMembers = images.Where((img, index) => assignments[index] == j).ToList();
-                if (clusterMembers.Any())
-                {
-                    sampled.Add(clusterMembers[rand.Next(clusterMembers.Count)]);
-                }
-                // クラスタ毎に進捗バーを更新（80%～100%）
-                Dispatcher.Invoke(() =>
-                {
-                    double progressValue = 80.0 + (20.0 * (j + 1) / k);
-                    ProcessingProgressBar.Value = Math.Min(progressValue, 100);
-                });
+                var clusterMembers = images.Where((img, idx) => assignments[idx] == j).ToList();
+                clusters.Add(clusterMembers);
             }
-            
-            Dispatcher.Invoke(() => { ProcessingProgressBar.Value = 100; });
+
+            // 各クラスタに対して均等にサンプル数を配分する
+            List<int> allocation = ComputeSampleAllocation(clusters, targetSampleCount);
+
+            // サンプル選出処理をバックグラウンドで実行（UIスレッドのブロックを回避）
+            List<ImageInfo> sampled = await Task.Run(() =>
+            {
+                List<ImageInfo> localSampled = new List<ImageInfo>();
+                for (int j = 0; j < clusters.Count; j++)
+                {
+                    // （オプション）キャンセルチェック
+                    if (_cts != null && _cts.Token.IsCancellationRequested)
+                        _cts.Token.ThrowIfCancellationRequested();
+
+                    var clusterMembers = clusters[j];
+                    int sampleCountInCluster = allocation[j];
+
+                    if (clusterMembers.Count > 0 && sampleCountInCluster > 0)
+                    {
+                        var shuffled = clusterMembers.OrderBy(x => rand.Next()).ToList();
+                        for (int s = 0; s < sampleCountInCluster && s < shuffled.Count; s++)
+                        {
+                            localSampled.Add(shuffled[s]);
+                        }
+                    }
+
+                    Dispatcher.Invoke(() =>
+                    {
+                        double progressValue = 80.0 + (20.0 * (j + 1) / clusters.Count);
+                        ProcessingProgressBar.Value = Math.Min(progressValue, 100);
+                    });
+                }
+                Dispatcher.Invoke(() => { ProcessingProgressBar.Value = 100; });
+                return localSampled;
+            });
+
             return sampled;
         }
 
         /// <summary>
-        /// 画像のタグ情報から、全体タグリストに基づいたOne-Hotの配列を生成します。
+        /// タグ情報から全タグリストに基づいたOne-Hotベクトルを生成します。
         /// </summary>
         /// <param name="image">対象のImageInfo</param>
         /// <param name="tagIndex">全タグとそのインデックスのディクショナリ</param>
@@ -1047,6 +1115,64 @@ namespace tagmane.Subwindows
             return vector;
         }
 
+        /// <summary>
+        /// UI の ProgressBar を更新するための、ユーザーインターフェイス関係のヘルパーメソッド
+        /// </summary>
+        private void SetProgressBarToDeterminate()
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                ProcessingProgressBar.IsIndeterminate = false;
+                ProcessingProgressBar.Minimum = 0;
+                ProcessingProgressBar.Maximum = 100;
+            }));
+        }
+
+        /// <summary>
+        /// 各クラスタに対して均等にサンプルを配分します。
+        /// 最初に全体サンプル数をクラスタ数で割った数を各クラスタに割り当て、
+        /// 残りのサンプルをラウンドロビンで、各クラスタが持つデータ数の上限を超えないように追加します。
+        /// </summary>
+        /// <param name="clusters">各クラスタの画像リスト</param>
+        /// <param name="totalSampleCount">全体のサンプル数</param>
+        /// <returns>各クラスタに割り当てたサンプル数のリスト</returns>
+        private List<int> ComputeSampleAllocation(List<List<ImageInfo>> clusters, int totalSampleCount)
+        {
+            int numClusters = clusters.Count;
+            List<int> allocation = new List<int>(new int[numClusters]);
+
+            // 各クラスタに、基本割り当て数を決定（クラスタ内のデータ数を超えないようにする）
+            int baseAllocation = totalSampleCount / numClusters;
+            for (int i = 0; i < numClusters; i++)
+            {
+                allocation[i] = Math.Min(clusters[i].Count, baseAllocation);
+            }
+
+            // 現在の合計割り当て数を計算し、不足分を残りとして求める
+            int sumAllocated = allocation.Sum();
+            int remainder = totalSampleCount - sumAllocated;
+
+            // 余りがある場合、ラウンドロビンで各クラスタに追加割り当てを行う（各クラスタの最大件数を超えないように）
+            bool allocationChanged = true;
+            while (remainder > 0 && allocationChanged)
+            {
+                allocationChanged = false;
+                for (int i = 0; i < numClusters && remainder > 0; i++)
+                {
+                    if (allocation[i] < clusters[i].Count)
+                    {
+                        allocation[i]++;
+                        remainder--;
+                        allocationChanged = true;
+                    }
+                }
+            }
+            return allocation;
+        }
+
+        /// <summary>
+        /// ユークリッド距離を計算します。
+        /// </summary>
         private double EuclideanDistance(double[] vec1, double[] vec2)
         {
             double sum = 0;
