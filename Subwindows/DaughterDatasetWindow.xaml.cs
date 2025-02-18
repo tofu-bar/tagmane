@@ -194,6 +194,12 @@ namespace tagmane.Subwindows
                         return await KMeansTagSamplingUserK(imgs);
                     };
                     break;
+                case "EquilibriumKMeans":
+                    samplingLogic = async (imgs, cnt, token) =>
+                    {
+                        return await EquilibriumKMeansTagSamplingUserK(imgs);
+                    };
+                    break;
                 default:
                     samplingLogic = (imgs, cnt, token) =>
                     {
@@ -922,7 +928,7 @@ namespace tagmane.Subwindows
                 k = Math.Max(1, (int)Math.Round(images.Count * 0.1));
             }
 
-            // UI スレッド上でサンプル割合 (SamplingRatioSlider) の値を取得する
+            // UI スレッド上でサンプリング割合 (SamplingRatioSlider) の値を取得する
             double sampleRatio = 0.1; // デフォルト値
             await Dispatcher.InvokeAsync(() =>
             {
@@ -1182,6 +1188,256 @@ namespace tagmane.Subwindows
                 sum += d * d;
             }
             return Math.Sqrt(sum);
+        }
+
+        /// <summary>
+        /// Equilibrium K-Means (EKM) に基づいて、画像リストからサンプリングを実施します。
+        /// タグ情報から各画像の特徴ベクトルを作成し、Boltzmann オペレータを用いた更新式により
+        /// セントロイドを更新してクラスタリングを行い、各クラスタからサンプルを抽出します。
+        /// </summary>
+        /// <param name="images">入力画像リスト</param>
+        /// <returns>サンプリングされた画像リスト</returns>
+        private async Task<List<ImageInfo>> EquilibriumKMeansTagSamplingUserK(List<ImageInfo> images)
+        {
+            // プログレスバーを決定モードに変更
+            SetProgressBarToDeterminate();
+
+            // UI スレッド上でクラスタ数 (k) を取得
+            string kValueText = "";
+            await Dispatcher.InvokeAsync(() => { kValueText = KValueTextBox.Text; });
+            int k;
+            if (!int.TryParse(kValueText, out k) || k < 1)
+            {
+                // 不正な場合は、画像総数の 10% を最低クラスタ数として使用
+                k = Math.Max(1, (int)Math.Round(images.Count * 0.1));
+            }
+
+            // UI スレッド上でサンプリング率を取得
+            double sampleRatio = 0.1;
+            await Dispatcher.InvokeAsync(() => { sampleRatio = SamplingRatioSlider.Value; });
+
+            AppendDebugMessage($"EquilibriumKMeansTagSamplingUserK 開始: クラスタ数 = {k}, サンプル割合 = {sampleRatio:F2}");
+
+            // もしクラスタ数が画像総数以上なら、ランダムサンプリングを実施
+            if (k >= images.Count)
+            {
+                await Dispatcher.InvokeAsync(() => { ProcessingProgressBar.Value = 100; });
+                return images.OrderBy(x => Guid.NewGuid()).ToList();
+            }
+
+            // 重い処理部分は Task.Run 内で実行
+            return await Task.Run(() =>
+            {
+                // ① タグ情報から全体タグリストのインデックスを作成し、
+                //    各画像に対する特徴ベクトル（各タグの有無の二値ベクトル）を構築する
+                Dictionary<string, int> tagIndex = new Dictionary<string, int>();
+                foreach (var img in images)
+                {
+                    if (img.Tags == null) 
+                        continue;
+                    foreach (var tag in img.Tags)
+                    {
+                        if (!tagIndex.ContainsKey(tag))
+                            tagIndex.Add(tag, tagIndex.Count);
+                    }
+                }
+                int nFeatures = tagIndex.Count;
+                List<double[]> featureVectors = new List<double[]>();
+                foreach (var img in images)
+                {
+                    double[] vec = new double[nFeatures];
+                    if (img.Tags != null)
+                    {
+                        foreach (var tag in img.Tags)
+                        {
+                            if (tagIndex.TryGetValue(tag, out int index))
+                                vec[index] = 1.0;
+                        }
+                    }
+                    featureVectors.Add(vec);
+                }
+
+                Random rnd = new Random();
+
+                // ② 初期セントロイドの選択（ランダムに k 個の画像の特徴ベクトルを選ぶ）
+                List<double[]> centroids = new List<double[]>();
+                HashSet<int> chosenIndices = new HashSet<int>();
+                while (centroids.Count < k)
+                {
+                    int idx = rnd.Next(featureVectors.Count);
+                    if (!chosenIndices.Contains(idx))
+                    {
+                        chosenIndices.Add(idx);
+                        // クローンして格納
+                        centroids.Add((double[])featureVectors[idx].Clone());
+                    }
+                }
+
+                // ③ Equilibrium K-Means のパラメータ設定
+                //    ・各画像 n と各クラスタ i との距離は、d₍ᵢₙ₎ = 0.5 × ||xₙ - cᵢ||² とする
+                //    ・Boltzmann オペレータを用いて、各画像 n に対する重みを以下で計算する：
+                //      w₍ᵢₙ₎ = (exp( -α d₍ᵢₙ₎ ) / Zₙ) × (1 - α ( d₍ᵢₙ₎ - mₙ ))
+                //      Zₙ = Σᵢ exp( -α d₍ᵢₙ₎ )、 mₙ = (Σᵢ d₍ᵢₙ₎ exp( -α d₍ᵢₙ₎ )) / Zₙ
+                double alpha = 1.0;
+                int maxIterations = 50;
+                double epsilon = 1e-5;
+                int nImages = images.Count;
+
+                // ④ Equilibrium K-Means による反復更新
+                for (int iter = 0; iter < maxIterations; iter++)
+                {
+                    // 距離配列 distances[i, n] = 0.5 * ||xₙ - cᵢ||²
+                    double[,] distances = new double[k, nImages];
+                    for (int i = 0; i < k; i++)
+                    {
+                        double[] centroid = centroids[i];
+                        for (int n = 0; n < nImages; n++)
+                        {
+                            double sumSq = 0.0;
+                            double[] vec = featureVectors[n];
+                            for (int j = 0; j < nFeatures; j++)
+                            {
+                                double diff = vec[j] - centroid[j];
+                                sumSq += diff * diff;
+                            }
+                            distances[i, n] = 0.5 * sumSq;
+                        }
+                    }
+
+                    // 各画像 n に対して、各クラスタ i の重み w[i, n] を計算
+                    double[,] weights = new double[k, nImages];
+                    for (int n = 0; n < nImages; n++)
+                    {
+                        double Z = 0.0;
+                        for (int i = 0; i < k; i++)
+                        {
+                            Z += Math.Exp(-alpha * distances[i, n]);
+                        }
+                        double weightedSum = 0.0;
+                        for (int i = 0; i < k; i++)
+                        {
+                            weightedSum += distances[i, n] * Math.Exp(-alpha * distances[i, n]);
+                        }
+                        double m_n = weightedSum / Z;
+                        for (int i = 0; i < k; i++)
+                        {
+                            double expTerm = Math.Exp(-alpha * distances[i, n]);
+                            weights[i, n] = (expTerm / Z) * (1.0 - alpha * (distances[i, n] - m_n));
+                        }
+                    }
+
+                    // セントロイドを重み付き平均で更新
+                    double maxShift = 0.0;
+                    for (int i = 0; i < k; i++)
+                    {
+                        double[] newCentroid = new double[nFeatures];
+                        double weightSum = 0.0;
+                        for (int n = 0; n < nImages; n++)
+                        {
+                            double w = weights[i, n];
+                            weightSum += w;
+                            double[] vec = featureVectors[n];
+                            for (int j = 0; j < nFeatures; j++)
+                            {
+                                newCentroid[j] += w * vec[j];
+                            }
+                        }
+                        if (Math.Abs(weightSum) > 1e-12)
+                        {
+                            for (int j = 0; j < nFeatures; j++)
+                            {
+                                newCentroid[j] /= weightSum;
+                            }
+                        }
+                        // セントロイドの更新量を計算
+                        double shift = 0.0;
+                        for (int j = 0; j < nFeatures; j++)
+                        {
+                            double diff = centroids[i][j] - newCentroid[j];
+                            shift += diff * diff;
+                        }
+                        if (shift > maxShift)
+                            maxShift = shift;
+                        centroids[i] = newCentroid;
+                    }
+
+                    // UI に進捗を更新 (50% までの進捗)
+                    Dispatcher.Invoke(() =>
+                    {
+                        double progressValue = 50.0 * (iter + 1) / maxIterations;
+                        ProcessingProgressBar.Value = Math.Min(progressValue, 50);
+                    });
+
+                    if (maxShift < epsilon)
+                        break;
+                }
+
+                // ⑤ 反復終了後、各画像を最も近いセントロイドに割り当て（ハードアサイン）
+                int[] assignments = new int[nImages];
+                for (int n = 0; n < nImages; n++)
+                {
+                    int best = 0;
+                    double bestDist = double.MaxValue;
+                    double[] vec = featureVectors[n];
+                    for (int i = 0; i < k; i++)
+                    {
+                        double sumSq = 0.0;
+                        double[] centroid = centroids[i];
+                        for (int j = 0; j < nFeatures; j++)
+                        {
+                            double diff = vec[j] - centroid[j];
+                            sumSq += diff * diff;
+                        }
+                        double d = 0.5 * sumSq;
+                        if (d < bestDist)
+                        {
+                            bestDist = d;
+                            best = i;
+                        }
+                    }
+                    assignments[n] = best;
+                }
+
+                // ⑥ 各クラスタごとに総サンプル数 (targetSampleCount) を割り当てる
+                int targetSampleCount = (int)Math.Round(nImages * sampleRatio);
+                AppendDebugMessage($"総サンプル数 (targetSampleCount) = {targetSampleCount}");
+
+                // クラスタごとに画像のグループを作成
+                List<List<ImageInfo>> clusters = new List<List<ImageInfo>>();
+                for (int i = 0; i < k; i++)
+                    clusters.Add(new List<ImageInfo>());
+                for (int n = 0; n < nImages; n++)
+                {
+                    clusters[assignments[n]].Add(images[n]);
+                }
+
+                // ComputeSampleAllocation は、グループごとに targetSampleCount を均等に割り当てる補助メソッドとします
+                List<int> allocation = ComputeSampleAllocation(clusters, targetSampleCount);
+
+                // ⑦ 各クラスタ内からランダムにサンプルを抽出
+                List<ImageInfo> sampled = new List<ImageInfo>();
+                for (int i = 0; i < clusters.Count; i++)
+                {
+                    List<ImageInfo> clusterImages = clusters[i];
+                    if (clusterImages.Count > 0 && allocation[i] > 0)
+                    {
+                        var shuffled = clusterImages.OrderBy(x => rnd.Next()).ToList();
+                        for (int j = 0; j < Math.Min(allocation[i], shuffled.Count); j++)
+                        {
+                            sampled.Add(shuffled[j]);
+                        }
+                    }
+                    // UI に進捗更新（50%～100%の間）
+                    Dispatcher.Invoke(() =>
+                    {
+                        double progressValue = 50.0 + (50.0 * (i + 1) / clusters.Count);
+                        ProcessingProgressBar.Value = Math.Min(progressValue, 100);
+                    });
+                }
+
+                Dispatcher.Invoke(() => { ProcessingProgressBar.Value = 100; });
+                return sampled;
+            });
         }
     }
 } 

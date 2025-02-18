@@ -37,6 +37,7 @@
         <ComboBoxItem Content="Hierarchical-Farthest" />
         <ComboBoxItem Content="OptimizedDiversity"/>
         <ComboBoxItem Content="KMeans" IsSelected="True"/>
+        <ComboBoxItem Content="EquilibriumKMeans"/>
     </ComboBox>
 
     <!-- 重み付け (Row 2) -->
