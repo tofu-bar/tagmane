@@ -4,12 +4,14 @@
         Title="娘データセット作成" Height="450" Width="400">
   <Grid Margin="10">
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/>
-      <RowDefinition Height="100"/>
-      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>  <!-- 距離計算方法 -->
+      <RowDefinition Height="Auto"/>  <!-- サンプリング方法 -->
+      <RowDefinition Height="Auto"/>  <!-- 重み付け -->
+      <RowDefinition Height="Auto"/>  <!-- サンプリング率 -->
+      <RowDefinition Height="Auto"/>  <!-- 保存先 -->
+      <RowDefinition Height="Auto"/>  <!-- 進捗バー -->
+      <RowDefinition Height="*"/>     <!-- デバッグ表示 -->
+      <RowDefinition Height="Auto"/>  <!-- OK / Cancel ボタン -->
     </Grid.RowDefinitions>
     <Grid.ColumnDefinitions>
       <ColumnDefinition Width="Auto"/>
@@ -17,38 +19,60 @@
       <ColumnDefinition Width="Auto"/>
     </Grid.ColumnDefinitions>
 
-    <!-- クラスタリング手法の指定 -->
-    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,5,0" Text="クラスタリング:"/>
-    <ComboBox x:Name="ClusteringMethodComboBox" Grid.Row="0" Grid.Column="1" Margin="0,5,0,5">
-      <ComboBoxItem Content="Random" IsSelected="True"/>
-      <ComboBoxItem Content="Hierarchical"/>
-      <ComboBoxItem Content="K-Means"/>
+    <!-- 距離計算方法 (Row 0) -->
+    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Margin="0" Text="距離計算方法:"/>
+    <ComboBox Name="DistanceMetricComboBox" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="2,2,0,2" Width="150">
+        <ComboBoxItem Content="Jaccard" IsSelected="True"/>
+        <ComboBoxItem Content="Dice" />
+        <ComboBoxItem Content="Simpson" />
+        <!-- 他の距離計算方法を追加可能 -->
     </ComboBox>
 
-    <!-- サンプリング率 -->
-    <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,5,0" Text="サンプリング率:"/>
-    <TextBox x:Name="SamplingRatioTextBox" Grid.Row="1" Grid.Column="1" Margin="0,5,0,5" Text="0.1"/>
+    <!-- サンプリング方法 (Row 1) -->
+    <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Margin="0" Text="サンプリング方法:"/>
+    <ComboBox Name="SamplingMethodComboBox" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="2,2,0,2" Width="150">
+        <ComboBoxItem Content="Random" />
+        <ComboBoxItem Content="Hierarchical-Fixed" />
+        <ComboBoxItem Content="Hierarchical-Farthest" />
+        <ComboBoxItem Content="OptimizedDiversity" IsSelected="True"/>
+    </ComboBox>
 
-    <!-- 保存先ディレクトリ -->
-    <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Margin="0,0,5,0" Text="保存先:"/>
-    <TextBox x:Name="TargetDirectoryTextBox" Grid.Row="2" Grid.Column="1" Margin="0,5,0,5"/>
-    <Button x:Name="BrowseButton" Grid.Row="2" Grid.Column="2" Margin="5,5,0,5" Click="BrowseButton_Click" Content="参照"/>
-    
-    <!-- 進捗バー　※非表示（Visibility="Collapsed"）にしておき、処理開始時に表示 -->
-    <ProgressBar x:Name="ProcessingProgressBar"
-                 Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
-                 Height="20" Visibility="Collapsed"
-                 IsIndeterminate="True" Margin="0,5,0,5"/>
-    
-    <!-- デバッグ用の状態表示領域 -->
-    <TextBox x:Name="DebugTextBox" Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3"
+    <!-- 重み付け (Row 2) -->
+    <CheckBox Name="WeightedTagsCheckBox" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Margin="0" Content="出現頻度の逆重み付けを行う" IsChecked="False"/>
+
+    <!-- サンプリング率 (Row 3) をスライダーに変更し現在値を表示 -->
+    <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Margin="0" Text="サンプリング率:"/>
+    <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="2,2,0,2">
+        <Slider x:Name="SamplingRatioSlider" Width="150"
+                Minimum="0.05" Maximum="1" Value="0.1" TickFrequency="0.05"
+                IsSnapToTickEnabled="True" IsMoveToPointEnabled="True"/>
+        <TextBlock x:Name="SamplingRatioValueTextBlock" VerticalAlignment="Center" Margin="10,0,0,0"
+                   Text="{Binding ElementName=SamplingRatioSlider, Path=Value, StringFormat={}{0:F2}}" />
+    </StackPanel>
+
+    <!-- 保存先ディレクトリ (Row 4) -->
+    <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Margin="0" Text="保存先:"/>
+    <Grid Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+      </Grid.ColumnDefinitions>
+      <TextBox x:Name="TargetDirectoryTextBox" Grid.Column="0" VerticalAlignment="Center" Margin="2,2,2,2"/>
+      <Button x:Name="BrowseButton" Grid.Column="1" VerticalAlignment="Center" Margin="2,2,0,2" Click="BrowseButton_Click" Content="参照"/>
+    </Grid>
+
+    <!-- 進捗バー (Row 5) -->
+    <ProgressBar x:Name="ProcessingProgressBar" Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3"
+                 Height="20" Visibility="Collapsed" IsIndeterminate="True" Margin="0,5,0,5"/>
+
+    <!-- デバッグ用テキスト (Row 6) -->
+    <TextBox x:Name="DebugTextBox" Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="3"
              Margin="0,5,0,5" IsReadOnly="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
-    
-    <!-- OK / Cancel ボタン -->
-    <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+
+    <!-- OK / Cancel ボタン (Row 7) -->
+    <StackPanel Grid.Row="7" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
       <Button x:Name="OKButton" Width="75" Margin="0,0,10,0" Click="OKButton_Click" Content="OK"/>
       <Button x:Name="CancelButton" Width="75" Click="CancelButton_Click" Content="キャンセル"/>
     </StackPanel>
-
   </Grid>
 </Window>
