@@ -363,3 +363,7 @@ MigrationBackup/
 FodyWeavers.xsd
 
 .vscode/
+
+# Windows Shortcut file
+*.lnk
+
