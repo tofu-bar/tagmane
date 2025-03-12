@@ -1,9 +1,11 @@
 @echo off
 
-REM プロジェクトをビルド
-dotnet build --project tagmane.csproj
+call cuda-version-check.bat
 
-REM 実行可能ファイルを実行
+echo Loading tagmane ...
+
 dotnet run --project tagmane.csproj
+
+echo tagmane Completed.
 
 pause
