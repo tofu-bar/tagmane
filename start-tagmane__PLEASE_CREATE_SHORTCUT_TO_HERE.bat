@@ -1,8 +1,8 @@
 @echo off
 
-echo Welcome to tagmene
+call cuda-version-check.bat
 
-echo Now Loading ...
+echo Loading tagmane ...
 
 dotnet run --project tagmane.csproj
 
