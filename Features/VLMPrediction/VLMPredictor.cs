@@ -14,7 +14,7 @@ namespace tagmane
         public event EventHandler<string>? LogUpdated;
         public bool IsGpuLoaded { get; private set; }
 
-        public async Task LoadModel(string modelRepo, bool useGpu = true)
+        public async Task LoadModel(string modelRepo, bool useGpu = true, string hfToken = null)
         {
             if (modelRepo.Contains("joytag"))
             {
@@ -22,6 +22,13 @@ namespace tagmane
                 ((JoyPredictor)_currentPredictor).LogUpdated += OnPredictorLogUpdated;
                 await ((JoyPredictor)_currentPredictor).LoadModel(modelRepo, useGpu);
                 IsGpuLoaded = ((JoyPredictor)_currentPredictor).IsGpuLoaded;
+            }
+            else if (modelRepo.Contains("celstk/wd-eva02-lora-onnx"))
+            {
+                _currentPredictor = new CelPredictor();
+                ((CelPredictor)_currentPredictor).LogUpdated += OnPredictorLogUpdated;
+                await ((CelPredictor)_currentPredictor).LoadModel(modelRepo, useGpu, hfToken);
+                IsGpuLoaded = ((CelPredictor)_currentPredictor).IsGpuLoaded;
             }
             else
             {
@@ -47,6 +54,8 @@ namespace tagmane
                 return wdPredictor.PrepareTensor(image);
             else if (_currentPredictor is JoyPredictor joyPredictor)
                 return joyPredictor.PrepareTensor(image);
+            else if (_currentPredictor is CelPredictor celPredictor)
+                return celPredictor.PreprocessImage(image);
             else
                 throw new InvalidOperationException("No predictor loaded");
         }
@@ -64,6 +73,8 @@ namespace tagmane
                 return wdPredictor.Predict(tensor, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled);
             else if (_currentPredictor is JoyPredictor joyPredictor)
                 return joyPredictor.Predict(tensor, generalThresh);
+            else if (_currentPredictor is CelPredictor celPredictor)
+                return celPredictor.Predict(tensor, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled);
             else
                 throw new InvalidOperationException("No predictor loaded");
         }
@@ -77,6 +88,10 @@ namespace tagmane
             else if (_currentPredictor is JoyPredictor joyPredictor)
             {
                 joyPredictor.Dispose();
+            }
+            else if (_currentPredictor is CelPredictor celPredictor)
+            {
+                celPredictor.Dispose();
             }
             _isModelLoaded = false;
         }

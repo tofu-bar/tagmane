@@ -43,7 +43,7 @@ namespace tagmane
     /// </summary>
     public partial class MainWindow : Window
     {
-        private string _currentVersion = "1.0.6";
+        private string _currentVersion = "1.0.7";
         private CancellationTokenSource _logCancellationTokenSource;
         private RingBuffer<string> _logQueue = new RingBuffer<string>(20);
         private RingBuffer<string> _debugLogQueue = new RingBuffer<string>(20);
@@ -91,7 +91,8 @@ namespace tagmane
             ("SmilingWolf/wd-v1-4-convnext-tagger-v2", 0.35),
             ("SmilingWolf/wd-v1-4-vit-tagger-v2", 0.35),
             ("SmilingWolf/wd-v1-4-convnextv2-tagger-v2", 0.35),
-            ("fancyfeast/joytag", 0.5)
+            ("fancyfeast/joytag", 0.5),
+            ("celstk/wd-eva02-lora-onnx", 0.45)
         };
         private const double DefaultCharacterThreshold = 0.85;
 
