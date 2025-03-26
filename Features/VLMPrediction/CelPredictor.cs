@@ -14,6 +14,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Net.Http.Headers;
 using System.Windows.Media;
+using System.Threading.Tasks;
 
 namespace tagmane
 {
@@ -51,6 +52,27 @@ namespace tagmane
         private string _modelInputName;
 
         private readonly int[] _inputShape = new[] { 1, 3, 448, 448 }; // 固定サイズを定義
+
+        // リサイズモードの列挙型を追加
+        public enum ResizeMode
+        {
+            Lanczos,
+            Bicubic
+        }
+
+        // 現在のリサイズモード（デフォルトはLanczos）
+        private ResizeMode _currentResizeMode = ResizeMode.Bicubic;
+
+        // リサイズモードを設定するためのプロパティ
+        public ResizeMode CurrentResizeMode
+        {
+            get => _currentResizeMode;
+            set
+            {
+                _currentResizeMode = value;
+                AddLogEntry($"リサイズモードを変更: {_currentResizeMode}");
+            }
+        }
 
         public async Task LoadModel(string modelRepo, bool useGpu = true, string hfToken = null)
         {
@@ -350,78 +372,226 @@ namespace tagmane
             }
         }
 
+        // Lanczosフィルタを使用した高品質リサイズメソッドを追加
+        private class LanczosResize
+        {
+            private const int A = 3;
+            private const double EPSILON = .0000125;
+
+            private static double Sinc(double x)
+            {
+                x *= Math.PI;
+                return x is < 0.01 and > -0.01 ? 
+                    1.0 + (x * x * ((-1.0 / 6.0) + (x * x * 1.0 / 120.0))) : 
+                    Math.Sin(x) / x;
+            }
+
+            private static double Clean(double t) => Math.Abs(t) < EPSILON ? 0.0 : t;
+
+            private static double LanczosFilter(double t, int a) => 
+                Math.Abs(t) < a ? Clean(Sinc(Math.Abs(t)) * Sinc(Math.Abs(t) / a)) : 0.0;
+
+            // BitmapからLanczosフィルタでリサイズした画像ピクセルを取得
+            public static byte[] ResizeImage(byte[] sourcePixels, int sourceWidth, int sourceHeight, int targetWidth, int targetHeight)
+            {
+                byte[] result = new byte[targetWidth * targetHeight * 4]; // BGRA形式
+
+                Parallel.For(0, targetHeight, y =>
+                {
+                    for (int x = 0; x < targetWidth; x++)
+                    {
+                        // 元の座標空間でのピクセル位置を計算
+                        double srcX = x * ((double)sourceWidth / targetWidth);
+                        double srcY = y * ((double)sourceHeight / targetHeight);
+                        double x1 = Math.Floor(srcX);
+                        double y1 = Math.Floor(srcY);
+
+                        // 新しいピクセル値の初期化
+                        double r = 0, g = 0, b = 0, a = 0;
+                        double totalWeight = 0;
+
+                        // Lanczosフィルタの適用範囲
+                        for (int i = (int)x1 - A + 1; i <= (int)x1 + A; i++)
+                        {
+                            for (int j = (int)y1 - A + 1; j <= (int)y1 + A; j++)
+                            {
+                                // 境界チェック
+                                if (i < 0 || i >= sourceWidth || j < 0 || j >= sourceHeight)
+                                    continue;
+
+                                // フィルタの重みを計算
+                                double lanczosX = LanczosFilter(srcX - i, A);
+                                double lanczosY = LanczosFilter(srcY - j, A);
+                                double weight = lanczosX * lanczosY;
+
+                                // 元のピクセルインデックス
+                                int srcIdx = (j * sourceWidth + i) * 4;
+
+                                // 重み付き合計を計算
+                                b += sourcePixels[srcIdx] * weight;
+                                g += sourcePixels[srcIdx + 1] * weight;
+                                r += sourcePixels[srcIdx + 2] * weight;
+                                a += sourcePixels[srcIdx + 3] * weight;
+                                totalWeight += weight;
+                            }
+                        }
+
+                        // 計算されたピクセル値の正規化
+                        if (totalWeight > 0)
+                        {
+                            b /= totalWeight;
+                            g /= totalWeight;
+                            r /= totalWeight;
+                            a /= totalWeight;
+                        }
+
+                        // 結果に格納
+                        int destIdx = (y * targetWidth + x) * 4;
+                        result[destIdx] = (byte)Math.Clamp(b, 0, 255);
+                        result[destIdx + 1] = (byte)Math.Clamp(g, 0, 255);
+                        result[destIdx + 2] = (byte)Math.Clamp(r, 0, 255);
+                        result[destIdx + 3] = (byte)Math.Clamp(a, 0, 255);
+                    }
+                });
+
+                return result;
+            }
+        }
+
+        // BICUBICリサイズを行うメソッドを追加
+        private byte[] ResizeWithBicubic(byte[] sourcePixels, int sourceWidth, int sourceHeight, int targetWidth, int targetHeight)
+        {
+            try
+            {
+                // 元の画像のWriteableBitmapを作成
+                var sourceBitmap = new WriteableBitmap(sourceWidth, sourceHeight, 96, 96, PixelFormats.Bgra32, null);
+                sourceBitmap.WritePixels(new Int32Rect(0, 0, sourceWidth, sourceHeight), sourcePixels, sourceWidth * 4, 0);
+
+                // BitmapSourceを使用した高品質リサイズ
+                var transformedBitmap = new TransformedBitmap(sourceBitmap, new ScaleTransform(
+                    (double)targetWidth / sourceWidth,
+                    (double)targetHeight / sourceHeight));
+
+                // 高品質(BICUBIC)スケーリングを設定
+                RenderOptions.SetBitmapScalingMode(transformedBitmap, BitmapScalingMode.HighQuality);
+
+                // リサイズ後のピクセルデータを取得
+                byte[] resizedPixels = new byte[targetWidth * targetHeight * 4];
+                transformedBitmap.CopyPixels(resizedPixels, targetWidth * 4, 0);
+
+                return resizedPixels;
+            }
+            catch (Exception ex)
+            {
+                AddLogEntry($"BICUBICリサイズエラー: {ex.Message}");
+                throw;
+            }
+        }
+
         public DenseTensor<float> PreprocessImage(BitmapImage image)
         {
             if (!_isModelLoaded)
                 throw new InvalidOperationException("モデルが読み込まれていません");
 
-            int width = image.PixelWidth;
-            int height = image.PixelHeight;
-            int stride = width * 4; // BGRA形式（4バイト/ピクセル）
-            byte[] pixelData = new byte[height * stride];
-            
-            image.CopyPixels(pixelData, stride, 0); 
-            
-            // モデル入力サイズの正方形にパディング
-            int squareSize = Math.Max(width, height);
-            byte[] squarePixelData = new byte[squareSize * squareSize * 4];
-            
-            // 初期化（白背景）
-            for (int i = 0; i < squareSize * squareSize * 4; i += 4)
+            try
             {
-                squarePixelData[i] = 255;     // B
-                squarePixelData[i + 1] = 255; // G
-                squarePixelData[i + 2] = 255; // R
-                squarePixelData[i + 3] = 255; // A
-            }
-            
-            // 元画像を中央に配置
-            int offsetX = (squareSize - width) / 2;
-            int offsetY = (squareSize - height) / 2;
-            
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
+                AddLogEntry($"前処理開始: 画像サイズ {image.PixelWidth}x{image.PixelHeight}, リサイズモード: {_currentResizeMode}");
+                
+                int width = image.PixelWidth;
+                int height = image.PixelHeight;
+                
+                // 1. 正方形にパディング (Pythonの pil_pad_square と同等)
+                int squareSize = Math.Max(width, height);
+                int padX = (squareSize - width) / 2;
+                int padY = (squareSize - height) / 2;
+                
+                AddLogEntry($"正方形パディング: {squareSize}x{squareSize} (パディング: X={padX}, Y={padY})");
+                
+                // 白背景の正方形画像を作成
+                byte[] squarePixels = new byte[squareSize * squareSize * 4];
+                for (int i = 0; i < squarePixels.Length; i += 4)
                 {
-                    int srcIdx = (y * width + x) * 4;
-                    int destIdx = ((y + offsetY) * squareSize + (x + offsetX)) * 4;
-                    
-                    squarePixelData[destIdx] = pixelData[srcIdx];         // B
-                    squarePixelData[destIdx + 1] = pixelData[srcIdx + 1]; // G
-                    squarePixelData[destIdx + 2] = pixelData[srcIdx + 2]; // R
-                    squarePixelData[destIdx + 3] = pixelData[srcIdx + 3]; // A
+                    squarePixels[i] = 255;     // B
+                    squarePixels[i + 1] = 255; // G
+                    squarePixels[i + 2] = 255; // R
+                    squarePixels[i + 3] = 255; // A
                 }
-            }
-            
-            // リサイズのためのテンソルを準備（リサイズ後の次元: NCHW形式）
-            var tensor = new DenseTensor<float>(new[] { 1, 3, _modelTargetSize, _modelTargetSize });
-            
-            // リサイズとカラー変換（BGRA -> RGB、正規化）
-            float[] resizeFactors = { (float)squareSize / _modelTargetSize, (float)squareSize / _modelTargetSize };
-            
-            for (int i = 0; i < _modelTargetSize; i++)
-            {
-                for (int j = 0; j < _modelTargetSize; j++)
+                
+                // 元画像のピクセルを取得
+                byte[] sourcePixels = new byte[width * height * 4];
+                image.CopyPixels(sourcePixels, width * 4, 0);
+                
+                // 元画像をパディングした正方形画像に配置
+                for (int y = 0; y < height; y++)
                 {
-                    // 最近傍法でリサイズ
-                    int origY = (int)(i * resizeFactors[0]);
-                    int origX = (int)(j * resizeFactors[1]);
-                    
-                    int idx = (origY * squareSize + origX) * 4;
-                    
-                    // BGR -> RGB変換と正規化（0-1範囲）
-                    float b = squarePixelData[idx] / 255.0f;
-                    float g = squarePixelData[idx + 1] / 255.0f;
-                    float r = squarePixelData[idx + 2] / 255.0f;
-                    
-                    // 正規化（平均0.5、標準偏差0.5）
-                    tensor[0, 0, i, j] = (r - 0.5f) / 0.5f;
-                    tensor[0, 1, i, j] = (g - 0.5f) / 0.5f;
-                    tensor[0, 2, i, j] = (b - 0.5f) / 0.5f;
+                    for (int x = 0; x < width; x++)
+                    {
+                        int srcIdx = (y * width + x) * 4;
+                        int destIdx = ((y + padY) * squareSize + (x + padX)) * 4;
+                        
+                        squarePixels[destIdx] = sourcePixels[srcIdx];         // B
+                        squarePixels[destIdx + 1] = sourcePixels[srcIdx + 1]; // G
+                        squarePixels[destIdx + 2] = sourcePixels[srcIdx + 2]; // R
+                        squarePixels[destIdx + 3] = sourcePixels[srcIdx + 3]; // A
+                    }
                 }
+                
+                // 2. 選択されたアルゴリズムでリサイズ
+                byte[] resizedPixels;
+                
+                if (_currentResizeMode == ResizeMode.Lanczos)
+                {
+                    AddLogEntry($"LANCZOSフィルタでリサイズ: {squareSize}x{squareSize} -> {_modelTargetSize}x{_modelTargetSize}");
+                    resizedPixels = LanczosResize.ResizeImage(
+                        squarePixels, squareSize, squareSize, _modelTargetSize, _modelTargetSize);
+                }
+                else // Bicubic
+                {
+                    AddLogEntry($"BICUBICフィルタでリサイズ: {squareSize}x{squareSize} -> {_modelTargetSize}x{_modelTargetSize}");
+                    resizedPixels = ResizeWithBicubic(
+                        squarePixels, squareSize, squareSize, _modelTargetSize, _modelTargetSize);
+                }
+                
+                // 3. テンソルを準備（CHW形式）
+                var tensor = new DenseTensor<float>(new[] { 1, 3, _modelTargetSize, _modelTargetSize });
+                
+                // 4. チャンネル処理と正規化（Python のコードと一致するように）
+                for (int y = 0; y < _modelTargetSize; y++)
+                {
+                    for (int x = 0; x < _modelTargetSize; x++)
+                    {
+                        int pixelIndex = (y * _modelTargetSize + x) * 4;
+                        
+                        // BGRA -> RGB（Pythonコードに合わせる）
+                        float b = resizedPixels[pixelIndex] / 255.0f;
+                        float g = resizedPixels[pixelIndex + 1] / 255.0f;
+                        float r = resizedPixels[pixelIndex + 2] / 255.0f;
+                        
+                        // Python と同様に正規化（mean=0.5, std=0.5）
+                        tensor[0, 0, y, x] = (b - 0.5f) / 0.5f;  // B
+                        tensor[0, 1, y, x] = (g - 0.5f) / 0.5f;  // G 
+                        tensor[0, 2, y, x] = (r - 0.5f) / 0.5f;  // R
+                    }
+                }
+                
+                // サンプルログ出力（デバッグ用）
+                float minVal = float.MaxValue;
+                float maxVal = float.MinValue;
+                foreach (var val in tensor.Buffer.Span)
+                {
+                    minVal = Math.Min(minVal, val);
+                    maxVal = Math.Max(maxVal, val);
+                }
+                AddLogEntry($"テンソル作成完了: 形状={string.Join(",", tensor.Dimensions.ToArray())}, 値範囲={minVal}～{maxVal}");
+                
+                return tensor;
             }
-            
-            return tensor;
+            catch (Exception ex)
+            {
+                AddLogEntry($"前処理エラー: {ex.Message}");
+                AddLogEntry($"詳細: {ex.StackTrace}");
+                throw;
+            }
         }
 
         public (string, Dictionary<string, float>, Dictionary<string, float>, Dictionary<string, float>) Predict(
@@ -698,108 +868,6 @@ namespace tagmane
             
             [JsonPropertyName("category")]
             public string Category { get; set; }
-        }
-
-        public DenseTensor<float> PrepareTensor(BitmapImage image)
-        {
-            try
-            {
-                if (image == null || image.PixelWidth <= 0 || image.PixelHeight <= 0)
-                {
-                    AddLogEntry($"無効な画像サイズ: {(image == null ? "null" : $"{image.PixelWidth}x{image.PixelHeight}")}");
-                    throw new ArgumentException("有効な画像が提供されていません");
-                }
-
-                int targetSize = _modelTargetSize > 0 ? _modelTargetSize : 448; 
-                
-                // 1. まずWDPredictorと同様のNHWC形式で処理（実績のある方法）
-                var tensor = new DenseTensor<float>(new[] { 1, targetSize, targetSize, 3 });
-                AddLogEntry($"テンソルを作成: 1, {targetSize}, {targetSize}, 3（NHWC形式）");
-
-                // ソース画像サイズを取得
-                int sourceWidth = image.PixelWidth;
-                int sourceHeight = image.PixelHeight;
-                AddLogEntry($"入力画像サイズ: {sourceWidth}x{sourceHeight}");
-
-                // ソース画像のピクセルデータを取得
-                byte[] sourcePixels = new byte[4 * sourceWidth * sourceHeight];
-                image.CopyPixels(sourcePixels, 4 * sourceWidth, 0);
-
-                // リサイズ比率を計算
-                float xRatio = (float)sourceWidth / targetSize;
-                float yRatio = (float)sourceHeight / targetSize;
-
-                // WDPredictorと同様の処理でテンソルを作成
-                for (int y = 0; y < targetSize; y++)
-                {
-                    for (int x = 0; x < targetSize; x++)
-                    {
-                        int sourceX = Math.Min((int)(x * xRatio), sourceWidth - 1);
-                        int sourceY = Math.Min((int)(y * yRatio), sourceHeight - 1);
-                        int sourceIndex = (sourceY * sourceWidth + sourceX) * 4;
-
-                        if (sourceIndex + 2 >= sourcePixels.Length)
-                        {
-                            continue;
-                        }
-
-                        // ★重要: WDPredictorとは逆の順序で格納（RGBとBGRの切り替え）
-                        // WDPredictor: tensor[0, y, x, 2] = R, tensor[0, y, x, 0] = B
-                        // ここでは: tensor[0, y, x, 0] = R, tensor[0, y, x, 2] = B
-                        tensor[0, y, x, 0] = sourcePixels[sourceIndex + 2];  // R
-                        tensor[0, y, x, 1] = sourcePixels[sourceIndex + 1];  // G
-                        tensor[0, y, x, 2] = sourcePixels[sourceIndex];      // B
-                    }
-                }
-
-                // 2. 次にNCHW形式に変換（Pythonコードでは最終的にはこの形式）
-                var reshapedTensor = new DenseTensor<float>(new[] { 1, 3, targetSize, targetSize });
-                
-                // NHWC -> NCHW変換
-                for (int h = 0; h < targetSize; h++)
-                {
-                    for (int w = 0; w < targetSize; w++)
-                    {
-                        for (int c = 0; c < 3; c++)
-                        {
-                            reshapedTensor[0, c, h, w] = tensor[0, h, w, c];
-                        }
-                    }
-                }
-
-                // 3. 値を正規化（-1～1の範囲に）
-                for (int c = 0; c < 3; c++)
-                {
-                    for (int h = 0; h < targetSize; h++)
-                    {
-                        for (int w = 0; w < targetSize; w++)
-                        {
-                            // 0-255を0-1にスケーリングしてから、mean=0.5, std=0.5で正規化
-                            reshapedTensor[0, c, h, w] = (reshapedTensor[0, c, h, w] / 255.0f - 0.5f) / 0.5f;
-                        }
-                    }
-                }
-
-                // テンソルの統計情報をログに記録
-                float minVal = float.MaxValue;
-                float maxVal = float.MinValue;
-                foreach (var val in reshapedTensor.Buffer.Span)
-                {
-                    minVal = Math.Min(minVal, val);
-                    maxVal = Math.Max(maxVal, val);
-                }
-                
-                AddLogEntry($"テンソル統計: 範囲={minVal}～{maxVal}");
-                AddLogEntry($"サンプル値[0,0,0,0]={reshapedTensor[0, 0, 0, 0]}, [0,1,0,0]={reshapedTensor[0, 1, 0, 0]}, [0,2,0,0]={reshapedTensor[0, 2, 0, 0]}");
-                
-                return reshapedTensor;
-            }
-            catch (Exception ex)
-            {
-                AddLogEntry($"テンソル準備エラー: {ex.Message}");
-                AddLogEntry($"詳細: {ex.StackTrace}");
-                throw;
-            }
         }
 
         // Disposeメソッドを追加
