@@ -80,6 +80,9 @@ namespace tagmane
             }
         }
 
+        // クラスレベルで除外パターンリストを定義
+        private readonly List<string> _excludedMetaPatterns = new List<string> { "id", "commentary", "request" };
+
         public async Task LoadModel(string modelRepo, bool useGpu = true, string hfToken = null)
         {
             AddLogEntry($"リポジトリからモデルを読み込みます: {modelRepo}");
@@ -701,6 +704,35 @@ namespace tagmane
                         }
                     }
                     AddLogEntry($"その他のタグ: {otherTags.Count}個（閾値: {generalThresh}）");
+                    
+                    // メタタグのフィルタリング
+                    var filteredMetaTags = new List<(string, float)>();
+                    foreach (var kvp in otherTags)
+                    {
+                        string tag = kvp.Key;
+                        float confidence = kvp.Value;
+                        
+                        bool shouldExclude = _excludedMetaPatterns.Any(pattern => 
+                            tag.ToLower().Contains(pattern.ToLower()));
+                        
+                        if (!shouldExclude)
+                        {
+                            filteredMetaTags.Add((tag, confidence));
+                            AddLogEntry($"  メタタグ: {tag}: {confidence:F3}");
+                        }
+                        else
+                        {
+                            // フィルタリングされたタグもログに記録（ただし[FILTERED]マーク付き）
+                            AddLogEntry($"  [FILTERED] メタタグ: {tag}: {confidence:F3}");
+                        }
+                    }
+
+                    // 元の辞書をクリアして、フィルタリング済みの項目を追加
+                    otherTags.Clear();
+                    foreach (var (tag, confidence) in filteredMetaTags)
+                    {
+                        otherTags[tag] = confidence;
+                    }
                     
                     // すべてのタグを結合してソート
                     var allTags = new Dictionary<string, float>();
