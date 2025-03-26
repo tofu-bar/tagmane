@@ -15,6 +15,10 @@ using System.Text.Json.Serialization;
 using System.Net.Http.Headers;
 using System.Windows.Media;
 using System.Threading.Tasks;
+using System.Drawing;
+using System.Drawing.Imaging;
+using tagmane.Features.ImageProcessing;
+using System.Runtime.InteropServices;
 
 namespace tagmane
 {
@@ -56,11 +60,13 @@ namespace tagmane
         // リサイズモードの列挙型を追加
         public enum ResizeMode
         {
+            Lanczos3,
+            Lanczos2,
             Lanczos,
             Bicubic
         }
 
-        // 現在のリサイズモード（デフォルトはLanczos）
+        // 現在のリサイズモード（デフォルトはBicubic）
         private ResizeMode _currentResizeMode = ResizeMode.Bicubic;
 
         // リサイズモードを設定するためのプロパティ
@@ -372,93 +378,37 @@ namespace tagmane
             }
         }
 
-        // Lanczosフィルタを使用した高品質リサイズメソッドを追加
-        private class LanczosResize
+        // BitmapImageをSystem.Drawing.Bitmapに変換
+        private System.Drawing.Bitmap BitmapImageToBitmap(BitmapImage bitmapImage)
         {
-            private const int A = 3;
-            private const double EPSILON = .0000125;
-
-            private static double Sinc(double x)
+            using (MemoryStream outStream = new MemoryStream())
             {
-                x *= Math.PI;
-                return x is < 0.01 and > -0.01 ? 
-                    1.0 + (x * x * ((-1.0 / 6.0) + (x * x * 1.0 / 120.0))) : 
-                    Math.Sin(x) / x;
-            }
-
-            private static double Clean(double t) => Math.Abs(t) < EPSILON ? 0.0 : t;
-
-            private static double LanczosFilter(double t, int a) => 
-                Math.Abs(t) < a ? Clean(Sinc(Math.Abs(t)) * Sinc(Math.Abs(t) / a)) : 0.0;
-
-            // BitmapからLanczosフィルタでリサイズした画像ピクセルを取得
-            public static byte[] ResizeImage(byte[] sourcePixels, int sourceWidth, int sourceHeight, int targetWidth, int targetHeight)
-            {
-                byte[] result = new byte[targetWidth * targetHeight * 4]; // BGRA形式
-
-                Parallel.For(0, targetHeight, y =>
-                {
-                    for (int x = 0; x < targetWidth; x++)
-                    {
-                        // 元の座標空間でのピクセル位置を計算
-                        double srcX = x * ((double)sourceWidth / targetWidth);
-                        double srcY = y * ((double)sourceHeight / targetHeight);
-                        double x1 = Math.Floor(srcX);
-                        double y1 = Math.Floor(srcY);
-
-                        // 新しいピクセル値の初期化
-                        double r = 0, g = 0, b = 0, a = 0;
-                        double totalWeight = 0;
-
-                        // Lanczosフィルタの適用範囲
-                        for (int i = (int)x1 - A + 1; i <= (int)x1 + A; i++)
-                        {
-                            for (int j = (int)y1 - A + 1; j <= (int)y1 + A; j++)
-                            {
-                                // 境界チェック
-                                if (i < 0 || i >= sourceWidth || j < 0 || j >= sourceHeight)
-                                    continue;
-
-                                // フィルタの重みを計算
-                                double lanczosX = LanczosFilter(srcX - i, A);
-                                double lanczosY = LanczosFilter(srcY - j, A);
-                                double weight = lanczosX * lanczosY;
-
-                                // 元のピクセルインデックス
-                                int srcIdx = (j * sourceWidth + i) * 4;
-
-                                // 重み付き合計を計算
-                                b += sourcePixels[srcIdx] * weight;
-                                g += sourcePixels[srcIdx + 1] * weight;
-                                r += sourcePixels[srcIdx + 2] * weight;
-                                a += sourcePixels[srcIdx + 3] * weight;
-                                totalWeight += weight;
-                            }
-                        }
-
-                        // 計算されたピクセル値の正規化
-                        if (totalWeight > 0)
-                        {
-                            b /= totalWeight;
-                            g /= totalWeight;
-                            r /= totalWeight;
-                            a /= totalWeight;
-                        }
-
-                        // 結果に格納
-                        int destIdx = (y * targetWidth + x) * 4;
-                        result[destIdx] = (byte)Math.Clamp(b, 0, 255);
-                        result[destIdx + 1] = (byte)Math.Clamp(g, 0, 255);
-                        result[destIdx + 2] = (byte)Math.Clamp(r, 0, 255);
-                        result[destIdx + 3] = (byte)Math.Clamp(a, 0, 255);
-                    }
-                });
-
-                return result;
+                BitmapEncoder enc = new PngBitmapEncoder();
+                enc.Frames.Add(BitmapFrame.Create(bitmapImage));
+                enc.Save(outStream);
+                outStream.Seek(0, SeekOrigin.Begin);
+                return new System.Drawing.Bitmap(outStream);
             }
         }
 
-        // BICUBICリサイズを行うメソッドを追加
+        // System.Drawing.BitmapをBitmapImageに変換
+        private BitmapImage BitmapToBitmapImage(System.Drawing.Bitmap bitmap)
+        {
+            using (MemoryStream memory = new MemoryStream())
+            {
+                bitmap.Save(memory, ImageFormat.Png);
+                memory.Position = 0;
+                BitmapImage bitmapImage = new BitmapImage();
+                bitmapImage.BeginInit();
+                bitmapImage.StreamSource = memory;
+                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                bitmapImage.EndInit();
+                bitmapImage.Freeze(); // UIスレッド以外でも使用可能にする
+                return bitmapImage;
+            }
+        }
+
+        // BICUBICリサイズを行うメソッド
         private byte[] ResizeWithBicubic(byte[] sourcePixels, int sourceWidth, int sourceHeight, int targetWidth, int targetHeight)
         {
             try
@@ -484,6 +434,61 @@ namespace tagmane
             catch (Exception ex)
             {
                 AddLogEntry($"BICUBICリサイズエラー: {ex.Message}");
+                throw;
+            }
+        }
+
+        // 既存のLanczosResizerを使用したリサイズメソッド
+        private byte[] ResizeWithLanczosResizer(byte[] sourcePixels, int sourceWidth, int sourceHeight, int targetWidth, int targetHeight)
+        {
+            try
+            {                
+                // ソースピクセルからBitmapを作成
+                using (var sourceBitmap = new System.Drawing.Bitmap(sourceWidth, sourceHeight, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+                {
+                    var bmpData = sourceBitmap.LockBits(
+                        new System.Drawing.Rectangle(0, 0, sourceWidth, sourceHeight),
+                        ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                    
+                    Marshal.Copy(sourcePixels, 0, bmpData.Scan0, sourcePixels.Length);
+                    sourceBitmap.UnlockBits(bmpData);
+                    
+                    // リサイズモードからLanczosパラメータを取得
+                    string lanczosMode;
+                    switch (_currentResizeMode)
+                    {
+                        case ResizeMode.Lanczos3:
+                            lanczosMode = "Lanczos3";
+                            break;
+                        case ResizeMode.Lanczos2:
+                            lanczosMode = "Lanczos2";
+                            break;
+                        case ResizeMode.Lanczos:
+                            lanczosMode = "Lanczos"; // a=1の原法
+                            break;
+                        default:
+                            lanczosMode = "Lanczos2"; // デフォルト
+                            break;
+                    }
+                    AddLogEntry($"モード: {lanczosMode} でリサイズ: {sourceWidth}x{sourceHeight} -> {targetWidth}x{targetHeight}");
+                    using (var resizedBitmap = LanczosResizer.ResizeImage(sourceBitmap, targetWidth, targetHeight, lanczosMode))
+                    {
+                        // リサイズ結果のピクセルデータを取得
+                        var resultData = resizedBitmap.LockBits(
+                            new System.Drawing.Rectangle(0, 0, targetWidth, targetHeight),
+                            ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                        
+                        byte[] resultPixels = new byte[targetWidth * targetHeight * 4];
+                        Marshal.Copy(resultData.Scan0, resultPixels, 0, resultPixels.Length);
+                        resizedBitmap.UnlockBits(resultData);
+                        
+                        return resultPixels;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AddLogEntry($"Lanczosリサイズエラー: {ex.Message}");
                 throw;
             }
         }
@@ -539,16 +544,17 @@ namespace tagmane
                 // 2. 選択されたアルゴリズムでリサイズ
                 byte[] resizedPixels;
                 
-                if (_currentResizeMode == ResizeMode.Lanczos)
-                {
-                    AddLogEntry($"LANCZOSフィルタでリサイズ: {squareSize}x{squareSize} -> {_modelTargetSize}x{_modelTargetSize}");
-                    resizedPixels = LanczosResize.ResizeImage(
-                        squarePixels, squareSize, squareSize, _modelTargetSize, _modelTargetSize);
-                }
-                else // Bicubic
+                if (_currentResizeMode == ResizeMode.Bicubic)
                 {
                     AddLogEntry($"BICUBICフィルタでリサイズ: {squareSize}x{squareSize} -> {_modelTargetSize}x{_modelTargetSize}");
                     resizedPixels = ResizeWithBicubic(
+                        squarePixels, squareSize, squareSize, _modelTargetSize, _modelTargetSize);
+                }
+                else // Lanczos
+                {
+                    // 既存のLanczosResizerを使用
+                    AddLogEntry($"Lanczosフィルタでリサイズ: {squareSize}x{squareSize} -> {_modelTargetSize}x{_modelTargetSize}");
+                    resizedPixels = ResizeWithLanczosResizer(
                         squarePixels, squareSize, squareSize, _modelTargetSize, _modelTargetSize);
                 }
                 
@@ -574,7 +580,7 @@ namespace tagmane
                     }
                 }
                 
-                // サンプルログ出力（デバッグ用）
+                // テンソル統計をログ出力
                 float minVal = float.MaxValue;
                 float maxVal = float.MinValue;
                 foreach (var val in tensor.Buffer.Span)

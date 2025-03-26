@@ -26,7 +26,9 @@ namespace tagmane.Features.ImageProcessing
         public static Bitmap ResizeImage(Bitmap src, int newWidth, int newHeight, string resampleMode)
         {
             // リサンプルモードに応じてLanczosのパラメータを設定
-            int a = resampleMode == "Lanczos3" ? 3 : 2;
+            int a = resampleMode == "Lanczos3" ? 3 :
+                    resampleMode == "Lanczos2" ? 2 :
+                    1;
 
             // 元画像のサイズを保存
             int srcWidth = src.Width;
