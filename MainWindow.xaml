@@ -98,7 +98,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="2*"/>
-                <RowDefinition Height="1*"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/> <!-- オプション欄用 -->
                 <RowDefinition Height="Auto"/> <!-- 高度な削除用 -->
                 <RowDefinition Height="Auto"/> <!-- 画像編集用 -->
@@ -202,91 +202,106 @@
                            Opacity="0.7"/>
             </Grid>
             <Grid Grid.Row="2">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- 左側：画像情報 -->
-                <Grid Grid.Column="0" Margin="5,0,0,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Text="画像情報" 
-                               FontWeight="Bold" 
-                               Margin="0,5,0,5"
-                               Grid.Row="0"/>
-                    <Grid Grid.Row="1" Margin="0,5,0,0">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
+                <!-- 画像情報とテキストファイル内容のセクション全体を Expander で囲む -->
+                <Expander Grid.Row="2" Header="画像情報とテキストファイル内容" IsExpanded="False"> 
+                    <Grid Margin="5"> <!-- Expanderのコンテンツとして元のGridを入れる -->
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <!-- フルパス -->
-                        <TextBlock Text="フルパス:" 
-                                   Grid.Row="0" Grid.Column="0" 
-                                   Margin="0,2,5,2"
-                                   VerticalAlignment="Center"/>
-                        <TextBox x:Name="ImagePathTextBox"
-                                 Grid.Row="0" Grid.Column="1"
-                                 IsReadOnly="True"
-                                 TextWrapping="Wrap"
-                                 Margin="0,2"/>
+                        <!-- 左側：画像情報 (変更なし) -->
+                        <Grid Grid.Column="0" Margin="5,0,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/> <!-- TextBlock "画像情報" 用 -->
+                                <RowDefinition Height="*"/>   <!-- 実際の情報Grid用 -->
+                            </Grid.RowDefinitions>
+                            
+                            <!-- "画像情報" テキストブロックは Expander ヘッダーがあるので不要なら削除してもOK -->
+                            <!-- <TextBlock Text="画像情報" 
+                                       FontWeight="Bold" 
+                                       Margin="0,5,0,5"
+                                       Grid.Row="0"/> -->
+                                       
+                            <Grid Grid.Row="1" Margin="0,5,0,0"> <!-- インデックスを0から開始に変更 -->
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
 
-                        <!-- 拡張子 -->
-                        <TextBlock Text="拡張子:" 
-                                   Grid.Row="1" Grid.Column="0"
-                                   Margin="0,2,5,2"
-                                   VerticalAlignment="Center"/>
-                        <TextBox x:Name="ImageExtensionTextBox"
-                                 Grid.Row="1" Grid.Column="1"
-                                 IsReadOnly="True"
-                                 Margin="0,2"/>
+                                <!-- フルパス -->
+                                <TextBlock Text="フルパス:" 
+                                           Grid.Row="0" Grid.Column="0" 
+                                           Margin="0,2,5,2"
+                                           VerticalAlignment="Center"/>
+                                <TextBox x:Name="ImagePathTextBox"
+                                         Grid.Row="0" Grid.Column="1"
+                                         IsReadOnly="True"
+                                         TextWrapping="Wrap"
+                                         Margin="0,2"/>
 
-                        <!-- 横サイズ -->
-                        <TextBlock Text="横サイズ:" 
-                                   Grid.Row="2" Grid.Column="0"
-                                   Margin="0,2,5,2"
-                                   VerticalAlignment="Center"/>
-                        <TextBox x:Name="ImageWidthTextBox"
-                                 Grid.Row="2" Grid.Column="1"
-                                 IsReadOnly="True"
-                                 Margin="0,2"/>
+                                <!-- 拡張子 -->
+                                <TextBlock Text="拡張子:" 
+                                           Grid.Row="1" Grid.Column="0"
+                                           Margin="0,2,5,2"
+                                           VerticalAlignment="Center"/>
+                                <TextBox x:Name="ImageExtensionTextBox"
+                                         Grid.Row="1" Grid.Column="1"
+                                         IsReadOnly="True"
+                                         Margin="0,2"/>
 
-                        <!-- 縦サイズ -->
-                        <TextBlock Text="縦サイズ:" 
-                                   Grid.Row="3" Grid.Column="0"
-                                   Margin="0,2,5,2"
-                                   VerticalAlignment="Center"/>
-                        <TextBox x:Name="ImageHeightTextBox"
-                                 Grid.Row="3" Grid.Column="1"
-                                 IsReadOnly="True"
-                                 Margin="0,2"/>
+                                <!-- 横サイズ -->
+                                <TextBlock Text="横サイズ:" 
+                                           Grid.Row="2" Grid.Column="0"
+                                           Margin="0,2,5,2"
+                                           VerticalAlignment="Center"/>
+                                <TextBox x:Name="ImageWidthTextBox"
+                                         Grid.Row="2" Grid.Column="1"
+                                         IsReadOnly="True"
+                                         Margin="0,2"/>
 
-                        <!-- ファイルサイズ -->
-                        <TextBlock Text="ファイルサイズ:" 
-                                   Grid.Row="4" Grid.Column="0"
-                                   Margin="0,2,5,2"
-                                   VerticalAlignment="Center"/>
-                        <TextBox x:Name="ImageFileSizeTextBox"
-                                 Grid.Row="4" Grid.Column="1"
-                                 IsReadOnly="True"
-                                 Margin="0,2"/>
-                    </Grid>
-                </Grid>
+                                <!-- 縦サイズ -->
+                                <TextBlock Text="縦サイズ:" 
+                                           Grid.Row="3" Grid.Column="0"
+                                           Margin="0,2,5,2"
+                                           VerticalAlignment="Center"/>
+                                <TextBox x:Name="ImageHeightTextBox"
+                                         Grid.Row="3" Grid.Column="1"
+                                         IsReadOnly="True"
+                                         Margin="0,2"/>
 
-                <!-- 左側：テキストファイル内容 -->
-                <Grid Grid.Column="1">
-                    <TextBox x:Name="AssociatedText" IsReadOnly="True" TextWrapping="Wrap"/>
-                </Grid>
+                                <!-- ファイルサイズ -->
+                                <TextBlock Text="ファイルサイズ:" 
+                                           Grid.Row="4" Grid.Column="0"
+                                           Margin="0,2,5,2"
+                                           VerticalAlignment="Center"/>
+                                <TextBox x:Name="ImageFileSizeTextBox"
+                                         Grid.Row="4" Grid.Column="1"
+                                         IsReadOnly="True"
+                                         Margin="0,2"/>
+                            </Grid>
+                        </Grid>
+
+                        <!-- 右側：テキストファイル内容 (変更なし) -->
+                        <Grid Grid.Column="1">
+                            <!-- テキストファイル内容のヘッダーを追加する場合 -->
+                            <!-- <TextBlock Text="テキストファイル内容" FontWeight="Bold" Margin="5,5,0,5"/> -->
+                            <TextBox x:Name="AssociatedText" 
+                                     IsReadOnly="True" 
+                                     TextWrapping="Wrap" 
+                                     Margin="5,0,0,0" 
+                                     VerticalScrollBarVisibility="Auto" 
+                                     AcceptsReturn="True"/> 
+                        </Grid>
+                    </Grid> <!-- ExpanderコンテンツのGrid終了 -->
+                </Expander> <!-- Expander終了 -->
             </Grid>
             
             <!-- オプション欄 -->

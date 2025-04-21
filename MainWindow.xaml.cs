@@ -4273,16 +4273,52 @@ namespace tagmane
 
         private BitmapImage LoadImageForVLMPrediction(string imagePath)
         {
-            // var bitmap = new BitmapImage();
-            // bitmap.BeginInit();
-            // bitmap.UriSource = new Uri(imagePath);
-            // // bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            // bitmap.EndInit();
-            // bitmap.Freeze(); // UIスレッド以外でも使用可能にする/
+            try
+            {
+                byte[] imageData;
+                using (FileStream fs = new FileStream(imagePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    imageData = new byte[fs.Length];
+                    // ファイル読み込みをより堅牢に (オプション)
+                    int totalBytesRead = 0;
+                    while(totalBytesRead < fs.Length)
+                    {
+                        int bytesRead = fs.Read(imageData, totalBytesRead, (int)fs.Length - totalBytesRead);
+                        if (bytesRead == 0) break; // 予期せぬストリーム終端
+                        totalBytesRead += bytesRead;
+                    }
+                     if (totalBytesRead != fs.Length) {
+                         Dispatcher.Invoke(() => AddMainLogEntry($"{DateTime.Now:HH:mm:ss} - Warning: Incomplete read for image {imagePath}"));
+                     }
+                }
 
-            var bitmap = new BitmapImage(new Uri(imagePath));
-            bitmap.Freeze();
-            return bitmap;
+                using (MemoryStream ms = new MemoryStream(imageData))
+                {
+                    BitmapImage bitmapImage = new BitmapImage();
+                    bitmapImage.BeginInit();
+                    // ★ PreservePixelFormat を削除し、IgnoreColorProfile のみ残す
+                    bitmapImage.CreateOptions = BitmapCreateOptions.IgnoreColorProfile; 
+                    bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmapImage.StreamSource = ms;
+                    bitmapImage.EndInit(); // ★ ここでまだエラーが出るか？
+                    bitmapImage.Freeze();
+                    return bitmapImage;
+                }
+            }
+            catch (NotSupportedException nsex) // 特定の例外をキャッチしてログ記録
+            {
+                 Dispatcher.Invoke(() => AddMainLogEntry($"{DateTime.Now:HH:mm:ss} - NotSupportedException loading image {imagePath}: {nsex.Message}"));
+                 return null; // 問題のある画像はスキップする？
+            }
+            catch (Exception ex)
+            {
+                // ★ エラー発生時のファイルパスを確実にログ記録
+                Dispatcher.Invoke(() => AddMainLogEntry($"{DateTime.Now:HH:mm:ss} - Exception loading image {imagePath}: {ex.GetType().Name} - {ex.Message}"));
+                // デバッグ用にスタックトレースも記録すると役立つ場合がある
+                // Dispatcher.Invoke(() => LogEntries.Insert(0, $"Stack Trace: {ex.StackTrace}")); 
+                // return null; // スキップする場合
+                throw; // エラーで処理を中断する場合
+            }
         }
 
         private void ProcessPredictedTags(ImageInfo imageInfo, List<string> predictedTags)
@@ -5172,6 +5208,50 @@ namespace tagmane
             {
                 AddMainLogEntry("娘データセットの作成と保存が完了しました。");
             }
+        }
+
+        // LoadAllBitmapImagesAsync の修正（同時実行数をさらに制限するテスト）
+        private async Task LoadAllBitmapImagesAsync(List<string> imagePaths)
+        {
+            // ★ 同時実行数をさらに減らしてテスト (例: 2)
+            int maxConcurrency = 2; 
+            // 必要なら MainWindow にログ追加用のメソッドを用意
+            // AddLogToMainWindow($"Using max concurrency: {maxConcurrency}"); 
+            var semaphore = new SemaphoreSlim(maxConcurrency);
+            var loadedBitmaps = new List<BitmapImage>(); // 結果を収集する場合
+
+            var tasks = imagePaths.Select(async imagePath =>
+            {
+                await semaphore.WaitAsync(); 
+                BitmapImage bitmap = null; // 初期化
+                try
+                {
+                    // Task.Run 内で LoadImageForVLMPrediction を呼び出す
+                    bitmap = await Task.Run(() => LoadImageForVLMPrediction(imagePath));
+                }
+                // LoadImageForVLMPrediction が null を返す可能性がある場合や、
+                // Task 内で別の例外が発生する場合に備える (オプション)
+                // catch (Exception taskEx) {
+                //     AddLogToMainWindow($"Task Exception for {imagePath}: {taskEx.Message}");
+                // }
+                finally
+                {
+                    semaphore.Release(); 
+                }
+                return bitmap; // 成功した場合は BitmapImage、失敗(null返却)なら null
+            }).ToList();
+
+            // すべてのタスク完了を待機
+            var results = await Task.WhenAll(tasks); 
+
+            // null でない結果のみを処理
+            foreach (var bmp in results.Where(b => b != null))
+            {
+                // 正常に読み込めた BitmapImage に対する処理
+                // (例: UIコレクションに追加。Dispatcher.Invoke を忘れずに)
+                // Dispatcher.Invoke(() => YourBitmapCollection.Add(bmp)); 
+            }
+            // AddLogToMainWindow("Finished loading all images.");
         }
     }
 }
