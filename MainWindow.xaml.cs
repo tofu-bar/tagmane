@@ -871,21 +871,32 @@ namespace tagmane
                         {
                             string fileName = Path.GetFileName(imageInfo.ImagePath);
                             string newImagePath = Path.Combine(dialog.FileName, fileName);
-                            string tagFilePath = Path.ChangeExtension(imageInfo.ImagePath, ".txt");
-                            string newTagFilePath = Path.ChangeExtension(newImagePath, ".txt");
+                            string textTagFilePath = Path.ChangeExtension(imageInfo.ImagePath, ".txt");
+                            string jsonTagFilePath = Path.ChangeExtension(imageInfo.ImagePath, ".json");
+                            string newTextTagFilePath = Path.ChangeExtension(newImagePath, ".txt");
+                            string newJsonTagFilePath = Path.ChangeExtension(newImagePath, ".json");
 
                             // 画像を移動
                             File.Move(imageInfo.ImagePath, newImagePath);
 
                             // タグファイルが存在する場合は移動
-                            if (File.Exists(tagFilePath))
+                            if (File.Exists(textTagFilePath))
                             {
-                                File.Move(tagFilePath, newTagFilePath);
+                                File.Move(textTagFilePath, newTextTagFilePath);
+                            }
+                            else if (File.Exists(jsonTagFilePath))
+                            {
+                                File.Move(jsonTagFilePath, newJsonTagFilePath);
                             }
                             else // タグファイルが存在しない場合は作成
                             {
                                 SaveTagsToFile(imageInfo);
-                                File.Move(Path.ChangeExtension(imageInfo.ImagePath, ".txt"), newTagFilePath);
+                                // SaveTagsToFile内で適切なファイル名で保存されるため、移動は不要
+                                string createdPath = Path.ChangeExtension(imageInfo.ImagePath, ".txt");
+                                if (File.Exists(createdPath))
+                                {
+                                    File.Move(createdPath, newTextTagFilePath);
+                                }
                             }
 
                             // パスを更新
@@ -926,10 +937,51 @@ namespace tagmane
         // 画像のタグをファイルに保存
         private void SaveTagsToFile(ImageInfo imageInfo)
         {
-            string textFilePath = System.IO.Path.ChangeExtension(imageInfo.ImagePath, ".txt");
             var formattedTags = imageInfo.Tags.Select(FormatTag);
             string tagString = string.Join(", ", formattedTags);
             
+            // まず .json ファイルが存在するかチェック
+            string jsonFilePath = System.IO.Path.ChangeExtension(imageInfo.ImagePath, ".json");
+            if (File.Exists(jsonFilePath))
+            {
+                try
+                {
+                    // 既存のJSONファイルを読み込み、tagsフィールドのみ更新
+                    var jsonContent = File.ReadAllText(jsonFilePath);
+                    using var document = JsonDocument.Parse(jsonContent);
+                    var root = document.RootElement;
+                    
+                    var options = new JsonWriterOptions { Indented = true };
+                    using var stream = new MemoryStream();
+                    using var writer = new Utf8JsonWriter(stream, options);
+                    
+                    writer.WriteStartObject();
+                    foreach (var property in root.EnumerateObject())
+                    {
+                        if (property.Name == "tags")
+                        {
+                            writer.WriteString("tags", tagString);
+                        }
+                        else
+                        {
+                            property.WriteTo(writer);
+                        }
+                    }
+                    writer.WriteEndObject();
+                    writer.Flush();
+                    
+                    var updatedJson = System.Text.Encoding.UTF8.GetString(stream.ToArray());
+                    File.WriteAllText(jsonFilePath, updatedJson);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    AddMainLogEntry($"JSONファイルの更新に失敗、txtファイルとして保存します: {ex.Message}");
+                }
+            }
+            
+            // .json ファイルが存在しないか更新に失敗した場合、.txt ファイルに保存
+            string textFilePath = System.IO.Path.ChangeExtension(imageInfo.ImagePath, ".txt");
             try
             {
                 File.WriteAllText(textFilePath, tagString);
@@ -980,10 +1032,17 @@ namespace tagmane
                 {
                     File.Delete(selectedImage.ImagePath);
                 }
+                // .txt または .json ファイルを削除
                 string textFilePath = System.IO.Path.ChangeExtension(selectedImage.ImagePath, ".txt");
+                string jsonFilePath = System.IO.Path.ChangeExtension(selectedImage.ImagePath, ".json");
+                
                 if (File.Exists(textFilePath))
                 {
                     File.Delete(textFilePath);
+                }
+                else if (File.Exists(jsonFilePath))
+                {
+                    File.Delete(jsonFilePath);
                 }
 
                 // Undo/Redoスタックをクリア
@@ -1060,10 +1119,17 @@ namespace tagmane
                     {
                         File.Delete(imageInfo.ImagePath);
                     }
+                    // .txt または .json ファイルを削除
                     string textFilePath = System.IO.Path.ChangeExtension(imageInfo.ImagePath, ".txt");
+                    string jsonFilePath = System.IO.Path.ChangeExtension(imageInfo.ImagePath, ".json");
+                    
                     if (File.Exists(textFilePath))
                     {
                         File.Delete(textFilePath);
+                    }
+                    else if (File.Exists(jsonFilePath))
+                    {
+                        File.Delete(jsonFilePath);
                     }
 
                     _imageInfos.Remove(imageInfo);
@@ -1169,7 +1235,9 @@ namespace tagmane
                             if (relevantSize <= threshold)
                             {
                                 var txtFile = Path.ChangeExtension(imageFile, ".txt");
+                                var jsonFile = Path.ChangeExtension(imageFile, ".json");
                                 if (File.Exists(txtFile)) File.Delete(txtFile);
+                                if (File.Exists(jsonFile)) File.Delete(jsonFile);
                                 File.Delete(imageFile);
                                 deletedCount++;
                             }
@@ -1841,7 +1909,7 @@ namespace tagmane
                             AddMainLogEntry($"{addedTags.Count}個のタグを追加しました");
                         },
                         UndoAction = () =>
-                        {
+                        {   
                             foreach (var tagInfo in addedTags.OrderByDescending(t => t.Position))
                             {
                                 selectedImage.Tags.RemoveAt(tagInfo.Position);

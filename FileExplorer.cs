@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 
 namespace tagmane
 {
@@ -49,11 +50,36 @@ namespace tagmane
 
         private string GetAssociatedText(string imagePath)
         {
+            // まず .txt ファイルをチェック
             var textPath = Path.ChangeExtension(imagePath, ".txt");
             if (File.Exists(textPath))
             {
                 return File.ReadAllText(textPath);
             }
+            
+            // .txt が存在しない場合は .json をチェック
+            var jsonPath = Path.ChangeExtension(imagePath, ".json");
+            if (File.Exists(jsonPath))
+            {
+                try
+                {
+                    var jsonContent = File.ReadAllText(jsonPath);
+                    using var document = JsonDocument.Parse(jsonContent);
+                    if (document.RootElement.TryGetProperty("tags", out var tagsProperty))
+                    {
+                        return tagsProperty.GetString() ?? string.Empty;
+                    }
+                }
+                catch (JsonException)
+                {
+                    // JSON解析エラーの場合は空文字列を返す
+                }
+                catch (Exception)
+                {
+                    // その他のエラーの場合も空文字列を返す
+                }
+            }
+            
             return string.Empty;
         }
     }

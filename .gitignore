@@ -367,3 +367,5 @@ FodyWeavers.xsd
 # Windows Shortcut file
 *.lnk
 
+# claude AI
+.claude/
