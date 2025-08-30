@@ -914,7 +914,7 @@
                 </Grid.ColumnDefinitions>
                 
                 <!-- 選択されたタグ -->
-                <ListBox x:Name="SelectedTagsListBox" Grid.Column="0" IsEnabled="False"/>
+                <ListBox x:Name="SelectedTagsListBox" Grid.Column="0" SelectionMode="Multiple"/>
 
                 <!-- フィルタリングされているタグリスト -->
                 <ListBox x:Name="FilteredTagsListBox" Grid.Column="1" IsEnabled="False"/>

@@ -1955,7 +1955,7 @@ namespace tagmane
             var selectedImage = ImageListBox.SelectedItem as ImageInfo;
             if (selectedImage != null)
             {
-                var selectedTags = SelectedTagsListBox.Items.Cast<string>().ToList();
+                var selectedTags = SelectedTagsListBox.SelectedItems.Cast<string>().ToList();
                 var addedTags = new List<TagPositionInfo>();
 
                 foreach (var tag in selectedTags)
