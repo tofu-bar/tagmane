@@ -1,0 +1,14 @@
+{
+  "general": 1,
+  "sensitive": 1,
+  "questionable": 1,
+  "explicit": 1,
+  "rating:general": 1,
+  "rating:sensitive": 1,
+  "rating:questionable": 1,
+  "rating:explicit": 1,
+  "rating:safe": 1,
+  "safe": 1,
+  "nsfw": 1,
+  "sfw": 1
+}

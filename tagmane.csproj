@@ -127,6 +127,15 @@
     <Content Include="tagcount\Meta.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+    <Content Include="tagcount\Model.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="tagcount\Quality.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="tagcount\Rating.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <Content Include="tagcount_custom\Face.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>

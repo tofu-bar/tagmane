@@ -97,11 +97,14 @@ namespace tagmane
         private const double DefaultCharacterThreshold = 0.85;
 
         private static readonly string[] DefaultCategoryFiles = {
-            "tagcount/General.json",
-            "tagcount/Copyright.json",
-            "tagcount/Artist.json",
+            "tagcount/Rating.json",
+            "tagcount/Quality.json",
+            "tagcount/Model.json",
+            "tagcount/Meta.json",
             "tagcount/Character.json",
-            "tagcount/Meta.json"
+            "tagcount/Artist.json",
+            "tagcount/Copyright.json",
+            "tagcount/General.json"
         };
         private static readonly string[] CustomCategoryFiles = {
             "tagcount_custom/ParsonCounts.json",
@@ -253,6 +256,9 @@ namespace tagmane
                 _suffixOrder = new List<string>();
 
                 LoadTagCategories();
+                
+                // デフォルトのカテゴリ順序を設定
+                SetDefaultCategoryOrder();
 
                 _isInitializeSuccess = true;
 
@@ -4550,6 +4556,32 @@ namespace tagmane
             _customTagCategories = LoadCategoriesFromFiles(CustomCategoryFiles);
 
             UpdateTagCategories();
+        }
+        
+        private void SetDefaultCategoryOrder()
+        {
+            // デフォルトのカテゴリ順序を設定（一般的なタグ順序に従って）
+            var defaultPrefixOrder = new List<string> { "Quality", "Rating", "General" };
+            var defaultSuffixOrder = new List<string> { "Character", "Copyright", "Artist", "Model", "Meta" };
+            
+            // 既存のカテゴリのみを追加
+            foreach (var category in defaultPrefixOrder)
+            {
+                if (_tagCategories.ContainsKey(category) && !_prefixOrder.Contains(category))
+                {
+                    _prefixOrder.Add(category);
+                }
+            }
+            
+            foreach (var category in defaultSuffixOrder)
+            {
+                if (_tagCategories.ContainsKey(category) && !_suffixOrder.Contains(category))
+                {
+                    _suffixOrder.Add(category);
+                }
+            }
+            
+            AddMainLogEntry($"デフォルトカテゴリ順序を設定: Prefix({string.Join(", ", _prefixOrder)}), Suffix({string.Join(", ", _suffixOrder)})");
         }
 
         private Dictionary<string, TagCategory> LoadCategoriesFromFiles(string[] files)
