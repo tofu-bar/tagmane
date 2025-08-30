@@ -72,6 +72,11 @@ namespace tagmane
 
         private Stack<ITagAction> _undoStack = new Stack<ITagAction>();
         private Stack<ITagAction> _redoStack = new Stack<ITagAction>();
+        
+        // 検索最適化用キャッシュ
+        private List<string> _cachedDictionaryTags = null;
+        private System.Threading.Timer _searchDelayTimer = null;
+        private readonly object _searchLock = new object();
 
         private ObservableCollection<ActionLogItem> _actionLogItems;
         private const int MaxLogEntries = 20; // 100から20に変更
@@ -3686,7 +3691,15 @@ namespace tagmane
 
         private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            UpdateSearchedTagsListView();
+            // 遅延検索（300ms待機してから検索実行）
+            lock (_searchLock)
+            {
+                _searchDelayTimer?.Dispose();
+                _searchDelayTimer = new System.Threading.Timer(_ =>
+                {
+                    Dispatcher.Invoke(() => UpdateSearchedTagsListView());
+                }, null, 300, System.Threading.Timeout.Infinite);
+            }
         }
 
         private void SearchTargetComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -3707,7 +3720,11 @@ namespace tagmane
             string searchText = SearchTextBox.Text.ToLower();
             SearchedTagsListView.SelectionChanged -= SearchedTagsListView_SelectionChanged;
 
-            if (!string.IsNullOrEmpty(searchText))
+            // 辞書検索の場合は最小2文字から検索（パフォーマンス対策）
+            bool isDictionarySearch = SearchTargetComboBox.SelectedIndex == 2;
+            int minSearchLength = isDictionarySearch ? 2 : 1;
+
+            if (!string.IsNullOrEmpty(searchText) && searchText.Length >= minSearchLength)
             {
                 IEnumerable<string> searchSource;
                 switch (SearchTargetComboBox.SelectedIndex)
@@ -3718,10 +3735,8 @@ namespace tagmane
                     case 1: // OriginalImageTags
                         searchSource = _originalImageInfos?.SelectMany(info => info.Tags).Distinct() ?? Enumerable.Empty<string>();
                         break;
-                    case 2: // BooruTags
-                        searchSource = _tagCategories.Values
-                            .SelectMany(category => category.Tags.Keys)
-                            .Distinct();
+                    case 2: // BooruTags (Dictionary)
+                        searchSource = _cachedDictionaryTags ?? Enumerable.Empty<string>();
                         break;
                     default:
                         searchSource = Enumerable.Empty<string>();
@@ -3746,11 +3761,19 @@ namespace tagmane
                         break;
                 }
 
-                var matchingTags = searchSource
-                    .Where(matchPredicate)
-                    .OrderBy(tag => tag)
-                    .Take(100)
-                    .ToList();
+                // 並列処理でパフォーマンス向上（大規模データセットの場合）
+                var matchingTags = isDictionarySearch && _cachedDictionaryTags?.Count > 10000
+                    ? searchSource.AsParallel()
+                        .Where(matchPredicate)
+                        .Take(200)  // 並列処理では少し多めに取得
+                        .OrderBy(tag => tag)
+                        .Take(100)
+                        .ToList()
+                    : searchSource
+                        .Where(matchPredicate)
+                        .OrderBy(tag => tag)
+                        .Take(100)
+                        .ToList();
 
                 AddDebugLogEntry($"matchingTags: {string.Join(", ", matchingTags)}");
 
@@ -4556,6 +4579,19 @@ namespace tagmane
             _customTagCategories = LoadCategoriesFromFiles(CustomCategoryFiles);
 
             UpdateTagCategories();
+            
+            // 辞書タグをキャッシュ（検索高速化のため）
+            InitializeDictionaryTagsCache();
+        }
+        
+        private void InitializeDictionaryTagsCache()
+        {
+            _cachedDictionaryTags = _tagCategories.Values
+                .SelectMany(category => category.Tags.Keys)
+                .Distinct()
+                .OrderBy(tag => tag)
+                .ToList();
+            AddMainLogEntry($"辞書タグキャッシュを初期化しました: {_cachedDictionaryTags.Count}個のタグ");
         }
         
         private void SetDefaultCategoryOrder()
