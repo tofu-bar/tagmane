@@ -18,6 +18,8 @@ using System.Text.RegularExpressions;
 using System.Diagnostics;
 using UMAP;
 using R3;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Collections.Concurrent;
 using Microsoft.ML.OnnxRuntime;  // Float16のため
 using Microsoft.ML.OnnxRuntime.Tensors;
@@ -66,7 +68,6 @@ namespace tagmane
         private Dictionary<string, int> _allTags;
         private bool _isUpdatingSelection = false;
 
-        private HashSet<string> _filterTags = new HashSet<string>();
         private HashSet<string> _selectedTags = new HashSet<string>();
         private HashSet<string> _currentImageTags = new HashSet<string>();
 
@@ -77,6 +78,10 @@ namespace tagmane
         private List<string> _cachedDictionaryTags = null;
         private System.Threading.Timer _searchDelayTimer = null;
         private readonly object _searchLock = new object();
+        
+        // 高度なフィルタリング
+        private ObservableCollection<FilterCondition> _filterConditions = new ObservableCollection<FilterCondition>();
+        public ObservableCollection<FilterCondition> FilterConditions => _filterConditions;
 
         private ObservableCollection<ActionLogItem> _actionLogItems;
         private const int MaxLogEntries = 20; // 100から20に変更
@@ -172,8 +177,6 @@ namespace tagmane
         }
 
         public ObservableCollection<string> Tags { get; set; }    
-        private enum FilterMode { Off, And, Or, Empty }
-        private FilterMode _currentFilterMode = FilterMode.Off;
         private enum ClusterMode { Off, CSD }
         private ClusterMode _currentClusterMode = ClusterMode.Off;
 
@@ -266,6 +269,9 @@ namespace tagmane
                 SetDefaultCategoryOrder();
 
                 _isInitializeSuccess = true;
+                
+                // フィルタ条件の初期化
+                FilterConditionsListView.DataContext = this;
 
                 StartLogProcessing(); // ログ処理を開始
 
@@ -377,7 +383,7 @@ namespace tagmane
                         e.Handled = true;
                         break;
                     case Key.F:
-                        FilterImageButton_Click(null, null); // 画像をフィルタリング
+                        // フィルタ機能は新しい高度フィルタに置き換えられました
                         e.Handled = true;
                         break;
                     case Key.H:
@@ -614,7 +620,6 @@ namespace tagmane
                     UpdateTagListView();
                     UpdateAllTagsListView();
                     UpdateSelectedTagsListBox();
-                    UpdateFilteredTagsListBox();
                     UpdateSearchedTagsListView();
                     UpdateButtonStates();
                 }
@@ -769,7 +774,7 @@ namespace tagmane
                 _umapEmbeddings = null;
                 UpdateClusterGroupComboBox(0);
 
-                resetFilter(updateUI: false);
+                // 古いフィルタ機能は削除されました
                 
                 // Undo/Redoスタックをクリア
                 _undoStack.Clear();
@@ -2588,110 +2593,8 @@ namespace tagmane
             }
         }
 
-        // フィルタリング
-        private void FilterImageButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (_originalImageInfos == null || _originalImageInfos.Count == 0)
-            {
-                AddMainLogEntry("画像が読み込まれていません。");
-                return;
-            }
-            
-            switch (_currentFilterMode)
-            {
-                case FilterMode.Off:
-                    _currentFilterMode = FilterMode.And;
-                    _filterTags = _selectedTags;
-                    if (_currentClusterMode == ClusterMode.CSD)
-                    {
-                        _imageInfos = _clusteredImageInfos.Where(image => _filterTags.All(tag => image.Tags.Contains(tag))).ToList();
-                    }
-                    else
-                    {
-                        _imageInfos = _originalImageInfos.Where(image => _filterTags.All(tag => image.Tags.Contains(tag))).ToList();
-                    }
-                    break;
-                case FilterMode.And:
-                    _currentFilterMode = FilterMode.Or;
-                    _filterTags = _selectedTags;
-                    if (_currentClusterMode == ClusterMode.CSD)
-                    {
-                        _imageInfos = _clusteredImageInfos.Where(image => image.Tags.Any(tag => _filterTags.Contains(tag))).ToList();
-                    }
-                    else
-                    {
-                        _imageInfos = _originalImageInfos.Where(image => image.Tags.Any(tag => _filterTags.Contains(tag))).ToList();
-                    }
-                    break;
-                case FilterMode.Or:
-                    _currentFilterMode = FilterMode.Empty;
-                    _filterTags = new HashSet<string>();
-                    if (_currentClusterMode == ClusterMode.CSD)
-                    {
-                        _imageInfos = _clusteredImageInfos.Where(image => image.Tags.Count == 0).ToList();
-                    }
-                    else
-                    {
-                        _imageInfos = _originalImageInfos.Where(image => image.Tags.Count == 0).ToList();
-                    }
-                    break;
-                case FilterMode.Empty:
-                    _currentFilterMode = FilterMode.Off;
-                    _filterTags = new HashSet<string>();
-                    if (_currentClusterMode == ClusterMode.CSD)
-                    {
-                        _imageInfos = new List<ImageInfo>(_clusteredImageInfos);
-                    }
-                    else
-                    {
-                        _imageInfos = new List<ImageInfo>(_originalImageInfos);
-                    }
-                    break;
-            }
-            
-            UpdateImageList();
-            UpdateAllTags();
-            UpdateFilteredTagsListBox();
-            UpdateFilterButton();
-        }
 
-        private void UpdateFilterButton()
-        {
-            var filterButton = (Button)FindName("FilterImageButton");
-            switch (_currentFilterMode)
-            {
-                case FilterMode.Off:
-                    filterButton.Content = new WindowsImage { Source = new BitmapImage(new Uri("/icon/filter.png", UriKind.Relative)), Width = 32, Height = 32 };
-                    filterButton.ToolTip = "フィルタリング: オフ";
-                    break;
-                case FilterMode.And:
-                    filterButton.Content = new WindowsImage { Source = new BitmapImage(new Uri("/icon/and.png", UriKind.Relative)), Width = 32, Height = 32 };
-                    filterButton.ToolTip = "フィルタリング: AND";
-                    break;
-                case FilterMode.Or:
-                    filterButton.Content = new WindowsImage { Source = new BitmapImage(new Uri("/icon/or.png", UriKind.Relative)), Width = 32, Height = 32 };
-                    filterButton.ToolTip = "フィルタリング: OR";
-                    break;
-                case FilterMode.Empty:
-                    filterButton.Content = new WindowsImage { Source = new BitmapImage(new Uri("/icon/empty.png", UriKind.Relative)), Width = 32, Height = 32 };
-                    filterButton.ToolTip = "フィルタリング: Empty";
-                    break;
-            }
-        }
 
-        private void resetFilter(bool updateUI = true)
-        {
-            _currentFilterMode = FilterMode.Off;
-            _filterTags = new HashSet<string>();
-            _imageInfos = new List<ImageInfo>(_originalImageInfos);
-            if (updateUI)
-            {
-                UpdateImageList();
-                UpdateAllTags();
-                UpdateFilteredTagsListBox();
-                UpdateFilterButton();
-            }
-        }
 
         // ボタンエリア:特殊処理
         private void ReplaceTagButton_Click(object sender, RoutedEventArgs e)
@@ -2993,7 +2896,9 @@ namespace tagmane
             { 
                 _currentClusterMode = ClusterMode.Off;
                 _clusteredImageInfos = null;
-                resetFilter();
+                // 古いフィルタ機能は削除されました
+                _imageInfos = new List<ImageInfo>(_originalImageInfos);
+                UpdateImageList();
                 AddMainLogEntry("クラスタリングを解除しました。");
                 return;
             }
@@ -3552,11 +3457,10 @@ namespace tagmane
             AddMainLogEntry($"選択されたクラスターに属する画像の数: {filteredImageIndices.Count}");
 
             _currentClusterMode = ClusterMode.CSD;
-            _currentFilterMode = FilterMode.Off;
 
             AddDebugLogEntry($"_clusterAssignments: {string.Join(", ", _clusterAssignments)}");
 
-            resetFilter(updateUI: false);
+            // 古いフィルタ機能は削除されました
 
             // _imageInfosをfilteredImageIndicesにフィルター
             _clusteredImageInfos = filteredImageIndices.Select(index => _originalImageInfos[index]).ToList();
@@ -3564,8 +3468,6 @@ namespace tagmane
 
             UpdateImageList();
             UpdateUIAfterTagsChange();
-            UpdateFilteredTagsListBox();
-            UpdateFilterButton();
         }
 
         // 右ペイン3: ユーザー入力タグの追加
@@ -3828,11 +3730,6 @@ namespace tagmane
             SelectedTagsListBox.ItemsSource = _selectedTags.ToList();
         }
 
-        // フィルターするタグリストの更新
-        private void UpdateFilteredTagsListBox()
-        {
-            FilteredTagsListBox.ItemsSource = _filterTags.ToList();
-        }
 
         /*
         ドラッグアンドドロップ関連の操作
@@ -5457,5 +5354,296 @@ namespace tagmane
             }
             // AddLogToMainWindow("Finished loading all images.");
         }
+        
+        #region 高度なフィルタリング機能
+        
+        private void AddTagFilterConditionButton_Click(object sender, RoutedEventArgs e)
+        {
+            foreach (var selectedTag in _selectedTags)
+            {
+                // 既に存在しない場合のみ追加
+                if (!_filterConditions.Any(c => c.Tag == selectedTag && c.TargetType == FilterTargetType.Tag))
+                {
+                    _filterConditions.Add(new FilterCondition
+                    {
+                        Tag = selectedTag,
+                        ConditionType = FilterConditionType.Contains,
+                        LogicType = FilterLogicType.And,
+                        TargetType = FilterTargetType.Tag
+                    });
+                }
+            }
+            
+            if (_selectedTags.Count > 0)
+            {
+                AddMainLogEntry($"{_selectedTags.Count}個のタグをフィルタ条件に追加しました");
+            }
+            else
+            {
+                AddMainLogEntry("追加するタグが選択されていません");
+            }
+        }
+        
+        private void AddCategoryFilterConditionButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (CategoryFilterComboBox.SelectedItem is ComboBoxItem selectedItem)
+            {
+                string categoryName = selectedItem.Content.ToString();
+                
+                // 既に存在しない場合のみ追加
+                if (!_filterConditions.Any(c => c.Tag == categoryName && c.TargetType == FilterTargetType.Category))
+                {
+                    _filterConditions.Add(new FilterCondition
+                    {
+                        Tag = categoryName,
+                        ConditionType = FilterConditionType.HasCategory,
+                        LogicType = FilterLogicType.And,
+                        TargetType = FilterTargetType.Category
+                    });
+                    
+                    AddMainLogEntry($"カテゴリ「{categoryName}」をフィルタ条件に追加しました");
+                }
+                else
+                {
+                    AddMainLogEntry($"カテゴリ「{categoryName}」は既に条件に追加されています");
+                }
+            }
+        }
+        
+        private void ClearFilterConditionsButton_Click(object sender, RoutedEventArgs e)
+        {
+            _filterConditions.Clear();
+            AddMainLogEntry("フィルタ条件をクリアしました");
+            FilterResultTextBlock.Text = "";
+        }
+        
+        private void RemoveFilterConditionButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (e.Source is Button button && button.CommandParameter is FilterCondition condition)
+            {
+                _filterConditions.Remove(condition);
+                AddMainLogEntry($"フィルタ条件「{condition.Tag}」を削除しました");
+            }
+        }
+        
+        private void ConditionTypeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (sender is ComboBox comboBox && comboBox.Tag is FilterCondition condition)
+            {
+                condition.ConditionType = (FilterConditionType)comboBox.SelectedIndex;
+            }
+        }
+        
+        // ComboBox初期化時のSelectedIndexを設定するためのイベントハンドラー
+        private void ConditionTypeComboBox_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is ComboBox comboBox && comboBox.Tag is FilterCondition condition)
+            {
+                comboBox.SelectedIndex = (int)condition.ConditionType;
+                
+                // カテゴリ条件の場合は、タグ用の選択肢を無効化
+                if (condition.TargetType == FilterTargetType.Category)
+                {
+                    if (comboBox.Items[0] is ComboBoxItem item0) item0.IsEnabled = false; // "含む"
+                    if (comboBox.Items[1] is ComboBoxItem item1) item1.IsEnabled = false; // "含まない"
+                }
+                else // タグ条件の場合
+                {
+                    if (comboBox.Items[2] is ComboBoxItem item2) item2.IsEnabled = false; // "カテゴリあり"
+                    if (comboBox.Items[3] is ComboBoxItem item3) item3.IsEnabled = false; // "カテゴリなし"
+                }
+            }
+        }
+        
+        private void LogicTypeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (sender is ComboBox comboBox && comboBox.Tag is FilterCondition condition)
+            {
+                condition.LogicType = (FilterLogicType)comboBox.SelectedIndex;
+            }
+        }
+        
+        private void ApplyAdvancedFilterButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_originalImageInfos == null || _originalImageInfos.Count == 0)
+            {
+                AddMainLogEntry("対象の画像がありません");
+                return;
+            }
+            
+            if (_filterConditions.Count == 0)
+            {
+                AddMainLogEntry("フィルタ条件が設定されていません");
+                return;
+            }
+            
+            var filteredImages = ApplyAdvancedFilter(_originalImageInfos);
+            _imageInfos = filteredImages.ToList();
+            
+            FilterResultTextBlock.Text = $"{_imageInfos.Count}/{_originalImageInfos.Count} 件";
+            AddMainLogEntry($"高度フィルタを適用しました: {_imageInfos.Count}件が条件に一致");
+            
+            UpdateUIAfterImageInfosChange();
+        }
+        
+        private void ResetAdvancedFilterButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_originalImageInfos != null)
+            {
+                _imageInfos = new List<ImageInfo>(_originalImageInfos);
+                FilterResultTextBlock.Text = "";
+                AddMainLogEntry("フィルタを解除しました");
+                UpdateUIAfterImageInfosChange();
+            }
+        }
+        
+        private IEnumerable<ImageInfo> ApplyAdvancedFilter(IEnumerable<ImageInfo> images)
+        {
+            if (_filterConditions.Count == 0)
+                return images;
+            
+            return images.Where(image =>
+            {
+                var andConditions = _filterConditions.Where(c => c.LogicType == FilterLogicType.And).ToList();
+                var orConditions = _filterConditions.Where(c => c.LogicType == FilterLogicType.Or).ToList();
+                
+                bool andResult = true;
+                bool orResult = orConditions.Count == 0; // OR条件がない場合はtrue
+                
+                // AND条件の評価（すべて満たす必要がある）
+                foreach (var condition in andConditions)
+                {
+                    bool conditionMet = EvaluateFilterCondition(image, condition);
+                    
+                    if (!conditionMet)
+                    {
+                        andResult = false;
+                        break;
+                    }
+                }
+                
+                // OR条件の評価（いずれかを満たせばよい）
+                foreach (var condition in orConditions)
+                {
+                    bool conditionMet = EvaluateFilterCondition(image, condition);
+                    
+                    if (conditionMet)
+                    {
+                        orResult = true;
+                        break;
+                    }
+                }
+                
+                return andResult && orResult;
+            });
+        }
+        
+        private bool EvaluateFilterCondition(ImageInfo image, FilterCondition condition)
+        {
+            switch (condition.TargetType)
+            {
+                case FilterTargetType.Tag:
+                    bool hasTag = image.Tags.Contains(condition.Tag);
+                    switch (condition.ConditionType)
+                    {
+                        case FilterConditionType.Contains:
+                            return hasTag;
+                        case FilterConditionType.NotContains:
+                            return !hasTag;
+                        default:
+                            return false;
+                    }
+                
+                case FilterTargetType.Category:
+                    bool hasCategoryTag = HasCategoryTag(image, condition.Tag);
+                    switch (condition.ConditionType)
+                    {
+                        case FilterConditionType.HasCategory:
+                            return hasCategoryTag;
+                        case FilterConditionType.NoCategory:
+                            return !hasCategoryTag;
+                        default:
+                            return false;
+                    }
+                
+                default:
+                    return false;
+            }
+        }
+        
+        private bool HasCategoryTag(ImageInfo image, string categoryName)
+        {
+            // 画像のタグをそれぞれ調べて、指定されたカテゴリのタグが含まれているかチェック
+            foreach (var tag in image.Tags)
+            {
+                string tagCategory = GetTagCategory(tag);
+                if (string.Equals(tagCategory, categoryName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        #endregion
+    }
+
+    // フィルタ条件クラス
+    public class FilterCondition : INotifyPropertyChanged
+    {
+        private string _tag;
+        private FilterConditionType _conditionType;
+        private FilterLogicType _logicType;
+        private FilterTargetType _targetType;
+
+        public string Tag
+        {
+            get => _tag;
+            set { _tag = value; OnPropertyChanged(); }
+        }
+
+        public FilterConditionType ConditionType
+        {
+            get => _conditionType;
+            set { _conditionType = value; OnPropertyChanged(); }
+        }
+
+        public FilterLogicType LogicType
+        {
+            get => _logicType;
+            set { _logicType = value; OnPropertyChanged(); }
+        }
+
+        public FilterTargetType TargetType
+        {
+            get => _targetType;
+            set { _targetType = value; OnPropertyChanged(); }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected void OnPropertyChanged([CallerMemberName] string name = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        }
+    }
+
+    public enum FilterConditionType
+    {
+        Contains,        // 含む
+        NotContains,     // 含まない
+        HasCategory,     // カテゴリのタグがある
+        NoCategory       // カテゴリのタグがない
+    }
+
+    public enum FilterTargetType
+    {
+        Tag,        // 個別タグ
+        Category    // カテゴリ
+    }
+
+    public enum FilterLogicType
+    {
+        And, // AND条件
+        Or   // OR条件
     }
 }

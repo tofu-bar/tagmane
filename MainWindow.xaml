@@ -18,6 +18,7 @@
             <ColumnDefinition Width="1*"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="1*"/>
+            <ColumnDefinition Width="1*"/>  <!-- フィルタ条件パネル -->
         </Grid.ColumnDefinitions>
 
         <!-- 左ペイン -->
@@ -740,15 +741,7 @@
         </Grid>
 
         <!-- 新しい列：ボタン配置用 -->
-        <StackPanel Grid.Column="4" Orientation="Vertical">
-            <Button x:Name="FilterImageButton" Click="FilterImageButton_Click" Margin="0,32,0,0">
-                <Button.Content>
-                    <Image Source="/icon/filter.png" Width="32" Height="32"/>
-                </Button.Content>
-                <Button.ToolTip>
-                    <TextBlock Text="画像をフィルタリング(Ctrl+F)"/>
-                </Button.ToolTip>
-            </Button>   
+        <StackPanel Grid.Column="4" Orientation="Vertical">   
             <Button x:Name="ReplaceTagButton" Click="ReplaceTagButton_Click">
                 <Button.Content>
                     <Image Source="/icon/replace.png" Width="32" Height="32"/>
@@ -907,18 +900,8 @@
             </ListView>
 
             <!-- 選択されたタグとフィルタリングされているタグを横に並べる -->
-            <Grid Grid.Row="9">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                
-                <!-- 選択されたタグ -->
-                <ListBox x:Name="SelectedTagsListBox" Grid.Column="0" SelectionMode="Multiple"/>
-
-                <!-- フィルタリングされているタグリスト -->
-                <ListBox x:Name="FilteredTagsListBox" Grid.Column="1" IsEnabled="False"/>
-            </Grid>
+            <!-- 選択されたタグ -->
+            <ListBox x:Name="SelectedTagsListBox" Grid.Row="9" SelectionMode="Multiple"/>
 
             <!-- クラスター番号を選択するためのドロップダウンリスト-->
             <Grid Grid.Row="10">
@@ -939,5 +922,93 @@
             <Image x:Name="ClusteringVisualizationImage" Grid.Row="11" Width="Auto" Height="Auto" Margin="0"/>
 
         </Grid>
+
+        <!-- 右端：フィルタ条件パネル -->
+        <Grid Grid.Column="6">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>  <!-- ヘッダー -->
+                <RowDefinition Height="*"/>     <!-- 条件リスト -->
+                <RowDefinition Height="Auto"/>  <!-- コントロールボタン -->
+            </Grid.RowDefinitions>
+            
+            <!-- フィルタパネルヘッダー -->
+            <StackPanel Grid.Row="0" Background="#F0F0F0" Margin="5">
+                <TextBlock Text="フィルタ条件" FontWeight="Bold" HorizontalAlignment="Center" Margin="5"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Button x:Name="AddTagFilterConditionButton" Content="タグ＋" Width="40" Height="25" 
+                            Click="AddTagFilterConditionButton_Click" ToolTip="選択タグを条件に追加"/>
+                    <Button x:Name="AddCategoryFilterConditionButton" Content="カテゴリ＋" Width="55" Height="25" 
+                            Click="AddCategoryFilterConditionButton_Click" ToolTip="カテゴリを条件に追加" Margin="3,0,0,0"/>
+                    <Button x:Name="ClearFilterConditionsButton" Content="✕" Width="30" Height="25" 
+                            Click="ClearFilterConditionsButton_Click" ToolTip="条件をクリア" Margin="3,0,0,0"/>
+                </StackPanel>
+                <!-- カテゴリ選択用ComboBox -->
+                <ComboBox x:Name="CategoryFilterComboBox" Margin="5,3,5,0" Height="25" SelectedIndex="0">
+                    <ComboBoxItem Content="General"/>
+                    <ComboBoxItem Content="Character"/>
+                    <ComboBoxItem Content="Copyright"/>
+                    <ComboBoxItem Content="Artist"/>
+                    <ComboBoxItem Content="Rating"/>
+                    <ComboBoxItem Content="Quality"/>
+                    <ComboBoxItem Content="Model"/>
+                    <ComboBoxItem Content="Meta"/>
+                </ComboBox>
+            </StackPanel>
+            
+            <!-- フィルタ条件リスト -->
+            <ListView x:Name="FilterConditionsListView" Grid.Row="1" Margin="5"
+                      ItemsSource="{Binding FilterConditions}" 
+                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Border BorderBrush="Gray" BorderThickness="1" Margin="2" Padding="5" Background="White">
+                            <StackPanel>
+                                <!-- タグ名/カテゴリ名とタイプ表示 -->
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Tag}" FontWeight="Bold" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding TargetType, StringFormat='[{0}]'}" FontSize="10" 
+                                               Foreground="Gray" Margin="5,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                
+                                <!-- 条件選択 -->
+                                <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                    <ComboBox x:Name="ConditionTypeComboBox" Width="80"
+                                              SelectionChanged="ConditionTypeComboBox_SelectionChanged"
+                                              Loaded="ConditionTypeComboBox_Loaded"
+                                              Tag="{Binding}">
+                                        <ComboBoxItem Content="含む"/>
+                                        <ComboBoxItem Content="含まない"/>
+                                        <ComboBoxItem Content="カテゴリあり"/>
+                                        <ComboBoxItem Content="カテゴリなし"/>
+                                    </ComboBox>
+                                    <ComboBox Width="60" SelectedIndex="0" Margin="5,0,0,0"
+                                              SelectionChanged="LogicTypeComboBox_SelectionChanged"
+                                              Tag="{Binding}">
+                                        <ComboBoxItem Content="AND"/>
+                                        <ComboBoxItem Content="OR"/>
+                                    </ComboBox>
+                                </StackPanel>
+                                
+                                <!-- 削除ボタン -->
+                                <Button Content="削除" Width="50" Height="20" Margin="0,3,0,0"
+                                        Click="RemoveFilterConditionButton_Click"
+                                        CommandParameter="{Binding}"/>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+            
+            <!-- 実行ボタン -->
+            <StackPanel Grid.Row="2" Orientation="Vertical" Margin="5">
+                <Button x:Name="ApplyAdvancedFilterButton" Content="フィルタ実行" Height="30" 
+                        Click="ApplyAdvancedFilterButton_Click" Background="#4CAF50" Foreground="White"/>
+                <Button x:Name="ResetAdvancedFilterButton" Content="フィルタ解除" Height="25" Margin="0,3,0,0"
+                        Click="ResetAdvancedFilterButton_Click"/>
+                <TextBlock x:Name="FilterResultTextBlock" Text="" FontSize="10" Margin="0,5,0,0" 
+                           HorizontalAlignment="Center" Foreground="Gray"/>
+            </StackPanel>
+        </Grid>
+        
     </Grid>
 </Window>
