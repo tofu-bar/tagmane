@@ -23,7 +23,7 @@ namespace tagmane
                 await ((JoyPredictor)_currentPredictor).LoadModel(modelRepo, useGpu);
                 IsGpuLoaded = ((JoyPredictor)_currentPredictor).IsGpuLoaded;
             }
-            else if (modelRepo.Contains("celstk/wd-eva02-lora-onnx"))
+            else if (modelRepo.Contains("cella110n/cl_tagger"))
             {
                 _currentPredictor = new CelPredictor();
                 ((CelPredictor)_currentPredictor).LogUpdated += OnPredictorLogUpdated;

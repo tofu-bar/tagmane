@@ -35,10 +35,10 @@ namespace tagmane
         private int _modelTargetSize;
         private const int MaxLogEntries = 20;
 
-        private const string MODEL_FILENAME = "checkpoint_epoch_1_merged.onnx";
+        private const string MODEL_FILENAME = "model.onnx";
         private const string LABEL_FILENAME = "tag_mapping.json";
-        private const string MODEL_REPO = "celstk/wd-eva02-lora-onnx";
-        private const string MODEL_SUBDIR = "merged_model_0325_1ep_onnx";
+        private const string MODEL_REPO = "cella110n/cl_tagger";
+        private const string MODEL_SUBDIR = "cl_tagger_1_01";
 
         public ObservableCollection<string> VLMLogEntries { get; } = new ObservableCollection<string>();
         public event EventHandler<string> LogUpdated;
@@ -94,6 +94,8 @@ namespace tagmane
             
             bool needDownload = !File.Exists(jsonPath) || !File.Exists(modelPath);
             
+            // Hugging Face認証コード（オープンソース版を使用するため不要）
+            /*
             // ダウンロードが必要な場合のみトークンを要求
             if (needDownload && string.IsNullOrEmpty(hfToken))
             {
@@ -119,6 +121,7 @@ namespace tagmane
 
                 hfToken = tokenDialog.Token;
             }
+            */
 
             // 既存のモデルを使用するか、新たにダウンロード
             if (needDownload)
@@ -227,16 +230,20 @@ namespace tagmane
                 return (jsonPath, modelPath);
             }
 
+            // オープンソース版を使用するためトークンチェック不要
+            /*
             // トークンのチェック
             if (string.IsNullOrEmpty(hfToken))
             {
                 AddLogEntry("有効なトークンが提供されていません。ダウンロードをスキップします。");
                 throw new InvalidOperationException("有効なHuggingFaceトークンが必要です。");
             }
+            */
 
             using (var httpClient = new HttpClient())
             {
-                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", hfToken);
+                // オープンソース版を使用するため認証ヘッダー不要
+                // httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", hfToken);
                 string baseUrl = $"https://huggingface.co/{repo}/resolve/main/{MODEL_SUBDIR}/";
 
                 if (!File.Exists(jsonPath))
