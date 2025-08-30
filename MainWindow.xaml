@@ -88,6 +88,11 @@
                         <ComboBoxItem Content="aaaa_(bbbb)"/>
                     </ComboBox>
                 </StackPanel>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,5,0,0">
+                    <TextBlock Text="ファイル形式:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                    <CheckBox x:Name="SaveTxtFormatCheckBox" Content="TXT" IsChecked="True" Margin="0,0,10,0"/>
+                    <CheckBox x:Name="SaveJsonFormatCheckBox" Content="JSON" IsChecked="False"/>
+                </StackPanel>
                 <TextBlock x:Name="ImageCountDisplay" DockPanel.Dock="Bottom" Text="画像数: 0/0" Margin="5"/>
             </StackPanel>
             <ListBox x:Name="ImageListBox" SelectionChanged="ImageListBox_SelectionChanged"/>

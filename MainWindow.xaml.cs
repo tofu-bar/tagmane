@@ -890,12 +890,20 @@ namespace tagmane
                             }
                             else // タグファイルが存在しない場合は作成
                             {
+                                // まず古いパスで保存
                                 SaveTagsToFile(imageInfo);
-                                // SaveTagsToFile内で適切なファイル名で保存されるため、移動は不要
-                                string createdPath = Path.ChangeExtension(imageInfo.ImagePath, ".txt");
-                                if (File.Exists(createdPath))
+                                
+                                // 作成されたファイルを新しい場所に移動
+                                string createdTxtPath = Path.ChangeExtension(imageInfo.ImagePath, ".txt");
+                                string createdJsonPath = Path.ChangeExtension(imageInfo.ImagePath, ".json");
+                                
+                                if (File.Exists(createdTxtPath))
                                 {
-                                    File.Move(createdPath, newTextTagFilePath);
+                                    File.Move(createdTxtPath, newTextTagFilePath);
+                                }
+                                if (File.Exists(createdJsonPath))
+                                {
+                                    File.Move(createdJsonPath, newJsonTagFilePath);
                                 }
                             }
 
@@ -940,56 +948,116 @@ namespace tagmane
             var formattedTags = imageInfo.Tags.Select(FormatTag);
             string tagString = string.Join(", ", formattedTags);
             
-            // まず .json ファイルが存在するかチェック
+            bool saveTxt = SaveTxtFormatCheckBox.IsChecked ?? false;
+            bool saveJson = SaveJsonFormatCheckBox.IsChecked ?? false;
+            
+            string textFilePath = System.IO.Path.ChangeExtension(imageInfo.ImagePath, ".txt");
             string jsonFilePath = System.IO.Path.ChangeExtension(imageInfo.ImagePath, ".json");
-            if (File.Exists(jsonFilePath))
+            
+            bool txtExists = File.Exists(textFilePath);
+            bool jsonExists = File.Exists(jsonFilePath);
+            
+            // チェックボックスの設定に基づいて保存処理を実行
+            if (saveTxt)
             {
-                try
+                SaveToTxtFile(textFilePath, tagString);
+            }
+            
+            if (saveJson)
+            {
+                if (jsonExists)
                 {
-                    // 既存のJSONファイルを読み込み、tagsフィールドのみ更新
-                    var jsonContent = File.ReadAllText(jsonFilePath);
-                    using var document = JsonDocument.Parse(jsonContent);
-                    var root = document.RootElement;
-                    
-                    var options = new JsonWriterOptions { Indented = true };
-                    using var stream = new MemoryStream();
-                    using var writer = new Utf8JsonWriter(stream, options);
-                    
-                    writer.WriteStartObject();
-                    foreach (var property in root.EnumerateObject())
-                    {
-                        if (property.Name == "tags")
-                        {
-                            writer.WriteString("tags", tagString);
-                        }
-                        else
-                        {
-                            property.WriteTo(writer);
-                        }
-                    }
-                    writer.WriteEndObject();
-                    writer.Flush();
-                    
-                    var updatedJson = System.Text.Encoding.UTF8.GetString(stream.ToArray());
-                    File.WriteAllText(jsonFilePath, updatedJson);
-                    return;
+                    UpdateJsonFile(jsonFilePath, tagString);
                 }
-                catch (Exception ex)
+                else
                 {
-                    AddMainLogEntry($"JSONファイルの更新に失敗、txtファイルとして保存します: {ex.Message}");
+                    CreateJsonFile(jsonFilePath, tagString);
                 }
             }
             
-            // .json ファイルが存在しないか更新に失敗した場合、.txt ファイルに保存
-            string textFilePath = System.IO.Path.ChangeExtension(imageInfo.ImagePath, ".txt");
+            // どちらもチェックされていない場合は、既存のファイル形式に保存
+            if (!saveTxt && !saveJson)
+            {
+                if (jsonExists)
+                {
+                    UpdateJsonFile(jsonFilePath, tagString);
+                }
+                else if (txtExists)
+                {
+                    SaveToTxtFile(textFilePath, tagString);
+                }
+                else
+                {
+                    // どちらも存在しない場合はtxtファイルとして保存
+                    SaveToTxtFile(textFilePath, tagString);
+                }
+            }
+        }
+        
+        private void SaveToTxtFile(string filePath, string tagString)
+        {
             try
             {
-                File.WriteAllText(textFilePath, tagString);
+                File.WriteAllText(filePath, tagString);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"ファイルの保存中にエラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
-                AddMainLogEntry($"タグの保存に失敗: {System.IO.Path.GetFileName(imageInfo.ImagePath)} - {ex.Message}");
+                MessageBox.Show($"txtファイルの保存中にエラーが発生しました: {ex.Message}", "エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                AddMainLogEntry($"txtファイルの保存に失敗: {Path.GetFileName(filePath)} - {ex.Message}");
+            }
+        }
+        
+        private void UpdateJsonFile(string filePath, string tagString)
+        {
+            try
+            {
+                var jsonContent = File.ReadAllText(filePath);
+                using var document = JsonDocument.Parse(jsonContent);
+                var root = document.RootElement;
+                
+                var options = new JsonWriterOptions { Indented = true };
+                using var stream = new MemoryStream();
+                using var writer = new Utf8JsonWriter(stream, options);
+                
+                writer.WriteStartObject();
+                foreach (var property in root.EnumerateObject())
+                {
+                    if (property.Name == "tags")
+                    {
+                        writer.WriteString("tags", tagString);
+                    }
+                    else
+                    {
+                        property.WriteTo(writer);
+                    }
+                }
+                writer.WriteEndObject();
+                writer.Flush();
+                
+                var updatedJson = System.Text.Encoding.UTF8.GetString(stream.ToArray());
+                File.WriteAllText(filePath, updatedJson);
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"JSONファイルの更新に失敗: {Path.GetFileName(filePath)} - {ex.Message}");
+            }
+        }
+        
+        private void CreateJsonFile(string filePath, string tagString)
+        {
+            try
+            {
+                var jsonObject = new
+                {
+                    tags = tagString
+                };
+                var options = new JsonSerializerOptions { WriteIndented = true };
+                string jsonString = JsonSerializer.Serialize(jsonObject, options);
+                File.WriteAllText(filePath, jsonString);
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"JSONファイルの作成に失敗: {Path.GetFileName(filePath)} - {ex.Message}");
             }
         }
 
