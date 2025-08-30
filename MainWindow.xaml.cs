@@ -3716,7 +3716,7 @@ namespace tagmane
                         searchSource = _allTags.Keys;
                         break;
                     case 1: // OriginalImageTags
-                        searchSource = _imageInfos.SelectMany(info => info.Tags).Distinct();
+                        searchSource = _originalImageInfos?.SelectMany(info => info.Tags).Distinct() ?? Enumerable.Empty<string>();
                         break;
                     case 2: // BooruTags
                         searchSource = _tagCategories.Values

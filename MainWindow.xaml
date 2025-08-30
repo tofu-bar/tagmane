@@ -819,9 +819,9 @@
                     Opacity="0.7" Grid.Row="0" Grid.Column="2"/>
             <!-- 対象選択用ドロップダウンリスト -->
             <ComboBox x:Name="SearchTargetComboBox" Grid.Row="1" Margin="5" SelectedIndex="0">
-                <ComboBoxItem Content="AllTags"/>
-                <ComboBoxItem Content="OriginalImageTags"/>
-                <ComboBoxItem Content="BooruTags"/>
+                <ComboBoxItem Content="CurrentTags (現在表示中の画像のタグ)"/>
+                <ComboBoxItem Content="AllImageTags (全画像のタグ)"/>
+                <ComboBoxItem Content="Dictionary (タグ辞書)"/>
             </ComboBox>
 
             <!-- 検索オプション -->
