@@ -82,6 +82,12 @@ namespace tagmane
         // 高度なフィルタリング
         private ObservableCollection<FilterCondition> _filterConditions = new ObservableCollection<FilterCondition>();
         public ObservableCollection<FilterCondition> FilterConditions => _filterConditions;
+        
+        // タグ追加履歴管理
+        private LinkedList<string> _recentAddedTags = new LinkedList<string>();
+        private Dictionary<string, int> _tagFrequency = new Dictionary<string, int>();
+        private const int MaxRecentTags = 10;
+        private bool _isShowingTagHistory = false;
 
         private ObservableCollection<ActionLogItem> _actionLogItems;
         private const int MaxLogEntries = 20; // 100から20に変更
@@ -391,7 +397,73 @@ namespace tagmane
                         e.Handled = true;
                         break;
                     case Key.Enter:
-                        AddTextboxinputButton_Click(null, null); // 個別タグに追加
+                        if (Keyboard.Modifiers == ModifierKeys.Control)
+                        {
+                            AddTagAndMoveNext(); // タグ追加後、次画像へ
+                        }
+                        else if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+                        {
+                            AddTagAndMovePrevious(); // タグ追加後、前画像へ
+                        }
+                        else
+                        {
+                            AddTextboxinputButton_Click(null, null); // 個別タグに追加
+                        }
+                        e.Handled = true;
+                        break;
+                    case Key.OemQuestion: // "/" key
+                        SearchTextBox.Focus(); // 検索欄にフォーカス
+                        e.Handled = true;
+                        break;
+                    // Ctrl+0-9 で履歴から追加
+                    case Key.D0:
+                    case Key.NumPad0:
+                        AddRecentTag(0);
+                        e.Handled = true;
+                        break;
+                    case Key.D1:
+                    case Key.NumPad1:
+                        AddRecentTag(1);
+                        e.Handled = true;
+                        break;
+                    case Key.D2:
+                    case Key.NumPad2:
+                        AddRecentTag(2);
+                        e.Handled = true;
+                        break;
+                    case Key.D3:
+                    case Key.NumPad3:
+                        AddRecentTag(3);
+                        e.Handled = true;
+                        break;
+                    case Key.D4:
+                    case Key.NumPad4:
+                        AddRecentTag(4);
+                        e.Handled = true;
+                        break;
+                    case Key.D5:
+                    case Key.NumPad5:
+                        AddRecentTag(5);
+                        e.Handled = true;
+                        break;
+                    case Key.D6:
+                    case Key.NumPad6:
+                        AddRecentTag(6);
+                        e.Handled = true;
+                        break;
+                    case Key.D7:
+                    case Key.NumPad7:
+                        AddRecentTag(7);
+                        e.Handled = true;
+                        break;
+                    case Key.D8:
+                    case Key.NumPad8:
+                        AddRecentTag(8);
+                        e.Handled = true;
+                        break;
+                    case Key.D9:
+                    case Key.NumPad9:
+                        AddRecentTag(9);
                         e.Handled = true;
                         break;
                 }
@@ -449,6 +521,22 @@ namespace tagmane
                 {
                     case Key.Escape:
                         CancelButton_Click(null, null); // キャンセル
+                        e.Handled = true;
+                        break;
+                    case Key.PageUp:
+                        MoveToPreviousImage();
+                        e.Handled = true;
+                        break;
+                    case Key.PageDown:
+                        MoveToNextImage();
+                        e.Handled = true;
+                        break;
+                    case Key.Home:
+                        MoveToFirstImage();
+                        e.Handled = true;
+                        break;
+                    case Key.End:
+                        MoveToLastImage();
                         e.Handled = true;
                         break;
                     case Key.Delete:
@@ -3498,6 +3586,9 @@ namespace tagmane
 
             // 新しいタグをUserAddedカテゴリに追加
             AddTagToUserAddedCategory(newTag);
+            
+            // タグ履歴に追加
+            AddTagToHistory(newTag);
 
             if (addToAllTags)
             {
@@ -3593,14 +3684,158 @@ namespace tagmane
 
         private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            // 遅延検索（300ms待機してから検索実行）
-            lock (_searchLock)
+            // 履歴表示中は検索しない
+            if (_isShowingTagHistory && SearchTextBox.Text != "[履歴]")
             {
-                _searchDelayTimer?.Dispose();
-                _searchDelayTimer = new System.Threading.Timer(_ =>
+                _isShowingTagHistory = false;
+            }
+            
+            if (!_isShowingTagHistory)
+            {
+                // 遅延検索（300ms待機してから検索実行）
+                lock (_searchLock)
                 {
-                    Dispatcher.Invoke(() => UpdateSearchedTagsListView());
-                }, null, 300, System.Threading.Timeout.Infinite);
+                    _searchDelayTimer?.Dispose();
+                    _searchDelayTimer = new System.Threading.Timer(_ =>
+                    {
+                        Dispatcher.Invoke(() => UpdateSearchedTagsListView());
+                    }, null, 300, System.Threading.Timeout.Infinite);
+                }
+            }
+        }
+        
+        private void SearchTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            switch (e.Key)
+            {
+                case Key.Down:
+                    // 検索結果または履歴の最初の項目を選択
+                    if (SearchedTagsListView.Items.Count > 0)
+                    {
+                        SearchedTagsListView.SelectedIndex = 0;
+                        var item = SearchedTagsListView.ItemContainerGenerator.ContainerFromIndex(0) as ListViewItem;
+                        item?.Focus();
+                        e.Handled = true;
+                    }
+                    break;
+                    
+                case Key.Up:
+                    // 検索結果または履歴の最後の項目を選択
+                    if (SearchedTagsListView.Items.Count > 0)
+                    {
+                        SearchedTagsListView.SelectedIndex = SearchedTagsListView.Items.Count - 1;
+                        var item = SearchedTagsListView.ItemContainerGenerator.ContainerFromIndex(SearchedTagsListView.Items.Count - 1) as ListViewItem;
+                        item?.Focus();
+                        e.Handled = true;
+                    }
+                    break;
+                    
+                case Key.Enter:
+                    // 選択されているタグを追加
+                    if (SearchedTagsListView.SelectedItem != null)
+                    {
+                        string selectedTag = SearchedTagsListView.SelectedItem.ToString();
+                        AddTagToCurrentImage(selectedTag);
+                        SearchTextBox.Clear();
+                        
+                        if (Keyboard.Modifiers == ModifierKeys.Control)
+                        {
+                            MoveToNextImage();
+                        }
+                        else if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+                        {
+                            MoveToPreviousImage();
+                        }
+                        e.Handled = true;
+                    }
+                    break;
+                    
+                case Key.Escape:
+                    // 検索をクリアしてフォーカスを外す
+                    SearchTextBox.Clear();
+                    _isShowingTagHistory = false;
+                    ImageListBox.Focus();
+                    e.Handled = true;
+                    break;
+                    
+                case Key.F3:
+                    // 検索候補⇔履歴の切り替え
+                    if (_isShowingTagHistory)
+                    {
+                        _isShowingTagHistory = false;
+                        UpdateSearchedTagsListView();
+                    }
+                    else
+                    {
+                        ShowTagHistory();
+                    }
+                    e.Handled = true;
+                    break;
+                    
+                case Key.PageUp:
+                    MoveToPreviousImage();
+                    e.Handled = true;
+                    break;
+                    
+                case Key.PageDown:
+                    MoveToNextImage();
+                    e.Handled = true;
+                    break;
+                    
+                case Key.Home:
+                    MoveToFirstImage();
+                    e.Handled = true;
+                    break;
+                    
+                case Key.End:
+                    MoveToLastImage();
+                    e.Handled = true;
+                    break;
+            }
+        }
+
+        private void SearchedTagsListView_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            var listView = sender as ListView;
+            if (listView == null) return;
+
+            switch (e.Key)
+            {
+                case Key.Enter:
+                    // 選択されているタグを追加
+                    if (listView.SelectedItem != null)
+                    {
+                        string selectedTag = listView.SelectedItem.ToString();
+                        AddTagToCurrentImage(selectedTag);
+                        SearchTextBox.Clear();
+                        SearchTextBox.Focus();
+                        
+                        if (Keyboard.Modifiers == ModifierKeys.Control)
+                        {
+                            MoveToNextImage();
+                        }
+                        else if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+                        {
+                            MoveToPreviousImage();
+                        }
+                        e.Handled = true;
+                    }
+                    break;
+                    
+                case Key.Escape:
+                    // フォーカスをSearchTextBoxに戻す
+                    SearchTextBox.Focus();
+                    e.Handled = true;
+                    break;
+                    
+                case Key.Up:
+                    // 最初の項目で上キーが押された場合、SearchTextBoxにフォーカスを戻す
+                    if (listView.SelectedIndex == 0)
+                    {
+                        SearchTextBox.Focus();
+                        e.Handled = true;
+                    }
+                    break;
             }
         }
 
@@ -3717,7 +3952,6 @@ namespace tagmane
             foreach (string tag in e.AddedItems)
             {
                 _selectedTags.Add(tag);
-                SearchTextBox.Text = tag;
             }
 
             UpdateUIAfterTagSelectionChange();
@@ -5354,6 +5588,122 @@ namespace tagmane
             }
             // AddLogToMainWindow("Finished loading all images.");
         }
+        
+        #region キーボード操作支援機能
+        
+        private void AddTagToHistory(string tag)
+        {
+            // 履歴に追加
+            _recentAddedTags.Remove(tag); // 既存を削除
+            _recentAddedTags.AddFirst(tag); // 先頭に追加
+            
+            // 最大数を超えたら古いものを削除
+            while (_recentAddedTags.Count > MaxRecentTags)
+            {
+                _recentAddedTags.RemoveLast();
+            }
+            
+            // 頻度カウント
+            if (_tagFrequency.ContainsKey(tag))
+                _tagFrequency[tag]++;
+            else
+                _tagFrequency[tag] = 1;
+        }
+        
+        private void AddRecentTag(int index)
+        {
+            if (index == 0 && _recentAddedTags.Count > 0)
+            {
+                // Ctrl+0: 直前のタグを再追加
+                var tag = _recentAddedTags.First.Value;
+                AddTagToCurrentImage(tag);
+            }
+            else if (index > 0 && index <= _recentAddedTags.Count)
+            {
+                // Ctrl+1-9: 履歴から選択
+                var tag = _recentAddedTags.ElementAt(index - 1);
+                AddTagToCurrentImage(tag);
+            }
+        }
+        
+        private void AddTagToCurrentImage(string tag)
+        {
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage != null && !selectedImage.Tags.Contains(tag))
+            {
+                selectedImage.Tags.Add(tag);
+                AddTagToHistory(tag);
+                UpdateUIAfterTagsChange();
+                AddMainLogEntry($"タグ「{tag}」を追加しました");
+            }
+        }
+        
+        private void ShowTagHistory()
+        {
+            // 履歴を検索結果として表示
+            if (_recentAddedTags.Count > 0)
+            {
+                SearchedTagsListView.ItemsSource = _recentAddedTags.ToList();
+                _isShowingTagHistory = true;
+                SearchTextBox.Text = "[履歴]";
+                SearchTextBox.Focus();
+                AddMainLogEntry($"タグ履歴を表示: {_recentAddedTags.Count}件");
+            }
+            else
+            {
+                AddMainLogEntry("タグ履歴がありません");
+            }
+        }
+        
+        private void AddTagAndMoveNext()
+        {
+            AddTextboxinputButton_Click(null, null);
+            MoveToNextImage();
+        }
+        
+        private void AddTagAndMovePrevious()
+        {
+            AddTextboxinputButton_Click(null, null);
+            MoveToPreviousImage();
+        }
+        
+        private void MoveToNextImage()
+        {
+            if (ImageListBox.SelectedIndex < ImageListBox.Items.Count - 1)
+            {
+                ImageListBox.SelectedIndex++;
+                ImageListBox.ScrollIntoView(ImageListBox.SelectedItem);
+            }
+        }
+        
+        private void MoveToPreviousImage()
+        {
+            if (ImageListBox.SelectedIndex > 0)
+            {
+                ImageListBox.SelectedIndex--;
+                ImageListBox.ScrollIntoView(ImageListBox.SelectedItem);
+            }
+        }
+        
+        private void MoveToFirstImage()
+        {
+            if (ImageListBox.Items.Count > 0)
+            {
+                ImageListBox.SelectedIndex = 0;
+                ImageListBox.ScrollIntoView(ImageListBox.SelectedItem);
+            }
+        }
+        
+        private void MoveToLastImage()
+        {
+            if (ImageListBox.Items.Count > 0)
+            {
+                ImageListBox.SelectedIndex = ImageListBox.Items.Count - 1;
+                ImageListBox.ScrollIntoView(ImageListBox.SelectedItem);
+            }
+        }
+        
+        #endregion
         
         #region 高度なフィルタリング機能
         

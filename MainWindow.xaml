@@ -834,7 +834,8 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBox x:Name="SearchTextBox" Grid.Column="0" Height="20" VerticalAlignment="Center" TextChanged="SearchTextBox_TextChanged"/>
+                <TextBox x:Name="SearchTextBox" Grid.Column="0" Height="20" VerticalAlignment="Center" 
+                         TextChanged="SearchTextBox_TextChanged" PreviewKeyDown="SearchTextBox_PreviewKeyDown"/>
                 <Button x:Name="AddTextboxinputButton" Grid.Column="1" Click="AddTextboxinputButton_Click">
                     <Button.Content>
                         <Image Source="/icon/add.png" Width="32" Height="32"/>
@@ -856,6 +857,7 @@
             <!-- 検索されたタグのリストビュー -->
             <ListView x:Name="SearchedTagsListView" Grid.Row="5" Height="160" 
                       SelectionMode="Multiple" SelectionChanged="SearchedTagsListView_SelectionChanged"
+                      PreviewKeyDown="SearchedTagsListView_PreviewKeyDown"
                       ItemsSource="{Binding SearchedTags}">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
