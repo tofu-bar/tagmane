@@ -88,6 +88,9 @@ namespace tagmane
         private Dictionary<string, int> _tagFrequency = new Dictionary<string, int>();
         private const int MaxRecentTags = 10;
         private bool _isShowingTagHistory = false;
+        
+        // キーボードナビゲーション用の専用選択状態
+        private int _keyboardNavigationIndex = -1;
 
         private ObservableCollection<ActionLogItem> _actionLogItems;
         private const int MaxLogEntries = 20; // 100から20に変更
@@ -3709,10 +3712,11 @@ namespace tagmane
             switch (e.Key)
             {
                 case Key.Down:
-                    // 検索結果または履歴の最初の項目を選択
+                    // キーボードナビゲーションで最初の項目に移動
                     if (SearchedTagsListView.Items.Count > 0)
                     {
-                        SearchedTagsListView.SelectedIndex = 0;
+                        _keyboardNavigationIndex = 0;
+                        UpdateKeyboardNavigationDisplay();
                         var item = SearchedTagsListView.ItemContainerGenerator.ContainerFromIndex(0) as ListViewItem;
                         item?.Focus();
                         e.Handled = true;
@@ -3720,23 +3724,34 @@ namespace tagmane
                     break;
                     
                 case Key.Up:
-                    // 検索結果または履歴の最後の項目を選択
+                    // キーボードナビゲーションで最後の項目に移動
                     if (SearchedTagsListView.Items.Count > 0)
                     {
-                        SearchedTagsListView.SelectedIndex = SearchedTagsListView.Items.Count - 1;
-                        var item = SearchedTagsListView.ItemContainerGenerator.ContainerFromIndex(SearchedTagsListView.Items.Count - 1) as ListViewItem;
+                        _keyboardNavigationIndex = SearchedTagsListView.Items.Count - 1;
+                        UpdateKeyboardNavigationDisplay();
+                        var item = SearchedTagsListView.ItemContainerGenerator.ContainerFromIndex(_keyboardNavigationIndex) as ListViewItem;
                         item?.Focus();
                         e.Handled = true;
                     }
                     break;
                     
                 case Key.Enter:
-                    // 選択されているタグを追加
-                    if (SearchedTagsListView.SelectedItem != null)
+                    // キーボードナビゲーション中の項目またはクリック選択された項目を追加
+                    string selectedTag = null;
+                    if (_keyboardNavigationIndex >= 0 && _keyboardNavigationIndex < SearchedTagsListView.Items.Count)
                     {
-                        string selectedTag = SearchedTagsListView.SelectedItem.ToString();
+                        selectedTag = SearchedTagsListView.Items[_keyboardNavigationIndex].ToString();
+                    }
+                    else if (SearchedTagsListView.SelectedItem != null)
+                    {
+                        selectedTag = SearchedTagsListView.SelectedItem.ToString();
+                    }
+
+                    if (!string.IsNullOrEmpty(selectedTag))
+                    {
                         AddTagToCurrentImage(selectedTag);
                         SearchTextBox.Clear();
+                        _keyboardNavigationIndex = -1; // リセット
                         
                         if (Keyboard.Modifiers == ModifierKeys.Control)
                         {
@@ -3754,6 +3769,7 @@ namespace tagmane
                     // 検索をクリアしてフォーカスを外す
                     SearchTextBox.Clear();
                     _isShowingTagHistory = false;
+                    _keyboardNavigationIndex = -1; // リセット
                     ImageListBox.Focus();
                     e.Handled = true;
                     break;
@@ -3802,13 +3818,23 @@ namespace tagmane
             switch (e.Key)
             {
                 case Key.Enter:
-                    // 選択されているタグを追加
-                    if (listView.SelectedItem != null)
+                    // キーボードナビゲーション中の項目またはクリック選択された項目を追加
+                    string selectedTag = null;
+                    if (_keyboardNavigationIndex >= 0 && _keyboardNavigationIndex < listView.Items.Count)
                     {
-                        string selectedTag = listView.SelectedItem.ToString();
+                        selectedTag = listView.Items[_keyboardNavigationIndex].ToString();
+                    }
+                    else if (listView.SelectedItem != null)
+                    {
+                        selectedTag = listView.SelectedItem.ToString();
+                    }
+
+                    if (!string.IsNullOrEmpty(selectedTag))
+                    {
                         AddTagToCurrentImage(selectedTag);
                         SearchTextBox.Clear();
                         SearchTextBox.Focus();
+                        _keyboardNavigationIndex = -1; // リセット
                         
                         if (Keyboard.Modifiers == ModifierKeys.Control)
                         {
@@ -3823,19 +3849,69 @@ namespace tagmane
                     break;
                     
                 case Key.Escape:
-                    // フォーカスをSearchTextBoxに戻す
+                    // フォーカスをSearchTextBoxに戻し、キーボードナビゲーションをリセット
+                    _keyboardNavigationIndex = -1;
+                    UpdateKeyboardNavigationDisplay();
                     SearchTextBox.Focus();
                     e.Handled = true;
                     break;
                     
                 case Key.Up:
-                    // 最初の項目で上キーが押された場合、SearchTextBoxにフォーカスを戻す
-                    if (listView.SelectedIndex == 0)
+                    if (_keyboardNavigationIndex > 0)
                     {
+                        _keyboardNavigationIndex--;
+                        UpdateKeyboardNavigationDisplay();
+                        e.Handled = true;
+                    }
+                    else if (_keyboardNavigationIndex == 0)
+                    {
+                        // 最初の項目で上キーが押された場合、SearchTextBoxにフォーカスを戻す
+                        _keyboardNavigationIndex = -1;
+                        UpdateKeyboardNavigationDisplay();
                         SearchTextBox.Focus();
                         e.Handled = true;
                     }
                     break;
+                    
+                case Key.Down:
+                    if (_keyboardNavigationIndex < listView.Items.Count - 1)
+                    {
+                        if (_keyboardNavigationIndex == -1)
+                        {
+                            _keyboardNavigationIndex = 0;
+                        }
+                        else
+                        {
+                            _keyboardNavigationIndex++;
+                        }
+                        UpdateKeyboardNavigationDisplay();
+                        e.Handled = true;
+                    }
+                    break;
+            }
+        }
+
+        private void UpdateKeyboardNavigationDisplay()
+        {
+            // 現在のキーボードナビゲーション状態を視覚的に反映
+            for (int i = 0; i < SearchedTagsListView.Items.Count; i++)
+            {
+                var container = SearchedTagsListView.ItemContainerGenerator.ContainerFromIndex(i) as ListViewItem;
+                if (container != null)
+                {
+                    if (i == _keyboardNavigationIndex && !container.IsSelected)
+                    {
+                        // キーボードナビゲーション中かつ非選択状態の項目は青背景
+                        // 選択状態（緑）の項目は緑を優先
+                        container.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.LightBlue);
+                    }
+                    else if (i != _keyboardNavigationIndex && !container.IsSelected)
+                    {
+                        // 通常の項目は背景をクリア（選択状態の緑はXAMLで処理）
+                        container.ClearValue(ListViewItem.BackgroundProperty);
+                    }
+                    // 選択状態の項目（緑）はXAMLのTriggerで処理され、こちらでは触らない
+                }
             }
         }
 
@@ -3853,6 +3929,9 @@ namespace tagmane
         {
             AddDebugLogEntry("UpdateSearchedTagsListView");
             AddDebugLogEntry($"SearchTextBox.Text: {SearchTextBox.Text}");
+
+            // 検索結果が変更されるため、キーボードナビゲーション状態をリセット
+            _keyboardNavigationIndex = -1;
 
             string searchText = SearchTextBox.Text.ToLower();
             SearchedTagsListView.SelectionChanged -= SearchedTagsListView_SelectionChanged;
