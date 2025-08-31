@@ -53,6 +53,7 @@ namespace tagmane
         private RingBuffer<string> _vlmLogQueue = new RingBuffer<string>(20);
         private RingBuffer<string> _vlmErrorLogQueue = new RingBuffer<string>(20);
         private RingBuffer<string> _pipelineLogQueue = new RingBuffer<string>(20);
+        private RingBuffer<string> _pythonLogQueue = new RingBuffer<string>(100);
         private int _logUpdateIntervalMs = 500;
         private int _vlmUpdateIntervalMs = 1000;
 
@@ -810,6 +811,10 @@ namespace tagmane
                     pipelinelogEntries.Reverse();
                     Dispatcher.Invoke(() => PipelineLogTextBox.Text = string.Join(Environment.NewLine, pipelinelogEntries));
 
+                    var pythonlogEntries = _pythonLogQueue.GetRecentItems();
+                    pythonlogEntries.Reverse();
+                    Dispatcher.Invoke(() => PythonLogTextBox.Text = string.Join(Environment.NewLine, pythonlogEntries));
+
                     if (_logCancellationTokenSource.IsCancellationRequested) break;
                 }
             });
@@ -824,6 +829,11 @@ namespace tagmane
         public void AddMainLogEntry(string message)
         {
             _logQueue.Enqueue($"{DateTime.Now:HH:mm:ss} - {message}");
+        }
+
+        private void AddPythonLogEntry(string message)
+        {
+            _pythonLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} - {message}");
         }
 
         // アクションログを追加するメソッド
@@ -6165,6 +6175,14 @@ namespace tagmane
             {
                 AddMainLogEntry("キャプション生成を開始します...");
                 GenerateCaptionButton.IsEnabled = false;
+                
+                // Python環境のセットアップを確認
+                bool envReady = await EnsurePythonEnvironment();
+                if (!envReady)
+                {
+                    AddMainLogEntry("Python環境のセットアップに失敗しました。キャプション生成を中止します。");
+                    return;
+                }
                 GenerateCaptionButton.Content = new StackPanel
                 {
                     Orientation = Orientation.Horizontal,
@@ -6194,9 +6212,10 @@ namespace tagmane
                 using (Process process = new Process { StartInfo = startInfo })
                 {
                     process.Start();
+                    AddPythonLogEntry($"GLM-4.1V キャプション生成を開始: {Path.GetFileName(imagePath)}");
 
-                    Task<string> outputTask = ReadStreamAsync(process.StandardOutput);
-                    Task<string> errorTask = ReadStreamAsync(process.StandardError);
+                    Task<string> outputTask = ReadStreamAsync(process.StandardOutput, "STDOUT");
+                    Task<string> errorTask = ReadStreamAsync(process.StandardError, "STDERR");
 
                     await process.WaitForExitAsync();
 
@@ -6210,21 +6229,29 @@ namespace tagmane
                         {
                             imageInfo.Caption = finalCaption;
                             AddMainLogEntry($"キャプションを生成しました: {Path.GetFileName(imagePath)}");
+                            AddPythonLogEntry($"キャプション生成成功: {finalCaption.Substring(0, Math.Min(50, finalCaption.Length))}...");
                         }
                         else
                         {
                             AddMainLogEntry("キャプション生成に失敗しました（出力が空です）");
+                            AddPythonLogEntry("キャプション生成失敗: 出力が空です");
                         }
                     }
                     else
                     {
                         AddMainLogEntry($"キャプション生成に失敗しました: {error}");
+                        AddPythonLogEntry($"プロセス終了コード: {process.ExitCode}");
+                        if (!string.IsNullOrEmpty(error))
+                        {
+                            AddPythonLogEntry($"エラー詳細: {error}");
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
                 AddMainLogEntry($"キャプション生成でエラーが発生しました: {ex.Message}");
+                AddPythonLogEntry($"キャプション生成例外エラー: {ex.Message}");
             }
             finally
             {
@@ -6240,7 +6267,7 @@ namespace tagmane
             }
         }
 
-        private async Task<string> ReadStreamAsync(StreamReader reader)
+        private async Task<string> ReadStreamAsync(StreamReader reader, string streamType = "")
         {
             var result = new System.Text.StringBuilder();
             string line;
@@ -6256,6 +6283,16 @@ namespace tagmane
                             selectedImage.Caption += streamChar;
                         }
                     });
+                }
+                else if (streamType == "STDERR" && !string.IsNullOrWhiteSpace(line))
+                {
+                    // Pythonの標準エラー出力をPythonログに表示
+                    AddPythonLogEntry($"Python: {line}");
+                }
+                else if (streamType == "STDOUT" && !string.IsNullOrWhiteSpace(line) && !line.StartsWith("FINAL:"))
+                {
+                    // Pythonの標準出力をPythonログに表示（ストリーミングとFINAL以外）
+                    AddPythonLogEntry($"Python: {line}");
                 }
                 result.AppendLine(line);
             }
@@ -6277,12 +6314,142 @@ namespace tagmane
 
         private string GetPythonPath()
         {
-            string venvPath = Path.Combine(@"d:\celll1\quality-tagger\.venv", "Scripts", "python.exe");
+            string appDir = AppDomain.CurrentDomain.BaseDirectory;
+            string venvPath = Path.Combine(appDir, ".venv", "Scripts", "python.exe");
+            
             if (File.Exists(venvPath))
             {
                 return venvPath;
             }
+            
             return "python";
+        }
+
+        private async Task<bool> EnsurePythonEnvironment()
+        {
+            string appDir = AppDomain.CurrentDomain.BaseDirectory;
+            string venvDir = Path.Combine(appDir, ".venv");
+            string pythonExe = Path.Combine(venvDir, "Scripts", "python.exe");
+            string requirementsPath = Path.Combine(appDir, "requirements.txt");
+            string setupCompleteFile = Path.Combine(venvDir, ".setup_complete");
+
+            if (File.Exists(setupCompleteFile) && File.Exists(pythonExe))
+            {
+                return true;
+            }
+
+            try
+            {
+                AddMainLogEntry("Python環境をセットアップしています...");
+                AddPythonLogEntry("Python環境セットアップを開始します");
+                
+                if (!File.Exists(requirementsPath))
+                {
+                    AddMainLogEntry("requirements.txtが見つかりません");
+                    AddPythonLogEntry("requirements.txtが見つかりません");
+                    return false;
+                }
+
+                if (!Directory.Exists(venvDir) || !File.Exists(pythonExe))
+                {
+                    AddMainLogEntry("Python仮想環境を作成しています...");
+                    AddPythonLogEntry($"仮想環境を作成中: {venvDir}");
+                    
+                    ProcessStartInfo createVenvInfo = new ProcessStartInfo
+                    {
+                        FileName = "python",
+                        Arguments = $"-m venv \"{venvDir}\"",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true,
+                        WorkingDirectory = appDir
+                    };
+
+                    using (Process createVenv = new Process { StartInfo = createVenvInfo })
+                    {
+                        createVenv.Start();
+                        AddPythonLogEntry("python -m venv を実行中...");
+                        
+                        await createVenv.WaitForExitAsync();
+                        
+                        if (createVenv.ExitCode != 0)
+                        {
+                            string error = await createVenv.StandardError.ReadToEndAsync();
+                            AddMainLogEntry($"Python仮想環境の作成に失敗しました: {error}");
+                            AddPythonLogEntry($"仮想環境作成エラー: {error}");
+                            return false;
+                        }
+                        else
+                        {
+                            AddPythonLogEntry("仮想環境の作成が完了しました");
+                        }
+                    }
+                }
+
+                if (!File.Exists(pythonExe))
+                {
+                    AddMainLogEntry("Python実行ファイルが見つかりません");
+                    AddPythonLogEntry("Python実行ファイルが見つかりません");
+                    return false;
+                }
+
+                AddMainLogEntry("依存関係をインストールしています（時間がかかる場合があります）...");
+                AddPythonLogEntry("pip install を開始します（GPU版PyTorch等をインストール中）...");
+                
+                ProcessStartInfo pipInstallInfo = new ProcessStartInfo
+                {
+                    FileName = pythonExe,
+                    Arguments = $"-m pip install -r \"{requirementsPath}\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    WorkingDirectory = appDir
+                };
+
+                using (Process pipInstall = new Process { StartInfo = pipInstallInfo })
+                {
+                    pipInstall.Start();
+                    AddPythonLogEntry($"実行中: pip install -r requirements.txt");
+                    
+                    string output = await pipInstall.StandardOutput.ReadToEndAsync();
+                    string error = await pipInstall.StandardError.ReadToEndAsync();
+                    
+                    // pip の出力をPythonログに表示
+                    if (!string.IsNullOrEmpty(output))
+                    {
+                        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                        foreach (var line in lines.Take(20)) // 最初の20行まで表示
+                        {
+                            AddPythonLogEntry($"pip: {line}");
+                        }
+                    }
+                    
+                    await pipInstall.WaitForExitAsync();
+                    
+                    if (pipInstall.ExitCode == 0)
+                    {
+                        File.WriteAllText(setupCompleteFile, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                        AddMainLogEntry("Python環境のセットアップが完了しました");
+                        AddPythonLogEntry("依存関係のインストールが正常に完了しました");
+                        AddPythonLogEntry("GLM-4.1V キャプション生成の準備完了");
+                        return true;
+                    }
+                    else
+                    {
+                        AddMainLogEntry($"依存関係のインストールに失敗しました: {error}");
+                        AddPythonLogEntry($"pip install エラー: {error}");
+                        return false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"Python環境のセットアップでエラーが発生しました: {ex.Message}");
+                AddPythonLogEntry($"セットアップ例外エラー: {ex.Message}");
+                return false;
+            }
         }
 
         private void ClearCaptionButton_Click(object sender, RoutedEventArgs e)

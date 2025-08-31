@@ -1,0 +1,20 @@
+# GLM-4.1V Caption Generation Requirements
+# GPU version of PyTorch (CUDA 12.1)
+--index-url https://download.pytorch.org/whl/cu121
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# Transformers and related
+transformers>=4.35.0
+accelerate>=0.20.0
+sentencepiece>=0.1.99
+
+# Image processing
+Pillow>=9.0.0
+
+# Additional dependencies
+numpy>=1.24.0
+safetensors>=0.3.0
+huggingface-hub>=0.16.0
+tokenizers>=0.13.0
