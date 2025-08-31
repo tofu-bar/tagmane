@@ -164,7 +164,14 @@ def generate_caption_streaming(image_path, prompt, tags):
             print(f"Image resized to {new_size} for memory efficiency", file=sys.stderr)
         
         # タグをカテゴリ別に分類
-        categorized_tags = categorize_tags(tags)
+        print(f"Tags type: {type(tags)}, content: {tags}", file=sys.stderr)
+        try:
+            categorized_tags = categorize_tags(tags)
+            print(f"Categorized tags: {categorized_tags}", file=sys.stderr)
+        except Exception as e:
+            print(f"Error in categorize_tags: {e}", file=sys.stderr)
+            print(f"Tags causing error: {tags}", file=sys.stderr)
+            raise e
         
         # プロンプト用の辞書を作成
         prompt_replacements = {

@@ -6395,59 +6395,126 @@ namespace tagmane
                 }
 
                 AddMainLogEntry("依存関係をインストールしています（時間がかかる場合があります）...");
-                AddPythonLogEntry("pip install を開始します（GPU版PyTorch等をインストール中）...");
-                
-                ProcessStartInfo pipInstallInfo = new ProcessStartInfo
+                AddPythonLogEntry("Python環境セットアップを段階的に実行します...");
+
+                // ステップ1: pipのアップグレード
+                AddPythonLogEntry("ステップ 1/3: pipをアップグレードしています...");
+                bool pipUpgradeSuccess = await RunPipCommand(pythonExe, "-m pip install --upgrade pip", "pipアップグレード");
+                if (!pipUpgradeSuccess)
                 {
-                    FileName = pythonExe,
-                    Arguments = $"-m pip install -r \"{requirementsPath}\"",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                    WorkingDirectory = appDir
+                    AddPythonLogEntry("警告: pipのアップグレードに失敗しましたが、続行します");
+                }
+
+                // ステップ2: 基本パッケージのインストール
+                AddPythonLogEntry("ステップ 2/3: 基本パッケージをインストールしています...");
+                string[] basicPackages = {
+                    "numpy>=1.21.0",
+                    "Pillow>=9.0.0",
+                    "setuptools>=65.0",
+                    "wheel>=0.38.0"
                 };
 
-                using (Process pipInstall = new Process { StartInfo = pipInstallInfo })
+                foreach (string package in basicPackages)
                 {
-                    pipInstall.Start();
-                    AddPythonLogEntry($"実行中: pip install -r requirements.txt");
-                    
-                    string output = await pipInstall.StandardOutput.ReadToEndAsync();
-                    string error = await pipInstall.StandardError.ReadToEndAsync();
-                    
-                    // pip の出力をPythonログに表示
-                    if (!string.IsNullOrEmpty(output))
+                    bool success = await RunPipCommand(pythonExe, $"-m pip install \"{package}\"", $"基本パッケージ {package}");
+                    if (!success)
                     {
-                        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                        foreach (var line in lines.Take(20)) // 最初の20行まで表示
-                        {
-                            AddPythonLogEntry($"pip: {line}");
-                        }
-                    }
-                    
-                    await pipInstall.WaitForExitAsync();
-                    
-                    if (pipInstall.ExitCode == 0)
-                    {
-                        File.WriteAllText(setupCompleteFile, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                        AddMainLogEntry("Python環境のセットアップが完了しました");
-                        AddPythonLogEntry("依存関係のインストールが正常に完了しました");
-                        AddPythonLogEntry("GLM-4.1V キャプション生成の準備完了");
-                        return true;
-                    }
-                    else
-                    {
-                        AddMainLogEntry($"依存関係のインストールに失敗しました: {error}");
-                        AddPythonLogEntry($"pip install エラー: {error}");
+                        AddMainLogEntry($"基本パッケージのインストールに失敗しました: {package}");
+                        AddPythonLogEntry($"エラー: {package} のインストールに失敗");
                         return false;
                     }
+                }
+
+                // ステップ3: 残りの依存関係をインストール
+                AddPythonLogEntry("ステップ 3/3: GLM-4.1V関連パッケージをインストールしています...");
+                bool mainInstallSuccess = await RunPipCommand(pythonExe, $"-m pip install -r \"{requirementsPath}\"", "メイン依存関係");
+                
+                if (mainInstallSuccess)
+                {
+                    File.WriteAllText(setupCompleteFile, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                    AddMainLogEntry("Python環境のセットアップが完了しました");
+                    AddPythonLogEntry("依存関係のインストールが正常に完了しました");
+                    AddPythonLogEntry("GLM-4.1V キャプション生成の準備完了");
+                    return true;
+                }
+                else
+                {
+                    AddMainLogEntry("メイン依存関係のインストールに失敗しました");
+                    return false;
                 }
             }
             catch (Exception ex)
             {
                 AddMainLogEntry($"Python環境のセットアップでエラーが発生しました: {ex.Message}");
                 AddPythonLogEntry($"セットアップ例外エラー: {ex.Message}");
+                return false;
+            }
+        }
+
+        private async Task<bool> RunPipCommand(string pythonExe, string pipArgs, string operationName)
+        {
+            try
+            {
+                ProcessStartInfo pipInfo = new ProcessStartInfo
+                {
+                    FileName = pythonExe,
+                    Arguments = pipArgs,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8
+                };
+
+                using (Process pipProcess = new Process { StartInfo = pipInfo })
+                {
+                    pipProcess.Start();
+                    AddPythonLogEntry($"実行中: {pipArgs}");
+
+                    // リアルタイムで出力を読み取り
+                    Task outputTask = Task.Run(async () =>
+                    {
+                        while (!pipProcess.StandardOutput.EndOfStream)
+                        {
+                            string line = await pipProcess.StandardOutput.ReadLineAsync();
+                            if (!string.IsNullOrWhiteSpace(line))
+                            {
+                                AddPythonLogEntry($"pip: {line}");
+                            }
+                        }
+                    });
+
+                    Task errorTask = Task.Run(async () =>
+                    {
+                        while (!pipProcess.StandardError.EndOfStream)
+                        {
+                            string line = await pipProcess.StandardError.ReadLineAsync();
+                            if (!string.IsNullOrWhiteSpace(line))
+                            {
+                                AddPythonLogEntry($"pip ERROR: {line}");
+                            }
+                        }
+                    });
+
+                    await pipProcess.WaitForExitAsync();
+                    await Task.WhenAll(outputTask, errorTask);
+
+                    if (pipProcess.ExitCode == 0)
+                    {
+                        AddPythonLogEntry($"✓ {operationName} が正常に完了しました");
+                        return true;
+                    }
+                    else
+                    {
+                        AddPythonLogEntry($"✗ {operationName} が失敗しました (終了コード: {pipProcess.ExitCode})");
+                        return false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AddPythonLogEntry($"✗ {operationName} 実行中に例外が発生: {ex.Message}");
                 return false;
             }
         }
