@@ -74,7 +74,7 @@ def initialize_glm_model():
                         attn_implementation="eager",
                         trust_remote_code=True,
                         low_cpu_mem_usage=True,
-                        max_memory={0: "40GB"},
+                        max_memory={0: "46GB"},
                     )
                     
                     if hasattr(torch.backends.cuda, 'max_split_size_mb'):
@@ -113,11 +113,26 @@ def categorize_tags(tags):
         'model': []
     }
     
+    # print(f"categorize_tags input type: {type(tags)}, content: {repr(tags)}", file=sys.stderr)
+    
+    # tagsがリストでない場合の処理
+    if isinstance(tags, str):
+        # 文字列の場合は空のリストを返す
+        print(f"Warning: tags is string instead of list: {tags}", file=sys.stderr)
+        return categorized
+    elif not isinstance(tags, (list, tuple)):
+        print(f"Warning: tags is neither string nor list: {type(tags)}", file=sys.stderr)
+        return categorized
+    
     # 基本的なカテゴリ分類ルール
     rating_tags = ['general', 'sensitive', 'questionable', 'explicit']
     quality_tags = ['best quality', 'normal quality', 'bad quality', 'worst quality']
     
     for tag in tags:
+        if not isinstance(tag, str):
+            print(f"Warning: tag is not string: {type(tag)}, content: {repr(tag)}", file=sys.stderr)
+            continue
+            
         tag_lower = tag.lower()
         if tag_lower in rating_tags:
             categorized['rating'].append(tag)
@@ -164,16 +179,17 @@ def generate_caption_streaming(image_path, prompt, tags):
             print(f"Image resized to {new_size} for memory efficiency", file=sys.stderr)
         
         # タグをカテゴリ別に分類
-        print(f"Tags type: {type(tags)}, content: {tags}", file=sys.stderr)
+        # print(f"Tags type: {type(tags)}, content: {tags}", file=sys.stderr)
         try:
             categorized_tags = categorize_tags(tags)
-            print(f"Categorized tags: {categorized_tags}", file=sys.stderr)
+            # print(f"Categorized tags: {categorized_tags}", file=sys.stderr)
         except Exception as e:
             print(f"Error in categorize_tags: {e}", file=sys.stderr)
             print(f"Tags causing error: {tags}", file=sys.stderr)
             raise e
         
         # プロンプト用の辞書を作成
+        print(f"Creating prompt replacements...", file=sys.stderr)
         prompt_replacements = {
             'tags': ", ".join(tags) if tags else "No tags",
             'character': ", ".join(categorized_tags['character']) if categorized_tags['character'] else "No character tags",
@@ -185,22 +201,49 @@ def generate_caption_streaming(image_path, prompt, tags):
             'meta': ", ".join(categorized_tags['meta']) if categorized_tags['meta'] else "No meta tags",
             'model': ", ".join(categorized_tags['model']) if categorized_tags['model'] else "No model tags"
         }
+        print(f"Prompt replacements created successfully", file=sys.stderr)
         
         # プロンプトをフォーマット
+        print(f"Formatting prompt...", file=sys.stderr)
         formatted_prompt = prompt.format(**prompt_replacements)
         print(f"Using prompt: {formatted_prompt[:100]}...", file=sys.stderr)
         
         with model_lock:
             # トークン化
-            inputs = glm_processor.apply_chat_template(
-                [{"role": "user", "image": image, "content": formatted_prompt}],
-                add_generation_prompt=True,
-                tokenize=True,
-                return_tensors="pt",
-                return_dict=True
-            ).to(glm_model.device)
+            print(f"Starting tokenization...", file=sys.stderr)
+            try:
+                # GLM-4V用の正しいチャットテンプレート形式
+                chat_template_input = [
+                    {
+                        "role": "user", 
+                        "content": [
+                            {"type": "image", "image": image},
+                            {"type": "text", "text": formatted_prompt}
+                        ]
+                    }
+                ]
+                print(f"Chat template input created with correct format", file=sys.stderr)
+                
+                inputs = glm_processor.apply_chat_template(
+                    chat_template_input,
+                    add_generation_prompt=True,
+                    tokenize=True,
+                    return_tensors="pt",
+                    return_dict=True
+                )
+                print(f"Chat template applied successfully", file=sys.stderr)
+                
+                inputs = inputs.to(glm_model.device)
+                print(f"Inputs moved to device successfully", file=sys.stderr)
+            except Exception as e:
+                print(f"Error during tokenization: {e}", file=sys.stderr)
+                print(f"Error type: {type(e)}", file=sys.stderr)
+                import traceback
+                print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
+                raise e
             
             # ストリーミング生成設定
+            print(f"Setting up generation config...", file=sys.stderr)
             generation_config = {
                 'max_new_tokens': 512,
                 'do_sample': True,
@@ -208,29 +251,45 @@ def generate_caption_streaming(image_path, prompt, tags):
                 'top_p': 0.9,
                 'pad_token_id': glm_processor.tokenizer.eos_token_id,
             }
+            print(f"Generation config created", file=sys.stderr)
             
             # ストリーミング生成
             generated_text = ""
-            with torch.no_grad():
-                output = glm_model.generate(**inputs, **generation_config)
+            print(f"Starting generation...", file=sys.stderr)
+            try:
+                with torch.no_grad():
+                    print(f"Calling model.generate...", file=sys.stderr)
+                    output = glm_model.generate(**inputs, **generation_config)
+                    print(f"Model generation completed", file=sys.stderr)
                 
                 # 生成されたテキストをデコード
+                print(f"Starting text decoding...", file=sys.stderr)
                 response_text = glm_processor.batch_decode(
                     output[:, inputs['input_ids'].size(1):],
                     skip_special_tokens=True
                 )[0]
+                print(f"Raw response: {repr(response_text[:200])}", file=sys.stderr)
+            except Exception as e:
+                print(f"Error during generation: {e}", file=sys.stderr)
+                print(f"Error type: {type(e)}", file=sys.stderr)
+                import traceback
+                print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
+                raise e
                 
-                # <answer></answer>タグから内容を抽出
-                import re
-                answer_match = re.search(r'<answer>(.*?)</answer>', response_text, re.DOTALL)
-                if answer_match:
-                    generated_text = answer_match.group(1).strip()
-                else:
-                    generated_text = response_text.strip()
-                
-                # ストリーミング風に文字を出力
-                for char in generated_text:
-                    print(f"STREAM:{char}", flush=True)
+            # <answer></answer>タグから内容を抽出
+            import re
+            answer_match = re.search(r'<answer>(.*?)</answer>', response_text, re.DOTALL)
+            if answer_match:
+                generated_text = answer_match.group(1).strip()
+                print(f"Extracted from <answer> tags: {repr(generated_text[:100])}", file=sys.stderr)
+            else:
+                generated_text = response_text.strip()
+                print(f"Using raw response: {repr(generated_text[:100])}", file=sys.stderr)
+            
+            # ストリーミング風に文字を出力
+            print(f"Starting streaming output...", file=sys.stderr)
+            for char in generated_text:
+                print(f"STREAM:{char}", flush=True)
             
             # GPU メモリクリーンアップ
             if torch.cuda.is_available():
@@ -297,7 +356,9 @@ def main():
     # タグの解析
     tags = []
     if args.tags:
+        print(f"Raw tags argument: {repr(args.tags)}", file=sys.stderr)
         tags = [tag.strip() for tag in args.tags.split(',') if tag.strip()]
+        print(f"Parsed tags: {tags}", file=sys.stderr)
     
     # プロンプトの設定
     prompt = args.prompt if args.prompt else DEFAULT_CAPTION_PROMPT

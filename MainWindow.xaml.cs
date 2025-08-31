@@ -54,6 +54,14 @@ namespace tagmane
         private RingBuffer<string> _vlmErrorLogQueue = new RingBuffer<string>(20);
         private RingBuffer<string> _pipelineLogQueue = new RingBuffer<string>(20);
         private RingBuffer<string> _pythonLogQueue = new RingBuffer<string>(100);
+        
+        // 各ログボックスの表示済み項目数を追跡
+        private int _mainLogDisplayedCount = 0;
+        private int _debugLogDisplayedCount = 0;
+        private int _vlmLogDisplayedCount = 0;
+        private int _pipelineLogDisplayedCount = 0;
+        private int _pythonLogDisplayedCount = 0;
+        
         private int _logUpdateIntervalMs = 500;
         private int _vlmUpdateIntervalMs = 1000;
 
@@ -791,29 +799,78 @@ namespace tagmane
                 await foreach (var _ in logObservable)
                 {
                     var logEntries = _logQueue.GetRecentItems();
-                    logEntries.Reverse();
-                    Dispatcher.Invoke(() => MainLogTextBox.Text = string.Join(Environment.NewLine, logEntries));
+                    Dispatcher.Invoke(() => {
+                        if (logEntries.Count > _mainLogDisplayedCount)
+                        {
+                            for (int i = _mainLogDisplayedCount; i < logEntries.Count; i++)
+                            {
+                                if (_mainLogDisplayedCount > 0 || i > _mainLogDisplayedCount) MainLogTextBox.AppendText(Environment.NewLine);
+                                MainLogTextBox.AppendText(logEntries[i]);
+                            }
+                            _mainLogDisplayedCount = logEntries.Count;
+                            MainLogTextBox.ScrollToEnd();
+                        }
+                    });
 
                     // TODO: ログ出力タブを追加
                     // var uilogEntries = _uiErrorLogQueue.GetRecentItems();
-                    // uilogEntries.Reverse();
                     // Dispatcher.Invoke(() => MainLogTextBox.Text = string.Join(Environment.NewLine, uilogEntries));
 
                     var debuglogEntries = _debugLogQueue.GetRecentItems();
-                    debuglogEntries.Reverse();
-                    Dispatcher.Invoke(() => DebugLogTextBox.Text = string.Join(Environment.NewLine, debuglogEntries));
+                    Dispatcher.Invoke(() => {
+                        if (debuglogEntries.Count > _debugLogDisplayedCount)
+                        {
+                            for (int i = _debugLogDisplayedCount; i < debuglogEntries.Count; i++)
+                            {
+                                if (_debugLogDisplayedCount > 0 || i > _debugLogDisplayedCount) DebugLogTextBox.AppendText(Environment.NewLine);
+                                DebugLogTextBox.AppendText(debuglogEntries[i]);
+                            }
+                            _debugLogDisplayedCount = debuglogEntries.Count;
+                            DebugLogTextBox.ScrollToEnd();
+                        }
+                    });
 
                     var vlmlogEntries = _vlmLogQueue.GetRecentItems();
-                    vlmlogEntries.Reverse();
-                    Dispatcher.Invoke(() => VLMLogTextBox.Text = string.Join(Environment.NewLine, vlmlogEntries));
+                    Dispatcher.Invoke(() => {
+                        if (vlmlogEntries.Count > _vlmLogDisplayedCount)
+                        {
+                            for (int i = _vlmLogDisplayedCount; i < vlmlogEntries.Count; i++)
+                            {
+                                if (_vlmLogDisplayedCount > 0 || i > _vlmLogDisplayedCount) VLMLogTextBox.AppendText(Environment.NewLine);
+                                VLMLogTextBox.AppendText(vlmlogEntries[i]);
+                            }
+                            _vlmLogDisplayedCount = vlmlogEntries.Count;
+                            VLMLogTextBox.ScrollToEnd();
+                        }
+                    });
 
                     var pipelinelogEntries = _pipelineLogQueue.GetRecentItems();
-                    pipelinelogEntries.Reverse();
-                    Dispatcher.Invoke(() => PipelineLogTextBox.Text = string.Join(Environment.NewLine, pipelinelogEntries));
+                    Dispatcher.Invoke(() => {
+                        if (pipelinelogEntries.Count > _pipelineLogDisplayedCount)
+                        {
+                            for (int i = _pipelineLogDisplayedCount; i < pipelinelogEntries.Count; i++)
+                            {
+                                if (_pipelineLogDisplayedCount > 0 || i > _pipelineLogDisplayedCount) PipelineLogTextBox.AppendText(Environment.NewLine);
+                                PipelineLogTextBox.AppendText(pipelinelogEntries[i]);
+                            }
+                            _pipelineLogDisplayedCount = pipelinelogEntries.Count;
+                            PipelineLogTextBox.ScrollToEnd();
+                        }
+                    });
 
                     var pythonlogEntries = _pythonLogQueue.GetRecentItems();
-                    pythonlogEntries.Reverse();
-                    Dispatcher.Invoke(() => PythonLogTextBox.Text = string.Join(Environment.NewLine, pythonlogEntries));
+                    Dispatcher.Invoke(() => {
+                        if (pythonlogEntries.Count > _pythonLogDisplayedCount)
+                        {
+                            for (int i = _pythonLogDisplayedCount; i < pythonlogEntries.Count; i++)
+                            {
+                                if (_pythonLogDisplayedCount > 0 || i > _pythonLogDisplayedCount) PythonLogTextBox.AppendText(Environment.NewLine);
+                                PythonLogTextBox.AppendText(pythonlogEntries[i]);
+                            }
+                            _pythonLogDisplayedCount = pythonlogEntries.Count;
+                            PythonLogTextBox.ScrollToEnd();
+                        }
+                    });
 
                     if (_logCancellationTokenSource.IsCancellationRequested) break;
                 }
@@ -6228,6 +6285,22 @@ namespace tagmane
                         if (!string.IsNullOrEmpty(finalCaption))
                         {
                             imageInfo.Caption = finalCaption;
+                            
+                            // UIの更新を確実に行う
+                            Dispatcher.Invoke(() => {
+                                // 現在選択中の画像の場合、CaptionTextBoxも直接更新
+                                var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+                                if (selectedImage == imageInfo)
+                                {
+                                    CaptionTextBox.Text = finalCaption;
+                                }
+                                
+                                // JSONファイルを更新
+                                string jsonFilePath = Path.ChangeExtension(imageInfo.ImagePath, ".json");
+                                string tagString = string.Join(",", imageInfo.Tags);
+                                UpdateJsonFile(jsonFilePath, tagString, finalCaption);
+                            });
+                            
                             AddMainLogEntry($"キャプションを生成しました: {Path.GetFileName(imagePath)}");
                             AddPythonLogEntry($"キャプション生成成功: {finalCaption.Substring(0, Math.Min(50, finalCaption.Length))}...");
                         }
@@ -6289,10 +6362,18 @@ namespace tagmane
                     // Pythonの標準エラー出力をPythonログに表示
                     AddPythonLogEntry($"Python: {line}");
                 }
-                else if (streamType == "STDOUT" && !string.IsNullOrWhiteSpace(line) && !line.StartsWith("FINAL:"))
+                else if (streamType == "STDOUT" && !string.IsNullOrWhiteSpace(line))
                 {
-                    // Pythonの標準出力をPythonログに表示（ストリーミングとFINAL以外）
-                    AddPythonLogEntry($"Python: {line}");
+                    // Pythonの標準出力をPythonログに表示
+                    if (line.StartsWith("FINAL:"))
+                    {
+                        // FINALの内容は後で抽出されるので、ログには表示しない
+                    }
+                    else if (!line.StartsWith("STREAM:"))
+                    {
+                        // ストリーミング出力以外をPythonログに表示
+                        AddPythonLogEntry($"Python: {line}");
+                    }
                 }
                 result.AppendLine(line);
             }

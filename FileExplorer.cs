@@ -22,7 +22,8 @@ namespace tagmane
                 var imageInfo = new ImageInfo
                 {
                     ImagePath = imagePath,
-                    AssociatedText = GetAssociatedText(imagePath)
+                    AssociatedText = GetAssociatedText(imagePath),
+                    Caption = GetCaptionFromJson(imagePath)
                 };
                 // タグの前後のスペースを除去し、空のタグを除外し、エスケープされたかっこを元に戻す
                 imageInfo.Tags = imageInfo.AssociatedText
@@ -68,6 +69,33 @@ namespace tagmane
                     if (document.RootElement.TryGetProperty("tags", out var tagsProperty))
                     {
                         return tagsProperty.GetString() ?? string.Empty;
+                    }
+                }
+                catch (JsonException)
+                {
+                    // JSON解析エラーの場合は空文字列を返す
+                }
+                catch (Exception)
+                {
+                    // その他のエラーの場合も空文字列を返す
+                }
+            }
+            
+            return string.Empty;
+        }
+
+        private string GetCaptionFromJson(string imagePath)
+        {
+            var jsonPath = Path.ChangeExtension(imagePath, ".json");
+            if (File.Exists(jsonPath))
+            {
+                try
+                {
+                    var jsonContent = File.ReadAllText(jsonPath);
+                    using var document = JsonDocument.Parse(jsonContent);
+                    if (document.RootElement.TryGetProperty("caption", out var captionProperty))
+                    {
+                        return captionProperty.GetString() ?? string.Empty;
                     }
                 }
                 catch (JsonException)
