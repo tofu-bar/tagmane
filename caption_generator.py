@@ -347,6 +347,18 @@ def interactive_mode():
                     # キャプション生成（カテゴリ情報付き）
                     caption = generate_caption_streaming(image_path, DEFAULT_CAPTION_PROMPT, tags, categorized_tags)
                     
+                    if caption and not caption.startswith("Error:"):
+                        print("FINAL:" + caption, flush=True)
+                        
+                        # JSONファイルに保存
+                        success = save_caption_to_json(image_path, caption)
+                        if success:
+                            print("SAVED", flush=True)
+                        else:
+                            print("SAVE_FAILED", flush=True)
+                    else:
+                        print(f"ERROR:{caption}", flush=True)
+                    
             elif line.startswith("PROCESS|"):
                 # 旧形式のサポート（後方互換性）
                 parts = line.split("|", 2)

@@ -7019,10 +7019,39 @@ Provide your answer wrapped in <answer></answer> tags:";
                 string finalCaption = "";
                 StringBuilder streamingOutput = new StringBuilder();
                 
-                while (true)
+                // タイムアウト付きで応答を待機
+                var cancellationToken = new CancellationTokenSource(TimeSpan.FromSeconds(120)); // 120秒タイムアウト
+                bool gotFinalResponse = false;
+                
+                while (!cancellationToken.Token.IsCancellationRequested)
                 {
-                    string line = await _pythonOutput.ReadLineAsync();
-                    if (string.IsNullOrEmpty(line)) break;
+                    string line = null;
+                    try 
+                    {
+                        var readTask = _pythonOutput.ReadLineAsync();
+                        if (await Task.WhenAny(readTask, Task.Delay(-1, cancellationToken.Token)) == readTask)
+                        {
+                            line = await readTask;
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        AddPythonLogEntry("Python応答タイムアウト");
+                        break;
+                    }
+                    
+                    if (line == null) 
+                    {
+                        // ストリームが閉じられた場合
+                        AddPythonLogEntry("Pythonストリームが閉じられました");
+                        break;
+                    }
+                    
+                    if (string.IsNullOrEmpty(line)) 
+                    {
+                        // 空行は無視して続行
+                        continue;
+                    }
 
                     if (line.StartsWith("STREAM:"))
                     {
@@ -7035,7 +7064,7 @@ Provide your answer wrapped in <answer></answer> tags:";
                     {
                         finalCaption = line.Substring(6);
                         AddPythonLogEntry($"キャプション生成完了: {finalCaption}");
-                        break;
+                        // SAVEDまたはSAVE_FAILEDを待つため、breakしない
                     }
                     else if (line.StartsWith("ERROR:"))
                     {
@@ -7045,10 +7074,20 @@ Provide your answer wrapped in <answer></answer> tags:";
                     else if (line == "SAVED")
                     {
                         AddPythonLogEntry("JSONファイルに保存完了");
+                        if (!string.IsNullOrEmpty(finalCaption))
+                        {
+                            gotFinalResponse = true;
+                            break; // FINALとSAVEDの両方を受信したら終了
+                        }
                     }
                     else if (line == "SAVE_FAILED")
                     {
                         AddPythonLogEntry("JSONファイルの保存に失敗");
+                        if (!string.IsNullOrEmpty(finalCaption))
+                        {
+                            gotFinalResponse = true;
+                            break; // FINALとSAVE_FAILEDの両方を受信したら終了
+                        }
                     }
                     else
                     {
