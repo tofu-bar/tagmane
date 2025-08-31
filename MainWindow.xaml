@@ -637,6 +637,26 @@
                             <TextBlock Text="GLM-4.1Vでキャプションを生成(Ctrl+G)"/>
                         </Button.ToolTip>
                     </Button>
+                    <Button x:Name="GenerateAllCaptionsButton" Click="GenerateAllCaptionsButton_Click" 
+                            Width="120" Height="30" Margin="0,0,5,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="/icon/vlm.png" Width="16" Height="16" Margin="0,0,5,0"/>
+                            <TextBlock Text="全Caption生成"/>
+                        </StackPanel>
+                        <Button.ToolTip>
+                            <TextBlock Text="全画像にキャプションを生成(Ctrl+Shift+G)"/>
+                        </Button.ToolTip>
+                    </Button>
+                    <Button x:Name="StopCaptionGenerationButton" Click="StopCaptionGenerationButton_Click" 
+                            Width="80" Height="30" Margin="0,0,5,0" IsEnabled="False">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="/icon/cancel.png" Width="16" Height="16" Margin="0,0,5,0"/>
+                            <TextBlock Text="停止"/>
+                        </StackPanel>
+                        <Button.ToolTip>
+                            <TextBlock Text="キャプション生成を停止"/>
+                        </Button.ToolTip>
+                    </Button>
                     <Button x:Name="ClearCaptionButton" Click="ClearCaptionButton_Click" 
                             Width="80" Height="30">
                         <StackPanel Orientation="Horizontal">

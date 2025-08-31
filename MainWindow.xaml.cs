@@ -119,6 +119,11 @@ namespace tagmane
         private VLMPredictor _vlmPredictor;
         private bool _isLoadingVLMModel = false;
         private CancellationTokenSource _cts;
+        
+        // 連続キャプション生成用
+        private bool _isContinuousCaptionGeneration = false;
+        private CancellationTokenSource _captionCancellationTokenSource;
+        private int _currentCaptionIndex = 0;
         private List<(string Name, double GeneralThreshold)> _vlmModels = new List<(string, double)> 
         {
             ("SmilingWolf/wd-eva02-large-tagger-v3", 0.50),
@@ -413,7 +418,14 @@ namespace tagmane
                         e.Handled = true;
                         break;
                     case Key.G:
-                        GenerateCaptionButton_Click(null, null); // GLM-4.1Vでキャプションを生成
+                        if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                        {
+                            GenerateAllCaptionsButton_Click(null, null); // 全画像にキャプションを生成
+                        }
+                        else
+                        {
+                            GenerateCaptionButton_Click(null, null); // GLM-4.1Vでキャプションを生成
+                        }
                         e.Handled = true;
                         break;
                     case Key.F:
@@ -6628,6 +6640,108 @@ namespace tagmane
                 selectedImage.Caption = CaptionTextBox.Text ?? string.Empty;
             }
         }
+
+        private void GenerateAllCaptionsButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_imageInfos == null || _imageInfos.Count == 0)
+            {
+                AddMainLogEntry("対象の画像がありません");
+                return;
+            }
+
+            if (_isContinuousCaptionGeneration)
+            {
+                AddMainLogEntry("既に連続キャプション生成が実行中です");
+                return;
+            }
+
+            var result = MessageBox.Show(
+                $"全{_imageInfos.Count}枚の画像にキャプションを生成しますか？\n\n※既にキャプションがある画像も上書きされます", 
+                "確認", 
+                MessageBoxButton.YesNo, 
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                _ = StartContinuousCaptionGenerationAsync();
+            }
+        }
+
+        private void StopCaptionGenerationButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isContinuousCaptionGeneration && _captionCancellationTokenSource != null)
+            {
+                _captionCancellationTokenSource.Cancel();
+                AddMainLogEntry("キャプション生成の停止要求を送信しました");
+            }
+        }
+
+        private async Task StartContinuousCaptionGenerationAsync()
+        {
+            _isContinuousCaptionGeneration = true;
+            _currentCaptionIndex = 0;
+            _captionCancellationTokenSource = new CancellationTokenSource();
+
+            // UI状態を更新
+            GenerateCaptionButton.IsEnabled = false;
+            GenerateAllCaptionsButton.IsEnabled = false;
+            StopCaptionGenerationButton.IsEnabled = true;
+            ImageListBox.IsEnabled = false; // ユーザーによる画像切り替えを無効化
+
+            try
+            {
+                AddMainLogEntry($"連続キャプション生成を開始します（対象: {_imageInfos.Count}枚）");
+
+                for (int i = 0; i < _imageInfos.Count; i++)
+                {
+                    if (_captionCancellationTokenSource.Token.IsCancellationRequested)
+                    {
+                        AddMainLogEntry($"キャプション生成が停止されました（{i}/{_imageInfos.Count}枚完了）");
+                        break;
+                    }
+
+                    _currentCaptionIndex = i;
+                    var imageInfo = _imageInfos[i];
+
+                    // 現在の画像を選択状態に更新
+                    ImageListBox.SelectedItem = imageInfo;
+                    ImageListBox.ScrollIntoView(imageInfo);
+
+                    AddMainLogEntry($"キャプション生成中: {Path.GetFileName(imageInfo.ImagePath)} ({i + 1}/{_imageInfos.Count})");
+
+                    // 既存の単独キャプション生成を使用
+                    await GenerateCaptionAsync(imageInfo);
+
+                    if (_captionCancellationTokenSource.Token.IsCancellationRequested)
+                        break;
+                }
+
+                if (!_captionCancellationTokenSource.Token.IsCancellationRequested)
+                {
+                    AddMainLogEntry($"全{_imageInfos.Count}枚のキャプション生成が完了しました");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                AddMainLogEntry("キャプション生成がキャンセルされました");
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"連続キャプション生成中にエラーが発生: {ex.Message}");
+            }
+            finally
+            {
+                // UI状態をリセット
+                _isContinuousCaptionGeneration = false;
+                GenerateCaptionButton.IsEnabled = true;
+                GenerateAllCaptionsButton.IsEnabled = true;
+                StopCaptionGenerationButton.IsEnabled = false;
+                ImageListBox.IsEnabled = true; // 画像切り替えを再有効化
+                _captionCancellationTokenSource?.Dispose();
+                _captionCancellationTokenSource = null;
+            }
+        }
+
         
         #endregion
     }
