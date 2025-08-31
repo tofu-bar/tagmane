@@ -546,6 +546,7 @@
         <Grid Grid.Column="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center">
@@ -611,7 +612,45 @@
                     </Button.ContextMenu>
                 </Button>
             </StackPanel>
-            <ListView x:Name="TagListView" Grid.Row="1" SelectionMode="Multiple" 
+            
+            <!-- Caption編集エリア -->
+            <Grid Grid.Row="1" Margin="5">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Caption:" FontWeight="Bold" Margin="0,0,0,2"/>
+                <TextBox x:Name="CaptionTextBox" Grid.Row="1" 
+                         Text="{Binding SelectedImage.Caption, UpdateSourceTrigger=PropertyChanged}"
+                         TextWrapping="Wrap" AcceptsReturn="True" MinHeight="60" MaxHeight="120"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto" Margin="0,0,0,5"
+                         FontFamily="Consolas" FontSize="12"/>
+                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Button x:Name="GenerateCaptionButton" Click="GenerateCaptionButton_Click" 
+                            Width="120" Height="30" Margin="0,0,5,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="/icon/vlm.png" Width="16" Height="16" Margin="0,0,5,0"/>
+                            <TextBlock Text="Caption生成"/>
+                        </StackPanel>
+                        <Button.ToolTip>
+                            <TextBlock Text="GLM-4.1Vでキャプションを生成(Ctrl+G)"/>
+                        </Button.ToolTip>
+                    </Button>
+                    <Button x:Name="ClearCaptionButton" Click="ClearCaptionButton_Click" 
+                            Width="80" Height="30">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="/icon/erase.png" Width="16" Height="16" Margin="0,0,5,0"/>
+                            <TextBlock Text="クリア"/>
+                        </StackPanel>
+                        <Button.ToolTip>
+                            <TextBlock Text="キャプションをクリア"/>
+                        </Button.ToolTip>
+                    </Button>
+                </StackPanel>
+            </Grid>
+            
+            <ListView x:Name="TagListView" Grid.Row="2" SelectionMode="Multiple" 
                       SelectionChanged="TagListView_SelectionChanged"
                       ItemsSource="{Binding SelectedImage.Tags}" 
                       PreviewMouseLeftButtonDown="TagListView_PreviewMouseLeftButtonDown"

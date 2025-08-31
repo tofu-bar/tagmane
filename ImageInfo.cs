@@ -8,6 +8,7 @@ namespace tagmane
         public string ImagePath { get; set; }
         public string AssociatedText { get; set; }
         public List<string> Tags { get; set; }
+        public string Caption { get; set; } = "";
 
         // タグリストからハッシュセットを初回のみ生成しキャッシュするプロパティ
         private HashSet<string> _tagSet;

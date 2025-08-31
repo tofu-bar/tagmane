@@ -403,6 +403,10 @@ namespace tagmane
                         VLMPredictButton_Click(null, null); // VLMでタグを作成
                         e.Handled = true;
                         break;
+                    case Key.G:
+                        GenerateCaptionButton_Click(null, null); // GLM-4.1Vでキャプションを生成
+                        e.Handled = true;
+                        break;
                     case Key.F:
                         // フィルタ機能は新しい高度フィルタに置き換えられました
                         e.Handled = true;
@@ -1061,7 +1065,7 @@ namespace tagmane
             }
         }
 
-        // 画像のタグをファイルに保存
+        // 画像のタグとキャプションをファイルに保存
         private void SaveTagsToFile(ImageInfo imageInfo)
         {
             var formattedTags = imageInfo.Tags.Select(FormatTag);
@@ -1086,11 +1090,11 @@ namespace tagmane
             {
                 if (jsonExists)
                 {
-                    UpdateJsonFile(jsonFilePath, tagString);
+                    UpdateJsonFile(jsonFilePath, tagString, imageInfo.Caption);
                 }
                 else
                 {
-                    CreateJsonFile(jsonFilePath, tagString);
+                    CreateJsonFile(jsonFilePath, tagString, imageInfo.Caption);
                 }
             }
             
@@ -1099,7 +1103,7 @@ namespace tagmane
             {
                 if (jsonExists)
                 {
-                    UpdateJsonFile(jsonFilePath, tagString);
+                    UpdateJsonFile(jsonFilePath, tagString, imageInfo.Caption);
                 }
                 else if (txtExists)
                 {
@@ -1126,7 +1130,7 @@ namespace tagmane
             }
         }
         
-        private void UpdateJsonFile(string filePath, string tagString)
+        private void UpdateJsonFile(string filePath, string tagString, string caption = "")
         {
             try
             {
@@ -1145,11 +1149,22 @@ namespace tagmane
                     {
                         writer.WriteString("tags", tagString);
                     }
+                    else if (property.Name == "caption")
+                    {
+                        writer.WriteString("caption", caption);
+                    }
                     else
                     {
                         property.WriteTo(writer);
                     }
                 }
+                
+                // captionフィールドが存在しない場合は追加
+                if (!root.TryGetProperty("caption", out _))
+                {
+                    writer.WriteString("caption", caption);
+                }
+                
                 writer.WriteEndObject();
                 writer.Flush();
                 
@@ -1162,13 +1177,14 @@ namespace tagmane
             }
         }
         
-        private void CreateJsonFile(string filePath, string tagString)
+        private void CreateJsonFile(string filePath, string tagString, string caption = "")
         {
             try
             {
                 var jsonObject = new
                 {
-                    tags = tagString
+                    tags = tagString,
+                    caption = caption
                 };
                 var options = new JsonSerializerOptions { WriteIndented = true };
                 string jsonString = JsonSerializer.Serialize(jsonObject, options);
@@ -6127,6 +6143,159 @@ namespace tagmane
                 }
             }
             return false;
+        }
+
+        private void GenerateCaptionButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage == null)
+            {
+                AddMainLogEntry("画像が選択されていません");
+                return;
+            }
+
+            _ = GenerateCaptionAsync(selectedImage);
+        }
+
+        private async Task GenerateCaptionAsync(ImageInfo imageInfo)
+        {
+            if (imageInfo == null) return;
+
+            try
+            {
+                AddMainLogEntry("キャプション生成を開始します...");
+                GenerateCaptionButton.IsEnabled = false;
+                GenerateCaptionButton.Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Children = {
+                        new System.Windows.Controls.Image { Source = new BitmapImage(new Uri("pack://application:,,,/icon/vlm.png")), Width = 16, Height = 16, Margin = new Thickness(0, 0, 5, 0) },
+                        new TextBlock { Text = "生成中..." }
+                    }
+                };
+
+                string pythonPath = GetPythonPath();
+                string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "caption_generator.py");
+                string imagePath = imageInfo.ImagePath;
+                string tags = string.Join(",", imageInfo.Tags);
+
+                ProcessStartInfo startInfo = new ProcessStartInfo
+                {
+                    FileName = pythonPath,
+                    Arguments = $"\"{scriptPath}\" --image \"{imagePath}\" --tags \"{tags}\" --save",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8
+                };
+
+                using (Process process = new Process { StartInfo = startInfo })
+                {
+                    process.Start();
+
+                    Task<string> outputTask = ReadStreamAsync(process.StandardOutput);
+                    Task<string> errorTask = ReadStreamAsync(process.StandardError);
+
+                    await process.WaitForExitAsync();
+
+                    string output = await outputTask;
+                    string error = await errorTask;
+
+                    if (process.ExitCode == 0)
+                    {
+                        string finalCaption = ExtractFinalCaption(output);
+                        if (!string.IsNullOrEmpty(finalCaption))
+                        {
+                            imageInfo.Caption = finalCaption;
+                            AddMainLogEntry($"キャプションを生成しました: {Path.GetFileName(imagePath)}");
+                        }
+                        else
+                        {
+                            AddMainLogEntry("キャプション生成に失敗しました（出力が空です）");
+                        }
+                    }
+                    else
+                    {
+                        AddMainLogEntry($"キャプション生成に失敗しました: {error}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"キャプション生成でエラーが発生しました: {ex.Message}");
+            }
+            finally
+            {
+                GenerateCaptionButton.IsEnabled = true;
+                GenerateCaptionButton.Content = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Children = {
+                        new System.Windows.Controls.Image { Source = new BitmapImage(new Uri("pack://application:,,,/icon/vlm.png")), Width = 16, Height = 16, Margin = new Thickness(0, 0, 5, 0) },
+                        new TextBlock { Text = "Caption生成" }
+                    }
+                };
+            }
+        }
+
+        private async Task<string> ReadStreamAsync(StreamReader reader)
+        {
+            var result = new System.Text.StringBuilder();
+            string line;
+            while ((line = await reader.ReadLineAsync()) != null)
+            {
+                if (line.StartsWith("STREAM:"))
+                {
+                    string streamChar = line.Substring(7);
+                    await Dispatcher.InvokeAsync(() => {
+                        var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+                        if (selectedImage != null && selectedImage.Caption.Length < 1000)
+                        {
+                            selectedImage.Caption += streamChar;
+                        }
+                    });
+                }
+                result.AppendLine(line);
+            }
+            return result.ToString();
+        }
+
+        private string ExtractFinalCaption(string output)
+        {
+            var lines = output.Split('\n');
+            foreach (var line in lines)
+            {
+                if (line.StartsWith("FINAL:"))
+                {
+                    return line.Substring(6).Trim();
+                }
+            }
+            return "";
+        }
+
+        private string GetPythonPath()
+        {
+            string venvPath = Path.Combine(@"d:\celll1\quality-tagger\.venv", "Scripts", "python.exe");
+            if (File.Exists(venvPath))
+            {
+                return venvPath;
+            }
+            return "python";
+        }
+
+        private void ClearCaptionButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage == null)
+            {
+                AddMainLogEntry("画像が選択されていません");
+                return;
+            }
+
+            selectedImage.Caption = "";
+            AddMainLogEntry("キャプションをクリアしました");
         }
         
         #endregion
