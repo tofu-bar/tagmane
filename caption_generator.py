@@ -42,7 +42,7 @@ DEFAULT_CAPTION_PROMPT = """Please describe this image in 2-3 concise sentences.
 Character: {character}
 Copyright: {copyright}
 
-Provide your answer wrapped in <answer></answer> tags:"""
+IMPORTANT: Start your response immediately with <answer>your description here</answer>. Do not use <think> tags. Provide a direct, concise description."""
 
 # GLM-4V関連の変数
 glm_model = None
@@ -245,15 +245,68 @@ def generate_caption_streaming(image_path, prompt, tags, categorized_tags=None):
                 print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
                 raise e
                 
-            # <answer></answer>タグから内容を抽出
+            # <answer></answer>タグから内容を抽出（リトライ機能付き）
             import re
-            answer_match = re.search(r'<answer>(.*?)</answer>', response_text, re.DOTALL)
-            if answer_match:
-                generated_text = answer_match.group(1).strip()
-                print(f"Extracted from <answer> tags: {repr(generated_text[:100])}", file=sys.stderr)
-            else:
-                generated_text = response_text.strip()
-                print(f"Using raw response: {repr(generated_text[:100])}", file=sys.stderr)
+            generated_text = ""
+            max_retries = 2
+            
+            for retry in range(max_retries + 1):
+                answer_match = re.search(r'<answer>(.*?)</answer>', response_text, re.DOTALL)
+                if answer_match:
+                    generated_text = answer_match.group(1).strip()
+                    print(f"Extracted from <answer> tags: {repr(generated_text[:100])}", file=sys.stderr)
+                    break
+                elif retry < max_retries:
+                    # リトライ: より短いプロンプトで再生成
+                    print(f"No <answer> tags found. Retrying with simplified prompt... (attempt {retry + 2}/{max_retries + 1})", file=sys.stderr)
+                    simplified_prompt = f"Describe this {categorized_tags['character'][0] if categorized_tags and categorized_tags['character'] else 'character'} cosplay in one sentence. Start with: <answer>"
+                    
+                    # 再生成（短いトークン制限）
+                    retry_config = generation_config.copy()
+                    retry_config['max_new_tokens'] = 256
+                    
+                    with torch.no_grad():
+                        retry_inputs = glm_processor.apply_chat_template(
+                            [{"role": "user", "content": [
+                                {"type": "image", "image": image},
+                                {"type": "text", "text": simplified_prompt}
+                            ]}],
+                            add_generation_prompt=True,
+                            tokenize=True,
+                            return_tensors="pt",
+                            return_dict=True
+                        ).to(glm_model.device)
+                        
+                        retry_output = glm_model.generate(**retry_inputs, **retry_config)
+                        response_text = glm_processor.batch_decode(
+                            retry_output[:, retry_inputs['input_ids'].size(1):],
+                            skip_special_tokens=True
+                        )[0]
+                        print(f"Retry response: {repr(response_text[:200])}", file=sys.stderr)
+                else:
+                    # 最後の手段：<think>タグから有用な情報を抽出
+                    print(f"All retries failed. Extracting from <think> content...", file=sys.stderr)
+                    think_patterns = [
+                        r'cosplay[a-zA-Z\s]*(?:of|as)\s+([^.]+?)\s+from\s+([^.]+?)[.\s]',  # "cosplay of X from Y"
+                        r'The image shows.*?cosplay.*?([^.]{20,80})[.\s]',  # "The image shows...cosplay..."
+                        r'person.*?cosplaying.*?([^.]{20,80})[.\s]',  # "person cosplaying..."
+                        r'([^.]{30,100}(?:cosplay|character|costume)[^.]{0,50})[.\s]'  # 一般的なコスプレ記述
+                    ]
+                    
+                    for pattern in think_patterns:
+                        think_match = re.search(pattern, response_text, re.IGNORECASE | re.DOTALL)
+                        if think_match:
+                            generated_text = think_match.group(0).strip()
+                            if len(generated_text) > 20:
+                                print(f"Extracted from <think>: {repr(generated_text[:100])}", file=sys.stderr)
+                                break
+                    
+                    if not generated_text:
+                        # 最終フォールバック
+                        character_name = ", ".join(categorized_tags['character']) if categorized_tags and categorized_tags['character'] else "character"
+                        copyright_name = ", ".join(categorized_tags['copyright']) if categorized_tags and categorized_tags['copyright'] else "anime series"
+                        generated_text = f"A cosplay photo featuring {character_name} from {copyright_name}."
+                        print(f"Using fallback description: {generated_text}", file=sys.stderr)
             
             # ストリーミング風に文字を出力
             print(f"Starting streaming output...", file=sys.stderr)
