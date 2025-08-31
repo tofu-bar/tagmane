@@ -11,6 +11,7 @@ using System.Windows.Media.Imaging;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Threading;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Path = System.IO.Path;
@@ -47,13 +48,13 @@ namespace tagmane
     {
         private string _currentVersion = "1.0.7";
         private CancellationTokenSource _logCancellationTokenSource;
-        private RingBuffer<string> _logQueue = new RingBuffer<string>(20);
-        private RingBuffer<string> _debugLogQueue = new RingBuffer<string>(20);
-        private RingBuffer<string> _uiErrorLogQueue = new RingBuffer<string>(20);
-        private RingBuffer<string> _vlmLogQueue = new RingBuffer<string>(20);
-        private RingBuffer<string> _vlmErrorLogQueue = new RingBuffer<string>(20);
-        private RingBuffer<string> _pipelineLogQueue = new RingBuffer<string>(20);
-        private RingBuffer<string> _pythonLogQueue = new RingBuffer<string>(100);
+        private RingBuffer<string> _logQueue = new RingBuffer<string>(100);
+        private RingBuffer<string> _debugLogQueue = new RingBuffer<string>(100);
+        private RingBuffer<string> _uiErrorLogQueue = new RingBuffer<string>(50);
+        private RingBuffer<string> _vlmLogQueue = new RingBuffer<string>(100);
+        private RingBuffer<string> _vlmErrorLogQueue = new RingBuffer<string>(50);
+        private RingBuffer<string> _pipelineLogQueue = new RingBuffer<string>(100);
+        private RingBuffer<string> _pythonLogQueue = new RingBuffer<string>(500);
         
         // 各ログボックスの表示済み項目数を追跡
         private int _mainLogDisplayedCount = 0;
@@ -124,6 +125,12 @@ namespace tagmane
         private bool _isContinuousCaptionGeneration = false;
         private CancellationTokenSource _captionCancellationTokenSource;
         private int _currentCaptionIndex = 0;
+        
+        // 永続Pythonセッション用
+        private Process _persistentPythonProcess;
+        private StreamWriter _pythonInput;
+        private StreamReader _pythonOutput;
+        private StreamReader _pythonError;
         private List<(string Name, double GeneralThreshold)> _vlmModels = new List<(string, double)> 
         {
             ("SmilingWolf/wd-eva02-large-tagger-v3", 0.50),
@@ -636,6 +643,9 @@ namespace tagmane
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
+            // 永続Pythonセッションのクリーンアップ
+            StopPersistentPythonSession();
+            
             SaveSettings();
             _logCancellationTokenSource.Cancel(); // ログ処理を停止
             base.OnClosing(e);
@@ -812,15 +822,19 @@ namespace tagmane
                 {
                     var logEntries = _logQueue.GetRecentItems();
                     Dispatcher.Invoke(() => {
-                        if (logEntries.Count > _mainLogDisplayedCount)
+                        if (logEntries.Count > 0)
                         {
-                            for (int i = _mainLogDisplayedCount; i < logEntries.Count; i++)
+                            // TextBoxの内容を更新する前に、現在のスクロール位置を保存
+                            var atBottom = MainLogTextBox.VerticalOffset >= MainLogTextBox.ExtentHeight - MainLogTextBox.ViewportHeight - 10;
+                            
+                            MainLogTextBox.Clear();
+                            MainLogTextBox.Text = string.Join(Environment.NewLine, logEntries);
+                            
+                            // 以前最下部にいた場合のみ、最下部にスクロール
+                            if (atBottom)
                             {
-                                if (_mainLogDisplayedCount > 0 || i > _mainLogDisplayedCount) MainLogTextBox.AppendText(Environment.NewLine);
-                                MainLogTextBox.AppendText(logEntries[i]);
+                                MainLogTextBox.ScrollToEnd();
                             }
-                            _mainLogDisplayedCount = logEntries.Count;
-                            MainLogTextBox.ScrollToEnd();
                         }
                     });
 
@@ -830,57 +844,65 @@ namespace tagmane
 
                     var debuglogEntries = _debugLogQueue.GetRecentItems();
                     Dispatcher.Invoke(() => {
-                        if (debuglogEntries.Count > _debugLogDisplayedCount)
+                        if (debuglogEntries.Count > 0)
                         {
-                            for (int i = _debugLogDisplayedCount; i < debuglogEntries.Count; i++)
+                            var atBottom = DebugLogTextBox.VerticalOffset >= DebugLogTextBox.ExtentHeight - DebugLogTextBox.ViewportHeight - 10;
+                            
+                            DebugLogTextBox.Clear();
+                            DebugLogTextBox.Text = string.Join(Environment.NewLine, debuglogEntries);
+                            
+                            if (atBottom)
                             {
-                                if (_debugLogDisplayedCount > 0 || i > _debugLogDisplayedCount) DebugLogTextBox.AppendText(Environment.NewLine);
-                                DebugLogTextBox.AppendText(debuglogEntries[i]);
+                                DebugLogTextBox.ScrollToEnd();
                             }
-                            _debugLogDisplayedCount = debuglogEntries.Count;
-                            DebugLogTextBox.ScrollToEnd();
                         }
                     });
 
                     var vlmlogEntries = _vlmLogQueue.GetRecentItems();
                     Dispatcher.Invoke(() => {
-                        if (vlmlogEntries.Count > _vlmLogDisplayedCount)
+                        if (vlmlogEntries.Count > 0)
                         {
-                            for (int i = _vlmLogDisplayedCount; i < vlmlogEntries.Count; i++)
+                            var atBottom = VLMLogTextBox.VerticalOffset >= VLMLogTextBox.ExtentHeight - VLMLogTextBox.ViewportHeight - 10;
+                            
+                            VLMLogTextBox.Clear();
+                            VLMLogTextBox.Text = string.Join(Environment.NewLine, vlmlogEntries);
+                            
+                            if (atBottom)
                             {
-                                if (_vlmLogDisplayedCount > 0 || i > _vlmLogDisplayedCount) VLMLogTextBox.AppendText(Environment.NewLine);
-                                VLMLogTextBox.AppendText(vlmlogEntries[i]);
+                                VLMLogTextBox.ScrollToEnd();
                             }
-                            _vlmLogDisplayedCount = vlmlogEntries.Count;
-                            VLMLogTextBox.ScrollToEnd();
                         }
                     });
 
                     var pipelinelogEntries = _pipelineLogQueue.GetRecentItems();
                     Dispatcher.Invoke(() => {
-                        if (pipelinelogEntries.Count > _pipelineLogDisplayedCount)
+                        if (pipelinelogEntries.Count > 0)
                         {
-                            for (int i = _pipelineLogDisplayedCount; i < pipelinelogEntries.Count; i++)
+                            var atBottom = PipelineLogTextBox.VerticalOffset >= PipelineLogTextBox.ExtentHeight - PipelineLogTextBox.ViewportHeight - 10;
+                            
+                            PipelineLogTextBox.Clear();
+                            PipelineLogTextBox.Text = string.Join(Environment.NewLine, pipelinelogEntries);
+                            
+                            if (atBottom)
                             {
-                                if (_pipelineLogDisplayedCount > 0 || i > _pipelineLogDisplayedCount) PipelineLogTextBox.AppendText(Environment.NewLine);
-                                PipelineLogTextBox.AppendText(pipelinelogEntries[i]);
+                                PipelineLogTextBox.ScrollToEnd();
                             }
-                            _pipelineLogDisplayedCount = pipelinelogEntries.Count;
-                            PipelineLogTextBox.ScrollToEnd();
                         }
                     });
 
                     var pythonlogEntries = _pythonLogQueue.GetRecentItems();
                     Dispatcher.Invoke(() => {
-                        if (pythonlogEntries.Count > _pythonLogDisplayedCount)
+                        if (pythonlogEntries.Count > 0)
                         {
-                            for (int i = _pythonLogDisplayedCount; i < pythonlogEntries.Count; i++)
+                            var atBottom = PythonLogTextBox.VerticalOffset >= PythonLogTextBox.ExtentHeight - PythonLogTextBox.ViewportHeight - 10;
+                            
+                            PythonLogTextBox.Clear();
+                            PythonLogTextBox.Text = string.Join(Environment.NewLine, pythonlogEntries);
+                            
+                            if (atBottom)
                             {
-                                if (_pythonLogDisplayedCount > 0 || i > _pythonLogDisplayedCount) PythonLogTextBox.AppendText(Environment.NewLine);
-                                PythonLogTextBox.AppendText(pythonlogEntries[i]);
+                                PythonLogTextBox.ScrollToEnd();
                             }
-                            _pythonLogDisplayedCount = pythonlogEntries.Count;
-                            PythonLogTextBox.ScrollToEnd();
                         }
                     });
 
@@ -6271,10 +6293,60 @@ namespace tagmane
                 string imagePath = imageInfo.ImagePath;
                 string tags = string.Join(",", imageInfo.Tags);
 
+                // タグをカテゴリ別に分類
+                var tagList = imageInfo.Tags;
+                var categorizedTags = new Dictionary<string, List<string>>
+                {
+                    ["character"] = new List<string>(),
+                    ["copyright"] = new List<string>(),
+                    ["artist"] = new List<string>(),
+                    ["general"] = new List<string>(),
+                    ["rating"] = new List<string>(),
+                    ["quality"] = new List<string>(),
+                    ["meta"] = new List<string>(),
+                    ["model"] = new List<string>()
+                };
+
+                foreach (var tag in tagList)
+                {
+                    string category = GetTagCategory(tag).ToLower();
+                    
+                    // カテゴリ名をPython側の期待する形式にマッピング
+                    if (category == "character" || category == "characters")
+                        categorizedTags["character"].Add(tag);
+                    else if (category == "copyright" || category == "copyrights" || category == "series")
+                        categorizedTags["copyright"].Add(tag);
+                    else if (category == "artist" || category == "artists")
+                        categorizedTags["artist"].Add(tag);
+                    else if (category == "rating" || category == "ratings")
+                        categorizedTags["rating"].Add(tag);
+                    else if (category == "quality")
+                        categorizedTags["quality"].Add(tag);
+                    else if (category == "meta")
+                        categorizedTags["meta"].Add(tag);
+                    else if (category == "model" || category == "models")
+                        categorizedTags["model"].Add(tag);
+                    else
+                        categorizedTags["general"].Add(tag);
+                }
+
+                // カテゴリ情報をJSON形式で作成
+                AddPythonLogEntry($"単発推論 - カテゴリ分類結果: character={categorizedTags["character"].Count}, copyright={categorizedTags["copyright"].Count}, general={categorizedTags["general"].Count}");
+                var tagData = new
+                {
+                    all_tags = tagList.ToList(),
+                    categorized = categorizedTags
+                };
+                string categorizedJson = JsonSerializer.Serialize(tagData);
+                
+                // JSONデータをBase64エンコードして安全に引数として渡す
+                byte[] jsonBytes = System.Text.Encoding.UTF8.GetBytes(categorizedJson);
+                string base64Json = Convert.ToBase64String(jsonBytes);
+
                 ProcessStartInfo startInfo = new ProcessStartInfo
                 {
                     FileName = pythonPath,
-                    Arguments = $"\"{scriptPath}\" --image \"{imagePath}\" --tags \"{tags}\" --save",
+                    Arguments = $"\"{scriptPath}\" --image \"{imagePath}\" --tags \"{tags}\" --categorized-json-base64 \"{base64Json}\" --save",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -6692,6 +6764,14 @@ namespace tagmane
             {
                 AddMainLogEntry($"連続キャプション生成を開始します（対象: {_imageInfos.Count}枚）");
 
+                // 永続Pythonセッションを開始
+                bool sessionStarted = await StartPersistentPythonSessionAsync();
+                if (!sessionStarted)
+                {
+                    AddMainLogEntry("永続Pythonセッションの開始に失敗しました。連続生成を中止します。");
+                    return;
+                }
+
                 for (int i = 0; i < _imageInfos.Count; i++)
                 {
                     if (_captionCancellationTokenSource.Token.IsCancellationRequested)
@@ -6709,8 +6789,8 @@ namespace tagmane
 
                     AddMainLogEntry($"キャプション生成中: {Path.GetFileName(imageInfo.ImagePath)} ({i + 1}/{_imageInfos.Count})");
 
-                    // 既存の単独キャプション生成を使用
-                    await GenerateCaptionAsync(imageInfo);
+                    // 永続セッションを使用してキャプション生成
+                    await GenerateCaptionWithPersistentSessionAsync(imageInfo);
 
                     if (_captionCancellationTokenSource.Token.IsCancellationRequested)
                         break;
@@ -6742,6 +6822,292 @@ namespace tagmane
             }
         }
 
+        private async Task<bool> StartPersistentPythonSessionAsync()
+        {
+            try
+            {
+                string pythonPath = GetPythonPath();
+                string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "caption_generator.py");
+
+                ProcessStartInfo startInfo = new ProcessStartInfo
+                {
+                    FileName = pythonPath,
+                    Arguments = $"\"{scriptPath}\" --interactive",
+                    UseShellExecute = false,
+                    RedirectStandardInput = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8
+                };
+
+                _persistentPythonProcess = new Process { StartInfo = startInfo };
+                _persistentPythonProcess.Start();
+
+                _pythonInput = _persistentPythonProcess.StandardInput;
+                _pythonOutput = _persistentPythonProcess.StandardOutput;
+                _pythonError = _persistentPythonProcess.StandardError;
+
+                // エラー出力を継続的に監視
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        while (!_persistentPythonProcess.HasExited)
+                        {
+                            string line = await _pythonError.ReadLineAsync();
+                            if (!string.IsNullOrEmpty(line))
+                            {
+                                AddPythonLogEntry($"Python stderr: {line}");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AddPythonLogEntry($"エラー出力監視の例外: {ex.Message}");
+                    }
+                });
+
+                AddPythonLogEntry("永続Pythonセッションを開始しました");
+                
+                // READYメッセージを待機
+                string readyMessage = await _pythonOutput.ReadLineAsync();
+                if (readyMessage == "READY")
+                {
+                    AddPythonLogEntry("Pythonセッションが準備完了しました");
+                    return true;
+                }
+                else
+                {
+                    AddMainLogEntry($"Pythonセッションの初期化に失敗: {readyMessage}");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"永続Pythonセッションの開始に失敗: {ex.Message}");
+                return false;
+            }
+        }
+
+        private async Task<string> ExecutePythonCommandAsync(string imagePath, string tags)
+        {
+            AddPythonLogEntry("=== ExecutePythonCommandAsync 開始 ===");
+            AddPythonLogEntry($"受信したタグ: {tags}");
+            
+            if (_persistentPythonProcess == null || _persistentPythonProcess.HasExited)
+            {
+                AddMainLogEntry("Pythonセッションが無効です。再開始します。");
+                bool started = await StartPersistentPythonSessionAsync();
+                if (!started) return null;
+            }
+
+            try
+            {
+                // 連続モード用のログ出力（プロンプト表示は初回のみ）
+                if (_currentCaptionIndex == 0 || _currentCaptionIndex == -1)
+                {
+                    string prompt = @"Please describe this image in 2-3 concise sentences. Focus on the main subject and key visual elements.
+
+Character: {character}
+Copyright: {copyright}
+
+Provide your answer wrapped in <answer></answer> tags:";
+                    AddPythonLogEntry($"使用するプロンプト:\n{prompt}");
+                }
+                
+                AddPythonLogEntry($"対象画像: {Path.GetFileName(imagePath)}");
+                AddPythonLogEntry($"タグ: {tags}");
+
+                // タグをカテゴリ別に分類
+                var tagList = tags.Split(',').Select(t => t.Trim()).Where(t => !string.IsNullOrEmpty(t)).ToList();
+                var categorizedTags = new Dictionary<string, List<string>>
+                {
+                    ["character"] = new List<string>(),
+                    ["copyright"] = new List<string>(),
+                    ["artist"] = new List<string>(),
+                    ["general"] = new List<string>(),
+                    ["rating"] = new List<string>(),
+                    ["quality"] = new List<string>(),
+                    ["meta"] = new List<string>(),
+                    ["model"] = new List<string>()
+                };
+
+                foreach (var tag in tagList)
+                {
+                    string category = GetTagCategory(tag).ToLower();
+                    
+                    // カテゴリ名をPython側の期待する形式にマッピング
+                    if (category == "character" || category == "characters")
+                        categorizedTags["character"].Add(tag);
+                    else if (category == "copyright" || category == "copyrights" || category == "series")
+                        categorizedTags["copyright"].Add(tag);
+                    else if (category == "artist" || category == "artists")
+                        categorizedTags["artist"].Add(tag);
+                    else if (category == "rating" || category == "ratings")
+                        categorizedTags["rating"].Add(tag);
+                    else if (category == "quality")
+                        categorizedTags["quality"].Add(tag);
+                    else if (category == "meta")
+                        categorizedTags["meta"].Add(tag);
+                    else if (category == "model" || category == "models")
+                        categorizedTags["model"].Add(tag);
+                    else
+                        categorizedTags["general"].Add(tag);
+                }
+
+                // カテゴリ情報をJSON形式で作成
+                AddPythonLogEntry($"カテゴリ分類結果: character={categorizedTags["character"].Count}, copyright={categorizedTags["copyright"].Count}, general={categorizedTags["general"].Count}");
+                
+                // デバッグ用：各カテゴリの具体的なタグを表示
+                foreach (var kvp in categorizedTags)
+                {
+                    if (kvp.Value.Count > 0)
+                    {
+                        var sampleTags = string.Join(", ", kvp.Value.Take(3));
+                        AddPythonLogEntry($"  {kvp.Key}カテゴリ: {sampleTags}...");
+                    }
+                }
+                var tagData = new
+                {
+                    all_tags = tagList,
+                    categorized = categorizedTags
+                };
+                string tagsJson = JsonSerializer.Serialize(tagData);
+
+                // コマンドを送信（JSON形式で送信）
+                string command = $"PROCESS_JSON|{imagePath}|{tagsJson}";
+                AddPythonLogEntry($"送信コマンド: {command.Substring(0, Math.Min(100, command.Length))}...");
+                await _pythonInput.WriteLineAsync(command);
+                await _pythonInput.FlushAsync();
+
+                AddPythonLogEntry($"GLM-4.1V キャプション生成を開始: {Path.GetFileName(imagePath)}");
+
+                // 結果を継続的に読み取り（ストリーミング対応）
+                string finalCaption = "";
+                StringBuilder streamingOutput = new StringBuilder();
+                
+                while (true)
+                {
+                    string line = await _pythonOutput.ReadLineAsync();
+                    if (string.IsNullOrEmpty(line)) break;
+
+                    if (line.StartsWith("STREAM:"))
+                    {
+                        // ストリーミング文字を内部的に蓄積（ログには出力しない）
+                        string char_ = line.Substring(7);
+                        streamingOutput.Append(char_);
+                        // ログ出力を削除してクラッタリングを防止
+                    }
+                    else if (line.StartsWith("FINAL:"))
+                    {
+                        finalCaption = line.Substring(6);
+                        AddPythonLogEntry($"キャプション生成完了: {finalCaption}");
+                        break;
+                    }
+                    else if (line.StartsWith("ERROR:"))
+                    {
+                        AddPythonLogEntry($"Python エラー: {line.Substring(6)}");
+                        return null;
+                    }
+                    else if (line == "SAVED")
+                    {
+                        AddPythonLogEntry("JSONファイルに保存完了");
+                    }
+                    else if (line == "SAVE_FAILED")
+                    {
+                        AddPythonLogEntry("JSONファイルの保存に失敗");
+                    }
+                    else
+                    {
+                        // その他の出力をログに表示
+                        AddPythonLogEntry($"Python出力: {line}");
+                    }
+                }
+                
+                return finalCaption;
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"Python通信エラー: {ex.Message}");
+                AddPythonLogEntry($"通信エラー詳細: {ex}");
+                return null;
+            }
+        }
+
+        private async Task GenerateCaptionWithPersistentSessionAsync(ImageInfo imageInfo)
+        {
+            try
+            {
+                string tags = string.Join(",", imageInfo.Tags);
+                string finalCaption = await ExecutePythonCommandAsync(imageInfo.ImagePath, tags);
+
+                if (!string.IsNullOrEmpty(finalCaption))
+                {
+                    imageInfo.Caption = finalCaption;
+
+                    // UIとJSONファイルの更新
+                    var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+                    if (selectedImage == imageInfo)
+                    {
+                        CaptionTextBox.Text = finalCaption;
+                    }
+
+                    string jsonFilePath = Path.ChangeExtension(imageInfo.ImagePath, ".json");
+                    string tagString = string.Join(",", imageInfo.Tags);
+                    UpdateJsonFile(jsonFilePath, tagString, finalCaption);
+
+                    AddMainLogEntry($"キャプションを生成しました: {Path.GetFileName(imageInfo.ImagePath)}");
+                }
+                else
+                {
+                    AddMainLogEntry($"キャプション生成に失敗: {Path.GetFileName(imageInfo.ImagePath)} - 有効なキャプションが生成されませんでした");
+                }
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"キャプション生成エラー ({Path.GetFileName(imageInfo.ImagePath)}): {ex.Message}");
+                AddPythonLogEntry($"キャプション生成エラー: {ex}");
+            }
+        }
+
+        private void StopPersistentPythonSession()
+        {
+            try
+            {
+                if (_persistentPythonProcess != null && !_persistentPythonProcess.HasExited)
+                {
+                    // 終了コマンドを送信
+                    _pythonInput?.WriteLine("EXIT");
+                    _pythonInput?.Flush();
+
+                    // プロセス終了を待機（タイムアウト付き）
+                    if (!_persistentPythonProcess.WaitForExit(5000))
+                    {
+                        _persistentPythonProcess.Kill();
+                    }
+
+                    AddPythonLogEntry("永続Pythonセッションを終了しました");
+                }
+            }
+            catch (Exception ex)
+            {
+                AddMainLogEntry($"Pythonセッション終了エラー: {ex.Message}");
+            }
+            finally
+            {
+                _pythonInput?.Dispose();
+                _pythonOutput?.Dispose();
+                _pythonError?.Dispose();
+                _persistentPythonProcess?.Dispose();
+
+                _pythonInput = null;
+                _pythonOutput = null;
+                _pythonError = null;
+                _persistentPythonProcess = null;
+            }
+        }
         
         #endregion
     }

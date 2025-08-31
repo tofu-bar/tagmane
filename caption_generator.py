@@ -11,6 +11,12 @@ import argparse
 from PIL import Image
 import threading
 
+# Windows環境でのエンコーディング問題を回避
+if os.name == 'nt':  # Windows
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 # PyTorch CUDA メモリ最適化の環境変数設定
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:512"
 os.environ["CUDA_LAUNCH_BLOCKING"] = "0"
@@ -100,60 +106,18 @@ def initialize_glm_model():
         glm_processor = None
         return False
 
-def categorize_tags(tags):
-    """タグをカテゴリ別に分類する（簡易版）"""
-    categorized = {
-        'character': [],
-        'copyright': [],
-        'artist': [],
-        'general': [],
-        'rating': [],
-        'quality': [],
-        'meta': [],
-        'model': []
-    }
-    
-    # print(f"categorize_tags input type: {type(tags)}, content: {repr(tags)}", file=sys.stderr)
-    
-    # tagsがリストでない場合の処理
-    if isinstance(tags, str):
-        # 文字列の場合は空のリストを返す
-        print(f"Warning: tags is string instead of list: {tags}", file=sys.stderr)
-        return categorized
-    elif not isinstance(tags, (list, tuple)):
-        print(f"Warning: tags is neither string nor list: {type(tags)}", file=sys.stderr)
-        return categorized
-    
-    # 基本的なカテゴリ分類ルール
-    rating_tags = ['general', 'sensitive', 'questionable', 'explicit']
-    quality_tags = ['best quality', 'normal quality', 'bad quality', 'worst quality']
-    
-    for tag in tags:
-        if not isinstance(tag, str):
-            print(f"Warning: tag is not string: {type(tag)}, content: {repr(tag)}", file=sys.stderr)
-            continue
-            
-        tag_lower = tag.lower()
-        if tag_lower in rating_tags:
-            categorized['rating'].append(tag)
-        elif tag_lower in quality_tags:
-            categorized['quality'].append(tag)
-        elif any(keyword in tag_lower for keyword in ['artist', 'creator', 'by ']):
-            categorized['artist'].append(tag)
-        elif any(keyword in tag_lower for keyword in ['series', 'game', 'anime', 'manga']):
-            categorized['copyright'].append(tag)
-        else:
-            categorized['general'].append(tag)
-    
-    return categorized
+# タグカテゴリ関連の辞書読み込み機能は削除（C#側から分類済みデータを受け取る）
 
-def generate_caption_streaming(image_path, prompt, tags):
+def generate_caption_streaming(image_path, prompt, tags, categorized_tags=None):
     """GLM-4Vを使用してキャプションを生成する（ストリーミング対応）"""
     global glm_model, glm_processor
     
     if not TRANSFORMERS_AVAILABLE:
         # テスト用ダミー出力
-        dummy_text = f"This is a test caption for {os.path.basename(image_path)} with tags: {', '.join(tags[:3])}..."
+        if isinstance(tags, list):
+            dummy_text = f"This is a test caption for {os.path.basename(image_path)} with tags: {', '.join(tags[:3])}..."
+        else:
+            dummy_text = f"This is a test caption for {os.path.basename(image_path)}"
         for i, char in enumerate(dummy_text):
             print(f"STREAM:{char}", flush=True)
             if i % 10 == 0:  # 10文字ごとに少し待機
@@ -178,20 +142,25 @@ def generate_caption_streaming(image_path, prompt, tags):
             image = image.resize(new_size, Image.Resampling.LANCZOS)
             print(f"Image resized to {new_size} for memory efficiency", file=sys.stderr)
         
-        # タグをカテゴリ別に分類
-        # print(f"Tags type: {type(tags)}, content: {tags}", file=sys.stderr)
-        try:
-            categorized_tags = categorize_tags(tags)
-            # print(f"Categorized tags: {categorized_tags}", file=sys.stderr)
-        except Exception as e:
-            print(f"Error in categorize_tags: {e}", file=sys.stderr)
-            print(f"Tags causing error: {tags}", file=sys.stderr)
-            raise e
+        # カテゴリ別タグを使用（C#から提供されるか、デフォルトを使用）
+        if categorized_tags is None:
+            # フォールバック：すべてgeneralとして扱う
+            categorized_tags = {
+                'character': [],
+                'copyright': [],
+                'artist': [],
+                'general': tags if isinstance(tags, list) else [],
+                'rating': [],
+                'quality': [],
+                'meta': [],
+                'model': []
+            }
+            print(f"Using fallback categorization (all tags as general)", file=sys.stderr)
         
         # プロンプト用の辞書を作成
         print(f"Creating prompt replacements...", file=sys.stderr)
         prompt_replacements = {
-            'tags': ", ".join(tags) if tags else "No tags",
+            'tags': ", ".join(tags) if isinstance(tags, list) and tags else "No tags",
             'character': ", ".join(categorized_tags['character']) if categorized_tags['character'] else "No character tags",
             'copyright': ", ".join(categorized_tags['copyright']) if categorized_tags['copyright'] else "No copyright tags",
             'artist': ", ".join(categorized_tags['artist']) if categorized_tags['artist'] else "No artist tags",
@@ -206,7 +175,7 @@ def generate_caption_streaming(image_path, prompt, tags):
         # プロンプトをフォーマット
         print(f"Formatting prompt...", file=sys.stderr)
         formatted_prompt = prompt.format(**prompt_replacements)
-        print(f"Using prompt: {formatted_prompt[:100]}...", file=sys.stderr)
+        print(f"Using prompt: {formatted_prompt}", file=sys.stderr)
         
         with model_lock:
             # トークン化
@@ -289,7 +258,11 @@ def generate_caption_streaming(image_path, prompt, tags):
             # ストリーミング風に文字を出力
             print(f"Starting streaming output...", file=sys.stderr)
             for char in generated_text:
-                print(f"STREAM:{char}", flush=True)
+                try:
+                    print(f"STREAM:{char}", flush=True)
+                except UnicodeEncodeError:
+                    # エンコーディングエラーを回避
+                    print(f"STREAM:{char.encode('utf-8', errors='replace').decode('utf-8')}", flush=True)
             
             # GPU メモリクリーンアップ
             if torch.cuda.is_available():
@@ -328,16 +301,122 @@ def save_caption_to_json(image_path, caption):
         print(f"Error saving caption to JSON: {e}", file=sys.stderr)
         return False
 
+def interactive_mode():
+    """インタラクティブモード - C#からの連続コマンドを処理"""
+    print("READY", flush=True)  # C#に準備完了を通知
+    
+    while True:
+        try:
+            # C#からのコマンドを読み取り
+            line = input().strip()
+            
+            if line == "EXIT":
+                print("EXITING", flush=True)
+                break
+            
+            # PROCESS_JSON|imagePath|jsonData形式と旧形式の両方をサポート
+            if line.startswith("PROCESS_JSON|"):
+                parts = line.split("|", 2)
+                if len(parts) >= 3:
+                    image_path = parts[1]
+                    json_str = parts[2]
+                    
+                    # JSONデータをパース
+                    try:
+                        tag_data = json.loads(json_str)
+                        tags = tag_data.get('all_tags', [])
+                        categorized_tags = tag_data.get('categorized', None)
+                        
+                        print(f"Processing: {image_path} with categorized tags", file=sys.stderr)
+                        print(f"Total tags received: {len(tags)}", file=sys.stderr)
+                        if categorized_tags:
+                            for category, cat_tags in categorized_tags.items():
+                                if cat_tags:
+                                    print(f"  {category}: {len(cat_tags)} tags - {cat_tags[:3]}", file=sys.stderr)
+                                else:
+                                    print(f"  {category}: 0 tags", file=sys.stderr)
+                    except json.JSONDecodeError as e:
+                        print(f"ERROR:Invalid JSON data: {e}", flush=True)
+                        continue
+                    
+                    # 画像ファイルの存在確認
+                    if not os.path.exists(image_path):
+                        print(f"ERROR:Image file not found: {image_path}", flush=True)
+                        continue
+                    
+                    # キャプション生成（カテゴリ情報付き）
+                    caption = generate_caption_streaming(image_path, DEFAULT_CAPTION_PROMPT, tags, categorized_tags)
+                    
+            elif line.startswith("PROCESS|"):
+                # 旧形式のサポート（後方互換性）
+                parts = line.split("|", 2)
+                if len(parts) >= 2:
+                    image_path = parts[1]
+                    tags_str = parts[2] if len(parts) > 2 else ""
+                    
+                    # タグの解析
+                    tags = []
+                    if tags_str:
+                        tags = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
+                    
+                    print(f"Processing (legacy format): {image_path} with tags: {tags}", file=sys.stderr)
+                    
+                    # 画像ファイルの存在確認
+                    if not os.path.exists(image_path):
+                        print(f"ERROR:Image file not found: {image_path}", flush=True)
+                        continue
+                    
+                    # キャプション生成（カテゴリ情報なし）
+                    caption = generate_caption_streaming(image_path, DEFAULT_CAPTION_PROMPT, tags)
+                    
+                    if caption and not caption.startswith("Error:"):
+                        print("FINAL:" + caption, flush=True)
+                        
+                        # JSONファイルに保存
+                        success = save_caption_to_json(image_path, caption)
+                        if success:
+                            print("SAVED", flush=True)
+                        else:
+                            print("SAVE_FAILED", flush=True)
+                    else:
+                        print(f"ERROR:{caption}", flush=True)
+                else:
+                    print("ERROR:Invalid command format", flush=True)
+            else:
+                print("ERROR:Unknown command", flush=True)
+                
+        except EOFError:
+            print("EXITING", flush=True)
+            break
+        except Exception as e:
+            print(f"ERROR:{e}", flush=True)
+
 def main():
     """メイン関数"""
+    print("DEBUG: Updated caption_generator.py with --categorized-json support", file=sys.stderr)
     parser = argparse.ArgumentParser(description='GLM-4.1V Caption Generator')
-    parser.add_argument('--image', required=True, help='Path to image file')
+    parser.add_argument('--image', help='Path to image file')
     parser.add_argument('--tags', help='Comma-separated list of tags')
+    parser.add_argument('--categorized-json', help='JSON string with categorized tags')
+    parser.add_argument('--categorized-json-base64', help='Base64 encoded JSON string with categorized tags')
     parser.add_argument('--prompt', help='Custom prompt template')
     parser.add_argument('--save', action='store_true', help='Save caption to JSON file')
     parser.add_argument('--init-only', action='store_true', help='Only initialize model and exit')
+    parser.add_argument('--interactive', action='store_true', help='Start interactive mode for persistent session')
     
     args = parser.parse_args()
+    
+    # インタラクティブモードの場合
+    if args.interactive:
+        # モデルを事前に初期化
+        success = initialize_glm_model()
+        if not success:
+            print("INIT_FAILED", flush=True)
+            return
+        
+        # インタラクティブモードに入る
+        interactive_mode()
+        return
     
     # モデル初期化のみの場合
     if args.init_only:
@@ -348,15 +427,70 @@ def main():
             print("FAILED", flush=True)
         return
     
+    # 通常の単発処理モード
+    if not args.image:
+        print("Error: --image is required for single-shot mode", file=sys.stderr)
+        return
+    
     # 画像ファイルの存在確認
     if not os.path.exists(args.image):
         print(f"Error: Image file not found: {args.image}", file=sys.stderr)
         return
     
-    # タグの解析
+    # タグの解析とカテゴライズ処理
     tags = []
-    if args.tags:
-        print(f"Raw tags argument: {repr(args.tags)}", file=sys.stderr)
+    categorized_tags = None
+    
+    if args.categorized_json_base64:
+        # Base64エンコードされたカテゴライズ済みJSONデータがある場合
+        try:
+            import base64
+            decoded_bytes = base64.b64decode(args.categorized_json_base64)
+            json_str = decoded_bytes.decode('utf-8')
+            tag_data = json.loads(json_str)
+            tags = tag_data.get('all_tags', [])
+            categorized_tags = tag_data.get('categorized', None)
+            
+            print(f"Single-shot mode with categorized tags (Base64)", file=sys.stderr)
+            print(f"Total tags received: {len(tags)}", file=sys.stderr)
+            if categorized_tags:
+                for category, cat_tags in categorized_tags.items():
+                    if cat_tags:
+                        print(f"  {category}: {len(cat_tags)} tags - {cat_tags[:3]}", file=sys.stderr)
+                    else:
+                        print(f"  {category}: 0 tags", file=sys.stderr)
+        except Exception as e:
+            print(f"Error parsing Base64 categorized JSON: {e}", file=sys.stderr)
+            # フォールバック：従来の方式
+            if args.tags:
+                print(f"Fallback: Processing tags: {repr(args.tags)}", file=sys.stderr)
+                tags = [tag.strip() for tag in args.tags.split(',') if tag.strip()]
+                print(f"Fallback: Parsed tags: {tags}", file=sys.stderr)
+    elif args.categorized_json:
+        # カテゴライズ済みJSONデータがある場合（直接JSON）
+        try:
+            tag_data = json.loads(args.categorized_json)
+            tags = tag_data.get('all_tags', [])
+            categorized_tags = tag_data.get('categorized', None)
+            
+            print(f"Single-shot mode with categorized tags (Direct JSON)", file=sys.stderr)
+            print(f"Total tags received: {len(tags)}", file=sys.stderr)
+            if categorized_tags:
+                for category, cat_tags in categorized_tags.items():
+                    if cat_tags:
+                        print(f"  {category}: {len(cat_tags)} tags - {cat_tags[:3]}", file=sys.stderr)
+                    else:
+                        print(f"  {category}: 0 tags", file=sys.stderr)
+        except json.JSONDecodeError as e:
+            print(f"Error parsing categorized JSON: {e}", file=sys.stderr)
+            # フォールバック：従来の方式
+            if args.tags:
+                print(f"Fallback: Processing tags: {repr(args.tags)}", file=sys.stderr)
+                tags = [tag.strip() for tag in args.tags.split(',') if tag.strip()]
+                print(f"Fallback: Parsed tags: {tags}", file=sys.stderr)
+    elif args.tags:
+        # 従来の方式
+        print(f"Processing tags: {repr(args.tags)}", file=sys.stderr)
         tags = [tag.strip() for tag in args.tags.split(',') if tag.strip()]
         print(f"Parsed tags: {tags}", file=sys.stderr)
     
@@ -364,10 +498,10 @@ def main():
     prompt = args.prompt if args.prompt else DEFAULT_CAPTION_PROMPT
     
     print(f"Generating caption for: {args.image}", file=sys.stderr)
-    print(f"Tags: {tags}", file=sys.stderr)
+    print(f"Tags: {len(tags)} tags total", file=sys.stderr)
     
-    # キャプション生成
-    caption = generate_caption_streaming(args.image, prompt, tags)
+    # キャプション生成（カテゴライズ情報付き）
+    caption = generate_caption_streaming(args.image, prompt, tags, categorized_tags)
     
     if caption and not caption.startswith("Error:"):
         print("FINAL:" + caption, flush=True)
