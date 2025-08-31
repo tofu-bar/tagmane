@@ -46,7 +46,7 @@
     <None Remove="tagcount\General.json" />
     <None Remove="tagcount\Meta.json" />
     <None Remove="tagcount_custom\Face.json" />
-    <None Remove="tagcount_custom\ParsonCounts.json" />
+    <None Remove="tagcount_custom\PersonCounts.json" />
   </ItemGroup>
 
   <ItemGroup>
@@ -139,7 +139,7 @@
     <Content Include="tagcount_custom\Face.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="tagcount_custom\ParsonCounts.json">
+    <Content Include="tagcount_custom\PersonCounts.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

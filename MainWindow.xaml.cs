@@ -138,7 +138,7 @@ namespace tagmane
             "tagcount/General.json"
         };
         private static readonly string[] CustomCategoryFiles = {
-            "tagcount_custom/ParsonCounts.json",
+            "tagcount_custom/PersonCounts.json",
             "tagcount_custom/Face.json"
         };
         private Dictionary<string, TagCategory> _tagCategories;
@@ -286,8 +286,8 @@ namespace tagmane
 
                 LoadTagCategories();
                 
-                // デフォルトのカテゴリ順序を設定
-                SetDefaultCategoryOrder();
+                // デフォルトのカテゴリ順序設定はコメントアウト（ユーザーが個別に設定する）
+                // SetDefaultCategoryOrder();
 
                 _isInitializeSuccess = true;
                 
@@ -3957,6 +3957,44 @@ namespace tagmane
             UpdateSearchedTagsListView();
         }
 
+        private void ListView_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            var listView = sender as ListView;
+            if (listView == null) return;
+
+            var gridView = listView.View as GridView;
+            if (gridView == null) return;
+
+            // ListViewの実際の幅を取得（スクロールバーの幅を考慮）
+            double workingWidth = listView.ActualWidth - SystemParameters.VerticalScrollBarWidth - 20; // 20はパディング
+            
+            // 最小幅の設定
+            const double minTagWidth = 150;
+            const double countWidth = 60;
+            const double starWidth = 40; // 星マーク用（AllTagsListViewの場合）
+            
+            if (gridView.Columns.Count == 1)
+            {
+                // TagListView（タグのみ）
+                double tagWidth = Math.Max(minTagWidth, workingWidth);
+                gridView.Columns[0].Width = tagWidth;
+            }
+            else if (gridView.Columns.Count == 2)
+            {
+                // SearchedTagsListView（タグ、カウント）
+                double tagWidth = Math.Max(minTagWidth, workingWidth - countWidth);
+                gridView.Columns[0].Width = tagWidth;
+                // カウント列は固定幅のまま
+            }
+            else if (gridView.Columns.Count == 3)
+            {
+                // AllTagsListView（タグ、カウント＋星）
+                double tagWidth = Math.Max(minTagWidth, workingWidth - countWidth - starWidth);
+                gridView.Columns[0].Width = tagWidth;
+                // カウントと星列は固定幅のまま
+            }
+        }
+
         private void UpdateSearchedTagsListView()
         {
             // デバッグログを簡潔に
@@ -4862,14 +4900,20 @@ namespace tagmane
         
         private void SetDefaultCategoryOrder()
         {
-            // デフォルトのカテゴリ順序を設定（一般的なタグ順序に従って）
-            var defaultPrefixOrder = new List<string> { "Quality", "Rating", "General" };
-            var defaultSuffixOrder = new List<string> { "Character", "Copyright", "Artist", "Model", "Meta" };
+            // デフォルトのカテゴリ順序を設定（ボタンクリック時のみ実行）
+            
+            // 既存の順序をクリア
+            _prefixOrder.Clear();
+            _suffixOrder.Clear();
+            
+            // 新しいデフォルト順序: Rating, Quality, Character, Copyright, Artist, PersonCounts(先頭) | Model, Meta(末尾)
+            var defaultPrefixOrder = new List<string> { "Rating", "Quality", "Character", "Copyright", "Artist", "PersonCounts" };
+            var defaultSuffixOrder = new List<string> { "Model", "Meta" };
             
             // 既存のカテゴリのみを追加
             foreach (var category in defaultPrefixOrder)
             {
-                if (_tagCategories.ContainsKey(category) && !_prefixOrder.Contains(category))
+                if (_tagCategories.ContainsKey(category))
                 {
                     _prefixOrder.Add(category);
                 }
@@ -4877,11 +4921,14 @@ namespace tagmane
             
             foreach (var category in defaultSuffixOrder)
             {
-                if (_tagCategories.ContainsKey(category) && !_suffixOrder.Contains(category))
+                if (_tagCategories.ContainsKey(category))
                 {
                     _suffixOrder.Add(category);
                 }
             }
+            
+            // UIを更新
+            UpdateTagCategories();
             
             AddMainLogEntry($"デフォルトカテゴリ順序を設定: Prefix({string.Join(", ", _prefixOrder)}), Suffix({string.Join(", ", _suffixOrder)})");
         }
@@ -5119,6 +5166,11 @@ namespace tagmane
                 _suffixOrder.Remove(selectedCategory.Name);
                 UpdateTagCategoryListView();
             }
+        }
+
+        private void SetDefaultOrder_Click(object sender, RoutedEventArgs e)
+        {
+            SetDefaultCategoryOrder();
         }
 
         // 選択された画像のタグをカテゴリ順に並び替え

@@ -406,6 +406,8 @@
                         <Button Content="先頭に追加" Click="MoveToPrefix_Click" Margin="5"/>
                         <Button Content="末尾に追加" Click="MoveToSuffix_Click" Margin="5"/>
                         <Button Content="順序から削除" Click="RemoveFromOrders_Click" Margin="5"/>
+                        <Button Content="デフォルト順序" Click="SetDefaultOrder_Click" Margin="5" 
+                                Background="LightYellow" ToolTip="Rating,Quality,Character,Copyright,Artist,PersonCounts(先頭) | Model,Meta(末尾)"/>
                     </StackPanel>
                 </Grid>
             </Grid>
@@ -616,7 +618,8 @@
                       PreviewMouseMove="TagListView_PreviewMouseMove"
                       PreviewMouseLeftButtonUp="TagListView_PreviewMouseLeftButtonUp"
                       AllowDrop="True"
-                      Drop="TagListView_Drop">
+                      Drop="TagListView_Drop"
+                      SizeChanged="ListView_SizeChanged">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Style.Triggers>
@@ -628,7 +631,7 @@
                 </ListView.ItemContainerStyle>
                 <ListView.View>
                     <GridView>
-                        <GridViewColumn Header="タグ" DisplayMemberBinding="{Binding}" Width="300"/>
+                        <GridViewColumn Header="タグ" DisplayMemberBinding="{Binding}"/>
                     </GridView>
                 </ListView.View>
             </ListView>
@@ -700,7 +703,8 @@
             </StackPanel>
             <ListView x:Name="AllTagsListView" Grid.Row="1" SelectionMode="Multiple" SelectionChanged="AllTagsListView_SelectionChanged"
                       ItemsSource="{Binding AllTags}" 
-                      PreviewMouseLeftButtonDown="AllTagsListView_PreviewMouseLeftButtonDown">
+                      PreviewMouseLeftButtonDown="AllTagsListView_PreviewMouseLeftButtonDown"
+                      SizeChanged="ListView_SizeChanged">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Style.Triggers>
@@ -712,7 +716,7 @@
                 </ListView.ItemContainerStyle>
                 <ListView.View>
                     <GridView>
-                        <GridViewColumn Header="タグ" DisplayMemberBinding="{Binding Tag}" Width="150"/>
+                        <GridViewColumn Header="タグ" DisplayMemberBinding="{Binding Tag}"/>
                         <GridViewColumn Header="Count" Width="60">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate>
@@ -862,7 +866,8 @@
             <ListView x:Name="SearchedTagsListView" Grid.Row="5" Height="160" 
                       SelectionMode="Multiple" SelectionChanged="SearchedTagsListView_SelectionChanged"
                       PreviewKeyDown="SearchedTagsListView_PreviewKeyDown"
-                      ItemsSource="{Binding SearchedTags}">
+                      ItemsSource="{Binding SearchedTags}"
+                      SizeChanged="ListView_SizeChanged">
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem">
                         <Style.Triggers>
@@ -876,7 +881,7 @@
                 </ListView.ItemContainerStyle>
                 <ListView.View>
                     <GridView>
-                        <GridViewColumn Header="タグ" DisplayMemberBinding="{Binding Tag}" Width="120"/>
+                        <GridViewColumn Header="タグ" DisplayMemberBinding="{Binding Tag}"/>
                         <GridViewColumn Header="カウント" DisplayMemberBinding="{Binding Count}" Width="60"/>
                     </GridView>
                 </ListView.View>
