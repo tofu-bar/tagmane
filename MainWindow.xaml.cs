@@ -813,6 +813,29 @@ namespace tagmane
             RedoButton.IsEnabled = _redoStack.Count > 0;
         }
 
+        /// <summary>
+        /// TextBoxのログを制限サイズ内に保つヘルパーメソッド
+        /// </summary>
+        private void TrimLogTextBox(System.Windows.Controls.TextBox textBox, bool wasAtBottom, int maxSize = 102400)
+        {
+            if (textBox.Text.Length > maxSize)
+            {
+                // 古いログを削除（先頭から半分を削除）
+                int removeLength = textBox.Text.Length - (maxSize / 2);
+                // 改行位置を探して行単位で削除
+                int newlineIndex = textBox.Text.IndexOf(Environment.NewLine, removeLength);
+                if (newlineIndex > 0)
+                {
+                    textBox.Text = textBox.Text.Substring(newlineIndex + Environment.NewLine.Length);
+                    // トリミング後も最下部にいた場合はスクロール
+                    if (wasAtBottom)
+                    {
+                        textBox.ScrollToEnd();
+                    }
+                }
+            }
+        }
+
         private void StartLogProcessing()
         {
             _logCancellationTokenSource = new CancellationTokenSource();
@@ -836,6 +859,9 @@ namespace tagmane
                                 }
                                 MainLogTextBox.AppendText(entry);
                             }
+                            
+                            // ログサイズを制限
+                            TrimLogTextBox(MainLogTextBox, atBottom);
                             
                             // 以前最下部にいた場合は自動スクロール
                             if (atBottom)
@@ -864,6 +890,9 @@ namespace tagmane
                                 DebugLogTextBox.AppendText(entry);
                             }
                             
+                            // ログサイズを制限
+                            TrimLogTextBox(DebugLogTextBox, atBottom);
+                            
                             if (atBottom)
                             {
                                 DebugLogTextBox.ScrollToEnd();
@@ -885,6 +914,9 @@ namespace tagmane
                                 }
                                 VLMLogTextBox.AppendText(entry);
                             }
+                            
+                            // ログサイズを制限
+                            TrimLogTextBox(VLMLogTextBox, atBottom);
                             
                             if (atBottom)
                             {
@@ -908,6 +940,9 @@ namespace tagmane
                                 PipelineLogTextBox.AppendText(entry);
                             }
                             
+                            // ログサイズを制限
+                            TrimLogTextBox(PipelineLogTextBox, atBottom);
+                            
                             if (atBottom)
                             {
                                 PipelineLogTextBox.ScrollToEnd();
@@ -929,6 +964,9 @@ namespace tagmane
                                 }
                                 PythonLogTextBox.AppendText(entry);
                             }
+                            
+                            // ログサイズを制限
+                            TrimLogTextBox(PythonLogTextBox, atBottom);
                             
                             if (atBottom)
                             {
