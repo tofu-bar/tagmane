@@ -1691,6 +1691,7 @@ namespace tagmane
             {
                 SelectedImage.Source = null;
                 AssociatedText.Text = string.Empty;
+                CaptionTextBox.Text = string.Empty;
                 UpdateImageInfo(null);  // この呼び出しが実行されているか確認
                 return;
             }
@@ -1706,6 +1707,9 @@ namespace tagmane
                 // 画像情報の更新 - この呼び出しが実行されているか確認
                 UpdateImageInfo(imageInfo);
                 
+                // キャプションの更新
+                CaptionTextBox.Text = imageInfo.Caption ?? string.Empty;
+                
                 // デバッグログの追加
                 AddDebugLogEntry($"画像情報を更新: {imageInfo.ImagePath}");
             }
@@ -1714,6 +1718,7 @@ namespace tagmane
                 AddMainLogEntry($"画像の表示に失敗: {ex.Message}");
                 SelectedImage.Source = null;
                 AssociatedText.Text = string.Empty;
+                CaptionTextBox.Text = string.Empty;
                 UpdateImageInfo(null);
             }
         }
