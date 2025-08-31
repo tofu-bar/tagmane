@@ -6617,6 +6617,17 @@ namespace tagmane
             selectedImage.Caption = "";
             AddMainLogEntry("キャプションをクリアしました");
         }
+
+        private void CaptionTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_isUpdatingSelection) return; // 画像切り替え中は処理しない
+            
+            var selectedImage = ImageListBox.SelectedItem as ImageInfo;
+            if (selectedImage != null)
+            {
+                selectedImage.Caption = CaptionTextBox.Text ?? string.Empty;
+            }
+        }
         
         #endregion
     }
