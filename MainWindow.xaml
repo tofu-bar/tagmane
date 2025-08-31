@@ -824,8 +824,12 @@
                 <ComboBoxItem x:Name="PhraseMatchOption" Content="Phrase Match"/>
             </ComboBox>
 
-            <!-- 既存のタグカテゴリをオーバーライドするチェックボックス -->
-            <CheckBox x:Name="OverrideExistingCategoriesCheckBox" Grid.Row="3" Margin="5" Content="既存のタグカテゴリをオーバーライドする" IsChecked="False"/>
+            <!-- チェックボックス群 -->
+            <StackPanel Grid.Row="3" Orientation="Vertical" Margin="5">
+                <CheckBox x:Name="OverrideExistingCategoriesCheckBox" Content="既存のタグカテゴリをオーバーライドする" IsChecked="False" Margin="0,2"/>
+                <CheckBox x:Name="HideZeroCountTagsCheckBox" Content="カウント0のタグを非表示" IsChecked="False" Margin="0,2" 
+                          Checked="HideZeroCountTagsCheckBox_Changed" Unchecked="HideZeroCountTagsCheckBox_Changed"/>
+            </StackPanel>
 
             <!-- 検索バーとボタン -->
             <Grid Grid.Row="4" Margin="5">
@@ -872,7 +876,8 @@
                 </ListView.ItemContainerStyle>
                 <ListView.View>
                     <GridView>
-                        <GridViewColumn Header="タグ" DisplayMemberBinding="{Binding}" Width="120"/>
+                        <GridViewColumn Header="タグ" DisplayMemberBinding="{Binding Tag}" Width="120"/>
+                        <GridViewColumn Header="カウント" DisplayMemberBinding="{Binding Count}" Width="60"/>
                     </GridView>
                 </ListView.View>
             </ListView>

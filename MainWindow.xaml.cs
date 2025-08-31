@@ -91,6 +91,18 @@ namespace tagmane
         
         // キーボードナビゲーション用の専用選択状態
         private int _keyboardNavigationIndex = -1;
+        
+        // JSONファイルから読み込んだタグのカウント（Danbooru頻度）
+        private Dictionary<string, int> _jsonTagCounts = new Dictionary<string, int>();
+
+        // 検索結果用のタグ情報クラス
+        public class SearchTagInfo
+        {
+            public string Tag { get; set; } = "";
+            public int Count { get; set; } = 0;
+            
+            public override string ToString() => Tag;
+        }
 
         private ObservableCollection<ActionLogItem> _actionLogItems;
         private const int MaxLogEntries = 20; // 100から20に変更
@@ -3740,11 +3752,13 @@ namespace tagmane
                     string selectedTag = null;
                     if (_keyboardNavigationIndex >= 0 && _keyboardNavigationIndex < SearchedTagsListView.Items.Count)
                     {
-                        selectedTag = SearchedTagsListView.Items[_keyboardNavigationIndex].ToString();
+                        var item = SearchedTagsListView.Items[_keyboardNavigationIndex];
+                        selectedTag = item is SearchTagInfo tagInfo ? tagInfo.Tag : item.ToString();
                     }
                     else if (SearchedTagsListView.SelectedItem != null)
                     {
-                        selectedTag = SearchedTagsListView.SelectedItem.ToString();
+                        var item = SearchedTagsListView.SelectedItem;
+                        selectedTag = item is SearchTagInfo tagInfo ? tagInfo.Tag : item.ToString();
                     }
 
                     if (!string.IsNullOrEmpty(selectedTag))
@@ -3822,11 +3836,13 @@ namespace tagmane
                     string selectedTag = null;
                     if (_keyboardNavigationIndex >= 0 && _keyboardNavigationIndex < listView.Items.Count)
                     {
-                        selectedTag = listView.Items[_keyboardNavigationIndex].ToString();
+                        var item = listView.Items[_keyboardNavigationIndex];
+                        selectedTag = item is SearchTagInfo tagInfo ? tagInfo.Tag : item.ToString();
                     }
                     else if (listView.SelectedItem != null)
                     {
-                        selectedTag = listView.SelectedItem.ToString();
+                        var item = listView.SelectedItem;
+                        selectedTag = item is SearchTagInfo tagInfo ? tagInfo.Tag : item.ToString();
                     }
 
                     if (!string.IsNullOrEmpty(selectedTag))
@@ -3915,6 +3931,17 @@ namespace tagmane
             }
         }
 
+        private int GetTagCount(string tag)
+        {
+            // JSONファイルから読み込んだカウント（Danbooru頻度）を取得
+            if (_jsonTagCounts != null && _jsonTagCounts.ContainsKey(tag))
+            {
+                return _jsonTagCounts[tag];
+            }
+            
+            return 0;
+        }
+
         private void SearchTargetComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             UpdateSearchedTagsListView();
@@ -3925,10 +3952,15 @@ namespace tagmane
             UpdateSearchedTagsListView();
         }
 
+        private void HideZeroCountTagsCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            UpdateSearchedTagsListView();
+        }
+
         private void UpdateSearchedTagsListView()
         {
-            AddDebugLogEntry("UpdateSearchedTagsListView");
-            AddDebugLogEntry($"SearchTextBox.Text: {SearchTextBox.Text}");
+            // デバッグログを簡潔に
+            AddDebugLogEntry($"UpdateSearchedTagsListView: '{SearchTextBox.Text}'");
 
             // 検索結果が変更されるため、キーボードナビゲーション状態をリセット
             _keyboardNavigationIndex = -1;
@@ -3982,24 +4014,43 @@ namespace tagmane
                     ? searchSource.AsParallel()
                         .Where(matchPredicate)
                         .Take(200)  // 並列処理では少し多めに取得
-                        .OrderBy(tag => tag)
+                        .Select(tag => new SearchTagInfo 
+                        { 
+                            Tag = tag, 
+                            Count = GetTagCount(tag) 
+                        })
+                        .OrderByDescending(info => info.Count)
+                        .ThenBy(info => info.Tag)
                         .Take(100)
                         .ToList()
                     : searchSource
                         .Where(matchPredicate)
-                        .OrderBy(tag => tag)
+                        .Select(tag => new SearchTagInfo 
+                        { 
+                            Tag = tag, 
+                            Count = GetTagCount(tag) 
+                        })
+                        .OrderByDescending(info => info.Count)
+                        .ThenBy(info => info.Tag)
                         .Take(100)
                         .ToList();
 
-                AddDebugLogEntry($"matchingTags: {string.Join(", ", matchingTags)}");
+                // カウント0のタグを非表示にするオプションが有効な場合、フィルタリング
+                if (HideZeroCountTagsCheckBox?.IsChecked == true)
+                {
+                    matchingTags = matchingTags.Where(t => t.Count > 0).ToList();
+                }
+
+                // デバッグログは件数のみ表示（詳細表示は重いため省略）
+                AddDebugLogEntry($"matchingTags: {matchingTags.Count}件");
 
                 SearchedTagsListView.ItemsSource = matchingTags;
                 SearchedTagsListView.SelectedItems.Clear();
 
-                var tagsToSelect = matchingTags.Where(tag => _selectedTags.Contains(tag)).ToList();
-                foreach (var tag in tagsToSelect)
+                var tagsToSelect = matchingTags.Where(tagInfo => _selectedTags.Contains(tagInfo.Tag)).ToList();
+                foreach (var tagInfo in tagsToSelect)
                 {
-                    SearchedTagsListView.SelectedItems.Add(tag);
+                    SearchedTagsListView.SelectedItems.Add(tagInfo);
                 }
 
                 if (matchingTags.Count == 100)
@@ -4023,13 +4074,15 @@ namespace tagmane
 
             _isUpdatingSelection = true;
             
-            foreach (string tag in e.RemovedItems)
+            foreach (var item in e.RemovedItems)
             {
+                string tag = item is SearchTagInfo tagInfo ? tagInfo.Tag : item.ToString();
                 _selectedTags.Remove(tag);
             }
 
-            foreach (string tag in e.AddedItems)
+            foreach (var item in e.AddedItems)
             {
+                string tag = item is SearchTagInfo tagInfo ? tagInfo.Tag : item.ToString();
                 _selectedTags.Add(tag);
             }
 
@@ -4785,6 +4838,9 @@ namespace tagmane
 
         private void LoadTagCategories()
         {
+            // JSONタグカウントをクリア（新規読み込み時）
+            _jsonTagCounts.Clear();
+            
             _defaultTagCategories = LoadCategoriesFromFiles(DefaultCategoryFiles);
             _customTagCategories = LoadCategoriesFromFiles(CustomCategoryFiles);
 
@@ -4863,6 +4919,9 @@ namespace tagmane
                     {
                         string updatedTagName = tag.Key.Replace('_', ' ');
                         updatedTags[updatedTagName] = tag.Value;
+                        
+                        // JSONファイルのカウント値を保存（Danbooru頻度）
+                        _jsonTagCounts[updatedTagName] = tag.Value;
                     }
 
                     categories[categoryName] = new TagCategory { Tags = updatedTags };
@@ -5722,7 +5781,11 @@ namespace tagmane
             // 履歴を検索結果として表示
             if (_recentAddedTags.Count > 0)
             {
-                SearchedTagsListView.ItemsSource = _recentAddedTags.ToList();
+                SearchedTagsListView.ItemsSource = _recentAddedTags.Select(tag => new SearchTagInfo 
+                { 
+                    Tag = tag, 
+                    Count = GetTagCount(tag) 
+                }).ToList();
                 _isShowingTagHistory = true;
                 SearchTextBox.Text = "[履歴]";
                 SearchTextBox.Focus();
