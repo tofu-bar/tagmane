@@ -80,7 +80,7 @@ def initialize_glm_model():
                         attn_implementation="eager",
                         trust_remote_code=True,
                         low_cpu_mem_usage=True,
-                        max_memory={0: "46GB"},
+                        max_memory={0: "32GB"},
                     )
                     
                     if hasattr(torch.backends.cuda, 'max_split_size_mb'):

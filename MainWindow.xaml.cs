@@ -820,17 +820,24 @@ namespace tagmane
                 var logObservable = Observable.Interval(TimeSpan.FromMilliseconds(_logUpdateIntervalMs)).ToAsyncEnumerable();
                 await foreach (var _ in logObservable)
                 {
-                    var logEntries = _logQueue.GetRecentItems();
+                    var newLogEntries = _logQueue.GetNewItems();
                     Dispatcher.Invoke(() => {
-                        if (logEntries.Count > 0)
+                        if (newLogEntries.Count > 0)
                         {
-                            // TextBoxの内容を更新する前に、現在のスクロール位置を保存
+                            // スクロール位置が最下部付近かどうかを確認
                             var atBottom = MainLogTextBox.VerticalOffset >= MainLogTextBox.ExtentHeight - MainLogTextBox.ViewportHeight - 10;
                             
-                            MainLogTextBox.Clear();
-                            MainLogTextBox.Text = string.Join(Environment.NewLine, logEntries);
+                            // 新しいログエントリを追加
+                            foreach (var entry in newLogEntries)
+                            {
+                                if (MainLogTextBox.Text.Length > 0)
+                                {
+                                    MainLogTextBox.AppendText(Environment.NewLine);
+                                }
+                                MainLogTextBox.AppendText(entry);
+                            }
                             
-                            // 以前最下部にいた場合のみ、最下部にスクロール
+                            // 以前最下部にいた場合は自動スクロール
                             if (atBottom)
                             {
                                 MainLogTextBox.ScrollToEnd();
@@ -842,14 +849,20 @@ namespace tagmane
                     // var uilogEntries = _uiErrorLogQueue.GetRecentItems();
                     // Dispatcher.Invoke(() => MainLogTextBox.Text = string.Join(Environment.NewLine, uilogEntries));
 
-                    var debuglogEntries = _debugLogQueue.GetRecentItems();
+                    var newDebugLogEntries = _debugLogQueue.GetNewItems();
                     Dispatcher.Invoke(() => {
-                        if (debuglogEntries.Count > 0)
+                        if (newDebugLogEntries.Count > 0)
                         {
                             var atBottom = DebugLogTextBox.VerticalOffset >= DebugLogTextBox.ExtentHeight - DebugLogTextBox.ViewportHeight - 10;
                             
-                            DebugLogTextBox.Clear();
-                            DebugLogTextBox.Text = string.Join(Environment.NewLine, debuglogEntries);
+                            foreach (var entry in newDebugLogEntries)
+                            {
+                                if (DebugLogTextBox.Text.Length > 0)
+                                {
+                                    DebugLogTextBox.AppendText(Environment.NewLine);
+                                }
+                                DebugLogTextBox.AppendText(entry);
+                            }
                             
                             if (atBottom)
                             {
@@ -858,14 +871,20 @@ namespace tagmane
                         }
                     });
 
-                    var vlmlogEntries = _vlmLogQueue.GetRecentItems();
+                    var newVlmLogEntries = _vlmLogQueue.GetNewItems();
                     Dispatcher.Invoke(() => {
-                        if (vlmlogEntries.Count > 0)
+                        if (newVlmLogEntries.Count > 0)
                         {
                             var atBottom = VLMLogTextBox.VerticalOffset >= VLMLogTextBox.ExtentHeight - VLMLogTextBox.ViewportHeight - 10;
                             
-                            VLMLogTextBox.Clear();
-                            VLMLogTextBox.Text = string.Join(Environment.NewLine, vlmlogEntries);
+                            foreach (var entry in newVlmLogEntries)
+                            {
+                                if (VLMLogTextBox.Text.Length > 0)
+                                {
+                                    VLMLogTextBox.AppendText(Environment.NewLine);
+                                }
+                                VLMLogTextBox.AppendText(entry);
+                            }
                             
                             if (atBottom)
                             {
@@ -874,14 +893,20 @@ namespace tagmane
                         }
                     });
 
-                    var pipelinelogEntries = _pipelineLogQueue.GetRecentItems();
+                    var newPipelineLogEntries = _pipelineLogQueue.GetNewItems();
                     Dispatcher.Invoke(() => {
-                        if (pipelinelogEntries.Count > 0)
+                        if (newPipelineLogEntries.Count > 0)
                         {
                             var atBottom = PipelineLogTextBox.VerticalOffset >= PipelineLogTextBox.ExtentHeight - PipelineLogTextBox.ViewportHeight - 10;
                             
-                            PipelineLogTextBox.Clear();
-                            PipelineLogTextBox.Text = string.Join(Environment.NewLine, pipelinelogEntries);
+                            foreach (var entry in newPipelineLogEntries)
+                            {
+                                if (PipelineLogTextBox.Text.Length > 0)
+                                {
+                                    PipelineLogTextBox.AppendText(Environment.NewLine);
+                                }
+                                PipelineLogTextBox.AppendText(entry);
+                            }
                             
                             if (atBottom)
                             {
@@ -890,14 +915,20 @@ namespace tagmane
                         }
                     });
 
-                    var pythonlogEntries = _pythonLogQueue.GetRecentItems();
+                    var newPythonLogEntries = _pythonLogQueue.GetNewItems();
                     Dispatcher.Invoke(() => {
-                        if (pythonlogEntries.Count > 0)
+                        if (newPythonLogEntries.Count > 0)
                         {
                             var atBottom = PythonLogTextBox.VerticalOffset >= PythonLogTextBox.ExtentHeight - PythonLogTextBox.ViewportHeight - 10;
                             
-                            PythonLogTextBox.Clear();
-                            PythonLogTextBox.Text = string.Join(Environment.NewLine, pythonlogEntries);
+                            foreach (var entry in newPythonLogEntries)
+                            {
+                                if (PythonLogTextBox.Text.Length > 0)
+                                {
+                                    PythonLogTextBox.AppendText(Environment.NewLine);
+                                }
+                                PythonLogTextBox.AppendText(entry);
+                            }
                             
                             if (atBottom)
                             {
