@@ -83,7 +83,7 @@ namespace tagmane
         // クラスレベルで除外パターンリストを定義
         private readonly List<string> _excludedMetaPatterns = new List<string> { "id", "commentary", "request" };
 
-        public async Task LoadModel(string modelRepo, bool useGpu = true, string hfToken = null)
+        public async Task LoadModel(string modelRepo, bool useGpu = true, string hfToken = null, int gpuId = 0)
         {
             AddLogEntry($"リポジトリからモデルを読み込みます: {modelRepo}");
             
@@ -151,7 +151,7 @@ namespace tagmane
                 try
                 {
                     var sessionOptions = new SessionOptions();
-                    var gpuDeviceId = 0;
+                    var gpuDeviceId = gpuId;
                     
                     if (useGpu)
                     {

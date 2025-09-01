@@ -38,7 +38,7 @@ namespace tagmane
 
         private bool _isModelLoaded = false;
 
-        public async Task LoadModel(string modelRepo, bool useGpu = true)
+        public async Task LoadModel(string modelRepo, bool useGpu = true, int gpuId = 0)
         {
             AddLogEntry($"リポジトリからモデルを読み込みます: {modelRepo}");
             var (csvPath, modelPath) = await DownloadModel(modelRepo);
@@ -58,7 +58,7 @@ namespace tagmane
                 try
                 {
                     var sessionOptions = new SessionOptions();
-                    var gpuDeviceId = 0;
+                    var gpuDeviceId = gpuId;
                     
                     if (useGpu)
                     {

@@ -264,6 +264,9 @@ namespace tagmane
         
         // キャプション生成設定
         private CaptionGenerationSettings _captionSettings = new CaptionGenerationSettings();
+        
+        // VLM Tagger用GPU設定
+        private int _vlmGpuId = 0;
 
         public MainWindow()
         {
@@ -289,6 +292,9 @@ namespace tagmane
                 
                 // ウィンドウを表示
                 this.Show();
+
+                // GPU情報を初期化（非同期だが待機しない）
+                _ = GpuManager.InitializeAsync();
 
                 InitializeVLMPredictor();
 
@@ -4570,12 +4576,56 @@ namespace tagmane
                 await LoadVLMModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false);
             }
         }
+        
+        private async void VLMGpuSelectionComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            if (VLMGpuSelectionComboBox.SelectedIndex >= 0 && _isInitializeSuccess)
+            {
+                _vlmGpuId = VLMGpuSelectionComboBox.SelectedIndex;
+                
+                // GPU選択が変更されたら、モデルを再読み込み
+                if (UseGPUCheckBox.IsChecked == true)
+                {
+                    await LoadVLMModel(VLMModelComboBox.SelectedItem as string, true);
+                }
+            }
+        }
 
         private void InitializeVLMPredictor()
         {
             AddDebugLogEntry("InitializeVLMPredictor");
             _vlmPredictor = new VLMPredictor();
             _vlmPredictor.LogUpdated += UpdateVLMLog;
+            
+            // VLM GPU選択コンボボックスを初期化
+            InitializeVLMGpuComboBox();
+        }
+        
+        private async void InitializeVLMGpuComboBox()
+        {
+            // GPU初期化を待つ
+            while (!GpuManager.IsInitialized)
+            {
+                await Task.Delay(100);
+            }
+            
+            // UIスレッドで更新
+            await Dispatcher.InvokeAsync(() =>
+            {
+                VLMGpuSelectionComboBox.Items.Clear();
+                var gpus = GpuManager.AvailableGpus;
+                
+                foreach (var gpu in gpus)
+                {
+                    VLMGpuSelectionComboBox.Items.Add(gpu.DisplayName);
+                }
+                
+                // デフォルトで最初のGPUを選択
+                if (VLMGpuSelectionComboBox.Items.Count > 0)
+                {
+                    VLMGpuSelectionComboBox.SelectedIndex = _vlmGpuId;
+                }
+            });
         }
 
         private async Task LoadVLMModel(string modelName, bool useGpu = true)
@@ -4586,7 +4636,7 @@ namespace tagmane
             try
             {
                 AddMainLogEntry($"VLMモデル '{modelName}' の読み込みを開始します。");
-                await _vlmPredictor.LoadModel(modelName, useGpu);
+                await _vlmPredictor.LoadModel(modelName, useGpu, null, _vlmGpuId);
                 if (_vlmPredictor.IsGpuLoaded)
                 {
                     AddMainLogEntry("GPUを使用します");
@@ -4630,7 +4680,7 @@ namespace tagmane
                 // ボタンを無効化して、処理中であることを示す
                 VLMPredictButton.IsEnabled = false;
 
-                await _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false);
+                await _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false, null, _vlmGpuId);
 
                 // キャンセルトークンソースを作成
                 _cts = new CancellationTokenSource();
@@ -4755,7 +4805,7 @@ namespace tagmane
                 VLMPredictButton.IsEnabled = false;
                 _cts = new CancellationTokenSource();
 
-                await _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false);
+                await _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false, null, _vlmGpuId);
 
                 // 選択範囲の画像を取得
                 var croppedImage = await GetSelectedRegion();
@@ -4838,7 +4888,7 @@ namespace tagmane
                 // ボタンを無効化して、処理中であることを示す
                 VLMPredictAllButton.IsEnabled = false;
 
-                await _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false);
+                await _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false, null, _vlmGpuId);
                 
                 AddMainLogEntry("すべての画像に対してVLM推論を開始します");
                 
@@ -7089,10 +7139,14 @@ namespace tagmane
                 string pythonPath = GetPythonPath();
                 string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "caption_generator.py");
 
+                // キャプション生成設定からGPU IDを取得
+                int gpuId = _captionSettings?.GpuId ?? 0; // 設定からGPU IDを取得、未設定の場合はデフォルトGPU 0
+                string gpuArg = gpuId > 0 ? $" --gpu-id {gpuId}" : "";
+                
                 ProcessStartInfo startInfo = new ProcessStartInfo
                 {
                     FileName = pythonPath,
-                    Arguments = $"\"{scriptPath}\" --interactive",
+                    Arguments = $"\"{scriptPath}\" --interactive{gpuArg}",
                     UseShellExecute = false,
                     RedirectStandardInput = true,
                     RedirectStandardOutput = true,

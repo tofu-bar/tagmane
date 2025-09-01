@@ -14,27 +14,27 @@ namespace tagmane
         public event EventHandler<string>? LogUpdated;
         public bool IsGpuLoaded { get; private set; }
 
-        public async Task LoadModel(string modelRepo, bool useGpu = true, string hfToken = null)
+        public async Task LoadModel(string modelRepo, bool useGpu = true, string hfToken = null, int gpuId = 0)
         {
             if (modelRepo.Contains("joytag"))
             {
                 _currentPredictor = new JoyPredictor();
                 ((JoyPredictor)_currentPredictor).LogUpdated += OnPredictorLogUpdated;
-                await ((JoyPredictor)_currentPredictor).LoadModel(modelRepo, useGpu);
+                await ((JoyPredictor)_currentPredictor).LoadModel(modelRepo, useGpu, gpuId);
                 IsGpuLoaded = ((JoyPredictor)_currentPredictor).IsGpuLoaded;
             }
             else if (modelRepo.Contains("cella110n/cl_tagger"))
             {
                 _currentPredictor = new CelPredictor();
                 ((CelPredictor)_currentPredictor).LogUpdated += OnPredictorLogUpdated;
-                await ((CelPredictor)_currentPredictor).LoadModel(modelRepo, useGpu, hfToken);
+                await ((CelPredictor)_currentPredictor).LoadModel(modelRepo, useGpu, hfToken, gpuId);
                 IsGpuLoaded = ((CelPredictor)_currentPredictor).IsGpuLoaded;
             }
             else
             {
                 _currentPredictor = new WDPredictor();
                 ((WDPredictor)_currentPredictor).LogUpdated += OnPredictorLogUpdated;
-                await ((WDPredictor)_currentPredictor).LoadModel(modelRepo, useGpu);
+                await ((WDPredictor)_currentPredictor).LoadModel(modelRepo, useGpu, gpuId);
                 IsGpuLoaded = ((WDPredictor)_currentPredictor).IsGpuLoaded;
             }
             _isModelLoaded = true;

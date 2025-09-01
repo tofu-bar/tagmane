@@ -49,7 +49,7 @@ glm_model = None
 glm_processor = None
 model_lock = threading.Lock()
 
-def initialize_glm_model():
+def initialize_glm_model(gpu_id=None):
     """GLM-4Vモデルを初期化する"""
     global glm_model, glm_processor
     
@@ -62,6 +62,34 @@ def initialize_glm_model():
             if glm_model is None:
                 print("Initializing GLM-4V model...", file=sys.stderr)
                 
+                # GPU選択の処理
+                selected_device = "cpu"
+                if torch.cuda.is_available():
+                    gpu_count = torch.cuda.device_count()
+                    print(f"Available GPUs: {gpu_count}", file=sys.stderr)
+                    
+                    for i in range(gpu_count):
+                        gpu_name = torch.cuda.get_device_name(i)
+                        gpu_memory = torch.cuda.get_device_properties(i).total_memory / 1024**3
+                        print(f"GPU {i}: {gpu_name} ({gpu_memory:.2f} GB)", file=sys.stderr)
+                    
+                    # GPU IDの選択
+                    if gpu_id is not None:
+                        if 0 <= gpu_id < gpu_count:
+                            selected_device = f"cuda:{gpu_id}"
+                            print(f"Using specified GPU {gpu_id}: {torch.cuda.get_device_name(gpu_id)}", file=sys.stderr)
+                        else:
+                            print(f"Warning: GPU {gpu_id} not available, using GPU 0", file=sys.stderr)
+                            selected_device = "cuda:0"
+                    else:
+                        selected_device = "cuda:0"  # デフォルトは最初のGPU
+                        print(f"Using default GPU 0: {torch.cuda.get_device_name(0)}", file=sys.stderr)
+                    
+                    gpu_memory = torch.cuda.get_device_properties(selected_device).total_memory / 1024**3
+                    print(f"Selected GPU memory: {gpu_memory:.2f} GB", file=sys.stderr)
+                else:
+                    print("No CUDA GPUs available, using CPU", file=sys.stderr)
+                
                 # プロセッサーの初期化
                 glm_processor = AutoProcessor.from_pretrained(
                     MODEL_PATH, 
@@ -69,9 +97,7 @@ def initialize_glm_model():
                 )
                 
                 # モデルの初期化
-                if torch.cuda.is_available():
-                    print(f"Using GPU: {torch.cuda.get_device_name(0)}", file=sys.stderr)
-                    print(f"GPU memory available: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB", file=sys.stderr)
+                if selected_device != "cpu":
                     
                     # メモリ効率的な段階的読み込み
                     print("Loading model on CPU first to minimize VRAM usage...", file=sys.stderr)
@@ -93,8 +119,8 @@ def initialize_glm_model():
                     
                     print("Converting to bfloat16 completed, moving to GPU...", file=sys.stderr)
                     
-                    # 3. GPU に移動（この時点でVRAM使用量が22GB程度になる）
-                    glm_model = glm_model.to(device="cuda")
+                    # 3. 指定されたGPU に移動（この時点でVRAM使用量が22GB程度になる）
+                    glm_model = glm_model.to(device=selected_device)
                     
                     print("Model successfully moved to GPU", file=sys.stderr)
                     
@@ -177,7 +203,9 @@ def generate_caption_streaming(image_path, prompt, tags, categorized_tags=None, 
     
     # モデルが初期化されていない場合は初期化
     if glm_model is None or glm_processor is None:
-        if not initialize_glm_model():
+        # 単発モードでは引数から取得（インタラクティブモードでは既に初期化済み）
+        gpu_id = getattr(args, 'gpu_id', None) if 'args' in globals() else None
+        if not initialize_glm_model(gpu_id=gpu_id):
             return "Error: Failed to initialize GLM-4V model"
     
     try:
@@ -626,11 +654,32 @@ def main():
     parser.add_argument('--max-tokens', type=int, default=2048, help='Maximum tokens for generation')
     parser.add_argument('--temperature', type=float, default=0.7, help='Temperature for generation')
     parser.add_argument('--top-p', type=float, default=0.9, help='Top-p for generation')
+    parser.add_argument('--gpu-id', type=int, default=None, help='GPU ID to use (0, 1, 2...). If not specified, uses GPU 0')
+    parser.add_argument('--list-gpus', action='store_true', help='List available GPUs and exit')
     parser.add_argument('--system-prompt-base64', help='Base64 encoded system prompt')
     parser.add_argument('--user-prompt-base64', help='Base64 encoded user prompt')
     parser.add_argument('--detailed', action='store_true', help='Generate detailed description')
     
     args = parser.parse_args()
+    
+    # GPU一覧表示のみの場合
+    if args.list_gpus:
+        try:
+            if TRANSFORMERS_AVAILABLE and torch.cuda.is_available():
+                gpu_count = torch.cuda.device_count()
+                if gpu_count > 0:
+                    for i in range(gpu_count):
+                        gpu_name = torch.cuda.get_device_name(i)
+                        gpu_memory = torch.cuda.get_device_properties(i).total_memory / 1024**3
+                        print(f"GPU {i}: {gpu_name} ({gpu_memory:.2f} GB)")
+                else:
+                    print("GPU 0: デフォルト (CUDA使用不可)")
+            else:
+                print("GPU 0: デフォルト (CUDA使用不可)")
+        except Exception as e:
+            print("GPU 0: デフォルト (GPU検出エラー)")
+            print(f"Error: {e}", file=sys.stderr)
+        return
     
     # Base64エンコードされたプロンプトをデコード
     system_prompt = None
@@ -650,8 +699,8 @@ def main():
     
     # インタラクティブモードの場合
     if args.interactive:
-        # モデルを事前に初期化
-        success = initialize_glm_model()
+        # モデルを事前に初期化（GPU ID指定対応）
+        success = initialize_glm_model(gpu_id=args.gpu_id)
         if not success:
             print("INIT_FAILED", flush=True)
             return
@@ -662,7 +711,7 @@ def main():
     
     # モデル初期化のみの場合
     if args.init_only:
-        success = initialize_glm_model()
+        success = initialize_glm_model(gpu_id=args.gpu_id)
         if success:
             print("SUCCESS", flush=True)
         else:

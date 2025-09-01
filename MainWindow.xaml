@@ -339,6 +339,9 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,5">
                         <CheckBox x:Name="UseGPUCheckBox" Content="GPUを使用して推論する" IsChecked="True" Checked="UseGPUCheckBox_Checked" Unchecked="UseGPUCheckBox_Checked"/>
+                        <ComboBox x:Name="VLMGpuSelectionComboBox" Width="200" Margin="10,0,0,0" 
+                                  Visibility="{Binding ElementName=UseGPUCheckBox, Path=IsChecked, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                  SelectionChanged="VLMGpuSelectionComboBox_SelectionChanged"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,5">
                         <TextBlock Text="VLM Concurrency:" VerticalAlignment="Center" Margin="0,0,5,0"/>

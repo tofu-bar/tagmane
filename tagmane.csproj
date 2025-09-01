@@ -148,6 +148,12 @@
     <Content Include="requirements.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+    <Content Include="setup-glm-env.bat">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="start-glm-interactive.bat">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
@@ -164,5 +170,35 @@
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
   </ItemGroup>
+
+  <!-- Python関連ファイルの自動コピー（デバッグ時の更新確保） -->
+  <Target Name="CopyPythonFiles" AfterTargets="Build">
+    <Message Text="Copying Python files to output directory..." Importance="high" />
+    
+    <!-- ソースディレクトリの最新ファイルを強制的に出力ディレクトリにコピー -->
+    <Copy SourceFiles="$(ProjectDir)caption_generator.py" 
+          DestinationFiles="$(OutDir)caption_generator.py" 
+          OverwriteReadOnlyFiles="true"
+          SkipUnchangedFiles="false" />
+          
+    <Copy SourceFiles="$(ProjectDir)requirements.txt" 
+          DestinationFiles="$(OutDir)requirements.txt" 
+          OverwriteReadOnlyFiles="true"
+          SkipUnchangedFiles="false" />
+          
+    <Copy SourceFiles="$(ProjectDir)setup-glm-env.bat" 
+          DestinationFiles="$(OutDir)setup-glm-env.bat" 
+          OverwriteReadOnlyFiles="true"
+          SkipUnchangedFiles="false"
+          Condition="Exists('$(ProjectDir)setup-glm-env.bat')" />
+          
+    <Copy SourceFiles="$(ProjectDir)start-glm-interactive.bat" 
+          DestinationFiles="$(OutDir)start-glm-interactive.bat" 
+          OverwriteReadOnlyFiles="true"
+          SkipUnchangedFiles="false"
+          Condition="Exists('$(ProjectDir)start-glm-interactive.bat')" />
+          
+    <Message Text="Python files copied successfully" Importance="high" />
+  </Target>
 
 </Project>
