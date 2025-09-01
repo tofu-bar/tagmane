@@ -8,6 +8,7 @@ import sys
 import os
 import json
 import argparse
+import base64
 from PIL import Image
 import threading
 
@@ -158,7 +159,7 @@ def unload_glm_model():
 
 # タグカテゴリ関連の辞書読み込み機能は削除（C#側から分類済みデータを受け取る）
 
-def generate_caption_streaming(image_path, prompt, tags, categorized_tags=None):
+def generate_caption_streaming(image_path, prompt, tags, categorized_tags=None, max_tokens=512, temperature=0.7, top_p=0.9):
     """GLM-4Vを使用してキャプションを生成する（ストリーミング対応）"""
     global glm_model, glm_processor
     
@@ -264,10 +265,10 @@ def generate_caption_streaming(image_path, prompt, tags, categorized_tags=None):
             # ストリーミング生成設定
             print(f"Setting up generation config...", file=sys.stderr)
             generation_config = {
-                'max_new_tokens': 512,
+                'max_new_tokens': max_tokens,
                 'do_sample': True,
-                'temperature': 0.7,
-                'top_p': 0.9,
+                'temperature': temperature,
+                'top_p': top_p,
                 'pad_token_id': glm_processor.tokenizer.eos_token_id,
             }
             print(f"Generation config created", file=sys.stderr)
@@ -542,8 +543,30 @@ def main():
     parser.add_argument('--save', action='store_true', help='Save caption to JSON file')
     parser.add_argument('--init-only', action='store_true', help='Only initialize model and exit')
     parser.add_argument('--interactive', action='store_true', help='Start interactive mode for persistent session')
+    parser.add_argument('--max-tokens', type=int, default=512, help='Maximum tokens for generation')
+    parser.add_argument('--temperature', type=float, default=0.7, help='Temperature for generation')
+    parser.add_argument('--top-p', type=float, default=0.9, help='Top-p for generation')
+    parser.add_argument('--system-prompt-base64', help='Base64 encoded system prompt')
+    parser.add_argument('--user-prompt-base64', help='Base64 encoded user prompt')
+    parser.add_argument('--detailed', action='store_true', help='Generate detailed description')
     
     args = parser.parse_args()
+    
+    # Base64エンコードされたプロンプトをデコード
+    system_prompt = None
+    user_prompt = None
+    
+    if args.system_prompt_base64:
+        try:
+            system_prompt = base64.b64decode(args.system_prompt_base64).decode('utf-8')
+        except Exception as e:
+            print(f"Error decoding system prompt: {e}", file=sys.stderr)
+    
+    if args.user_prompt_base64:
+        try:
+            user_prompt = base64.b64decode(args.user_prompt_base64).decode('utf-8')
+        except Exception as e:
+            print(f"Error decoding user prompt: {e}", file=sys.stderr)
     
     # インタラクティブモードの場合
     if args.interactive:
@@ -639,8 +662,22 @@ def main():
     print(f"Generating caption for: {args.image}", file=sys.stderr)
     print(f"Tags: {len(tags)} tags total", file=sys.stderr)
     
+    # プロンプト設定の適用
+    if user_prompt:
+        prompt = user_prompt
+    elif args.detailed:
+        prompt = "Please provide a detailed and comprehensive description of this image, including all visible elements, colors, composition, mood, and any notable artistic or technical aspects."
+    
     # キャプション生成（カテゴライズ情報付き）
-    caption = generate_caption_streaming(args.image, prompt, tags, categorized_tags)
+    caption = generate_caption_streaming(
+        args.image, 
+        prompt, 
+        tags, 
+        categorized_tags,
+        max_tokens=args.max_tokens,
+        temperature=args.temperature,
+        top_p=args.top_p
+    )
     
     if caption and not caption.startswith("Error:"):
         print("FINAL:" + caption, flush=True)

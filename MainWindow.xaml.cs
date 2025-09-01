@@ -261,6 +261,9 @@ namespace tagmane
         private bool _isSelecting;
         private bool _isInSelectionMode;
         private bool _isDragging;
+        
+        // キャプション生成設定
+        private CaptionGenerationSettings _captionSettings = new CaptionGenerationSettings();
 
         public MainWindow()
         {
@@ -6425,6 +6428,28 @@ namespace tagmane
                         categorizedTags["general"].Add(tag);
                 }
 
+                // 設定に基づいてタグをフィルタリング
+                if (_captionSettings.UseExistingTags)
+                {
+                    if (!_captionSettings.UseCharacterCopyrightTags)
+                    {
+                        categorizedTags["character"].Clear();
+                        categorizedTags["copyright"].Clear();
+                    }
+                    if (!_captionSettings.UseGeneralTagsHint)
+                    {
+                        categorizedTags["general"].Clear();
+                    }
+                }
+                else
+                {
+                    // 既存タグを参考にしない場合は全てクリア
+                    foreach (var key in categorizedTags.Keys.ToList())
+                    {
+                        categorizedTags[key].Clear();
+                    }
+                }
+
                 // カテゴリ情報をJSON形式で作成
                 AddPythonLogEntry($"単発推論 - カテゴリ分類結果: character={categorizedTags["character"].Count}, copyright={categorizedTags["copyright"].Count}, general={categorizedTags["general"].Count}");
                 var tagData = new
@@ -6438,10 +6463,33 @@ namespace tagmane
                 byte[] jsonBytes = System.Text.Encoding.UTF8.GetBytes(categorizedJson);
                 string base64Json = Convert.ToBase64String(jsonBytes);
 
+                // 設定を引数に追加
+                string arguments = $"\"{scriptPath}\" --image \"{imagePath}\" --tags \"{tags}\" --categorized-json-base64 \"{base64Json}\" --save";
+                arguments += $" --max-tokens {_captionSettings.MaxTokens}";
+                arguments += $" --temperature {_captionSettings.Temperature.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}";
+                arguments += $" --top-p {_captionSettings.TopP.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}";
+                
+                if (!string.IsNullOrEmpty(_captionSettings.SystemPrompt))
+                {
+                    string systemPromptBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(_captionSettings.SystemPrompt));
+                    arguments += $" --system-prompt-base64 \"{systemPromptBase64}\"";
+                }
+                
+                if (!string.IsNullOrEmpty(_captionSettings.UserPrompt))
+                {
+                    string userPromptBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(_captionSettings.UserPrompt));
+                    arguments += $" --user-prompt-base64 \"{userPromptBase64}\"";
+                }
+                
+                if (_captionSettings.DetailedDescription)
+                {
+                    arguments += " --detailed";
+                }
+
                 ProcessStartInfo startInfo = new ProcessStartInfo
                 {
                     FileName = pythonPath,
-                    Arguments = $"\"{scriptPath}\" --image \"{imagePath}\" --tags \"{tags}\" --categorized-json-base64 \"{base64Json}\" --save",
+                    Arguments = arguments,
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -6803,6 +6851,20 @@ namespace tagmane
             selectedImage.Caption = "";
             AddMainLogEntry("キャプションをクリアしました");
         }
+        
+        private void CaptionSettingsButton_Click(object sender, RoutedEventArgs e)
+        {
+            var settingsWindow = new CaptionGenerationSettingsWindow(_captionSettings.Clone())
+            {
+                Owner = this
+            };
+            
+            if (settingsWindow.ShowDialog() == true)
+            {
+                _captionSettings = settingsWindow.Settings;
+                AddMainLogEntry("キャプション生成設定を更新しました");
+            }
+        }
 
         private void CaptionTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
@@ -7103,8 +7165,30 @@ Provide your answer wrapped in <answer></answer> tags:";
                         categorizedTags["general"].Add(tag);
                 }
 
+                // 設定に基づいてタグをフィルタリング
+                if (_captionSettings.UseExistingTags)
+                {
+                    if (!_captionSettings.UseCharacterCopyrightTags)
+                    {
+                        categorizedTags["character"].Clear();
+                        categorizedTags["copyright"].Clear();
+                    }
+                    if (!_captionSettings.UseGeneralTagsHint)
+                    {
+                        categorizedTags["general"].Clear();
+                    }
+                }
+                else
+                {
+                    // 既存タグを参考にしない場合は全てクリア
+                    foreach (var key in categorizedTags.Keys.ToList())
+                    {
+                        categorizedTags[key].Clear();
+                    }
+                }
+
                 // カテゴリ情報をJSON形式で作成
-                AddPythonLogEntry($"カテゴリ分類結果: character={categorizedTags["character"].Count}, copyright={categorizedTags["copyright"].Count}, general={categorizedTags["general"].Count}");
+                AddPythonLogEntry($"フィルタ後カテゴリ分類結果: character={categorizedTags["character"].Count}, copyright={categorizedTags["copyright"].Count}, general={categorizedTags["general"].Count}");
                 
                 // デバッグ用：各カテゴリの具体的なタグを表示
                 foreach (var kvp in categorizedTags)
