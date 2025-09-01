@@ -6829,11 +6829,20 @@ namespace tagmane
                 return;
             }
 
-            var result = MessageBox.Show(
-                $"全{_imageInfos.Count}枚の画像にキャプションを生成しますか？\n\n※既にキャプションがある画像も上書きされます", 
-                "確認", 
-                MessageBoxButton.YesNo, 
-                MessageBoxImage.Question);
+            bool skipExisting = SkipExistingCaptionsCheckBox.IsChecked ?? false;
+            int targetCount = skipExisting ? _imageInfos.Count(img => string.IsNullOrEmpty(img.Caption)) : _imageInfos.Count;
+            
+            if (targetCount == 0)
+            {
+                AddMainLogEntry("対象の画像がありません（既にキャプションが存在します）");
+                return;
+            }
+
+            string message = skipExisting 
+                ? $"対象{targetCount}枚の画像にキャプションを生成しますか？\n\n※既にキャプションがある画像はスキップされます"
+                : $"全{_imageInfos.Count}枚の画像にキャプションを生成しますか？\n\n※既にキャプションがある画像も上書きされます";
+
+            var result = MessageBox.Show(message, "確認", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
             if (result == MessageBoxResult.Yes)
             {
@@ -6861,10 +6870,17 @@ namespace tagmane
             GenerateAllCaptionsButton.IsEnabled = false;
             StopCaptionGenerationButton.IsEnabled = true;
             ImageListBox.IsEnabled = false; // ユーザーによる画像切り替えを無効化
+            
+            // 進捗バーを表示して初期化
+            ProgressBar.Visibility = Visibility.Visible;
+            UpdateProgressBar(0);
 
             try
             {
-                AddMainLogEntry($"連続キャプション生成を開始します（対象: {_imageInfos.Count}枚）");
+                bool skipExisting = SkipExistingCaptionsCheckBox.IsChecked ?? false;
+                int targetCount = skipExisting ? _imageInfos.Count(img => string.IsNullOrEmpty(img.Caption)) : _imageInfos.Count;
+                
+                AddMainLogEntry($"連続キャプション生成を開始します（対象: {targetCount}枚、スキップ: {skipExisting}）");
 
                 // 永続Pythonセッションを開始
                 bool sessionStarted = await StartPersistentPythonSessionAsync();
@@ -6874,25 +6890,45 @@ namespace tagmane
                     return;
                 }
 
+                int processedCount = 0;
+                int skippedCount = 0;
+
                 for (int i = 0; i < _imageInfos.Count; i++)
                 {
                     if (_captionCancellationTokenSource.Token.IsCancellationRequested)
                     {
-                        AddMainLogEntry($"キャプション生成が停止されました（{i}/{_imageInfos.Count}枚完了）");
+                        AddMainLogEntry($"キャプション生成が停止されました（処理済み: {processedCount}枚、スキップ: {skippedCount}枚）");
                         break;
                     }
 
                     _currentCaptionIndex = i;
                     var imageInfo = _imageInfos[i];
 
+                    // スキップ処理
+                    if (skipExisting && !string.IsNullOrEmpty(imageInfo.Caption))
+                    {
+                        skippedCount++;
+                        AddMainLogEntry($"スキップ: {Path.GetFileName(imageInfo.ImagePath)} (既存キャプションあり)");
+                        
+                        // スキップ時も進捗を更新
+                        double skipProgress = (double)(processedCount + skippedCount) / _imageInfos.Count;
+                        UpdateProgressBar(skipProgress);
+                        continue;
+                    }
+
                     // 現在の画像を選択状態に更新
                     ImageListBox.SelectedItem = imageInfo;
                     ImageListBox.ScrollIntoView(imageInfo);
 
-                    AddMainLogEntry($"キャプション生成中: {Path.GetFileName(imageInfo.ImagePath)} ({i + 1}/{_imageInfos.Count})");
+                    AddMainLogEntry($"キャプション生成中: {Path.GetFileName(imageInfo.ImagePath)} ({processedCount + 1}/{targetCount})");
 
                     // 永続セッションを使用してキャプション生成
                     await GenerateCaptionWithPersistentSessionAsync(imageInfo);
+                    processedCount++;
+
+                    // 進捗を更新（全体画像数に対する進捗として表示）
+                    double progress = (double)(processedCount + skippedCount) / _imageInfos.Count;
+                    UpdateProgressBar(progress);
 
                     if (_captionCancellationTokenSource.Token.IsCancellationRequested)
                         break;
@@ -6900,7 +6936,7 @@ namespace tagmane
 
                 if (!_captionCancellationTokenSource.Token.IsCancellationRequested)
                 {
-                    AddMainLogEntry($"全{_imageInfos.Count}枚のキャプション生成が完了しました");
+                    AddMainLogEntry($"連続キャプション生成が完了しました（処理済み: {processedCount}枚、スキップ: {skippedCount}枚）");
                 }
             }
             catch (OperationCanceledException)
@@ -6922,6 +6958,11 @@ namespace tagmane
                 GenerateAllCaptionsButton.IsEnabled = true;
                 StopCaptionGenerationButton.IsEnabled = false;
                 ImageListBox.IsEnabled = true; // 画像切り替えを再有効化
+                
+                // 進捗バーを非表示にして初期化
+                ProgressBar.Visibility = Visibility.Hidden;
+                UpdateProgressBar(0);
+                
                 _captionCancellationTokenSource?.Dispose();
                 _captionCancellationTokenSource = null;
             }
