@@ -2162,6 +2162,12 @@ namespace tagmane
             }
         }
 
+        private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            // 既存のOnKeyDownメソッドがキーハンドリングを行うため、
+            // このメソッドは不要（削除予定）
+        }
+
         // 元に戻す
         private void UndoButton_Click(object sender, RoutedEventArgs e)
         {
@@ -2234,7 +2240,7 @@ namespace tagmane
         // 個別タグリストの選択解除
         private void DeselectTagButton_Click(object sender, RoutedEventArgs e)
         {
-            var selectedTags = TagListView.SelectedItems.Cast<string>().ToList();
+            var selectedTags = _selectedTags.ToList();
             foreach (var tag in selectedTags)
             {
                 _selectedTags.Remove(tag);
@@ -2256,10 +2262,13 @@ namespace tagmane
         // タグの追加
         private void AddTagButton_Click(object sender, RoutedEventArgs e)
         {
+            AddMainLogEntry("AddTagButton_Click が呼び出されました");
             var selectedImage = ImageListBox.SelectedItem as ImageInfo;
             if (selectedImage != null)
             {
-                var selectedTags = SelectedTagsListBox.SelectedItems.Cast<string>().ToList();
+                AddMainLogEntry($"選択された画像: {Path.GetFileName(selectedImage.ImagePath)}");
+                var selectedTags = _selectedTags.ToList();
+                AddMainLogEntry($"選択されたタグ数: {selectedTags.Count}");
                 var addedTags = new List<TagPositionInfo>();
 
                 foreach (var tag in selectedTags)
@@ -2271,6 +2280,7 @@ namespace tagmane
                     }
                 }
 
+                AddMainLogEntry($"追加予定のタグ数: {addedTags.Count}");
                 if (addedTags.Count > 0)
                 {
                     var action = new TagGroupAction
@@ -2302,16 +2312,26 @@ namespace tagmane
                     _redoStack.Clear();
                     UpdateUIAfterTagsChange();
                 }
+                else
+                {
+                    AddMainLogEntry("追加するタグがありません（既に存在するか選択されていません）");
+                }
+            }
+            else
+            {
+                AddMainLogEntry("画像が選択されていません");
             }
         }
 
         // タグの削除
         private void RemoveTagButton_Click(object sender, RoutedEventArgs e)
         {
+            AddMainLogEntry("RemoveTagButton_Click が呼び出されました");
             var selectedImage = ImageListBox.SelectedItem as ImageInfo;
             if (selectedImage != null)
             {
-                var selectedTags = TagListView.SelectedItems.Cast<string>().ToList();
+                var selectedTags = _selectedTags.ToList();
+                AddMainLogEntry($"削除対象のタグ数: {selectedTags.Count}");
                 var removedTags = new List<TagPositionInfo>();
 
                 foreach (var tag in selectedTags)
@@ -2363,7 +2383,7 @@ namespace tagmane
             var selectedImage = ImageListBox.SelectedItem as ImageInfo;
             if (selectedImage != null)
             {
-                var selectedTags = TagListView.SelectedItems.Cast<string>().ToList();
+                var selectedTags = _selectedTags.ToList();
                 var movedTags = new List<TagPositionInfo>();
 
                 foreach (var tag in selectedTags)
@@ -2416,7 +2436,7 @@ namespace tagmane
             var selectedImage = ImageListBox.SelectedItem as ImageInfo;
             if (selectedImage != null)
             {
-                var selectedTags = TagListView.SelectedItems.Cast<string>().ToList();
+                var selectedTags = _selectedTags.ToList();
                 var movedTags = new List<TagPositionInfo>();
 
                 int lastIndex = selectedImage.Tags.Count - 1;
@@ -6880,6 +6900,9 @@ namespace tagmane
             }
             finally
             {
+                // モデルアンロードを実行（VRAMを解放）
+                await UnloadModelAsync();
+                
                 // UI状態をリセット
                 _isContinuousCaptionGeneration = false;
                 GenerateCaptionButton.IsEnabled = true;
@@ -7180,12 +7203,64 @@ Provide your answer wrapped in <answer></answer> tags:";
             }
         }
 
+        private async Task UnloadModelAsync()
+        {
+            try
+            {
+                if (_persistentPythonProcess != null && !_persistentPythonProcess.HasExited)
+                {
+                    AddPythonLogEntry("モデルをアンロード中...");
+                    
+                    // アンロードコマンドを送信
+                    await _pythonInput.WriteLineAsync("UNLOAD");
+                    await _pythonInput.FlushAsync();
+                    
+                    // アンロード完了応答を待機（タイムアウト付き）
+                    var timeout = TimeSpan.FromSeconds(10);
+                    var cts = new CancellationTokenSource(timeout);
+                    
+                    try
+                    {
+                        while (!cts.Token.IsCancellationRequested)
+                        {
+                            string response = await _pythonOutput.ReadLineAsync();
+                            if (response == "MODEL_UNLOADED")
+                            {
+                                AddPythonLogEntry("モデルのアンロードが完了しました");
+                                break;
+                            }
+                            else if (response == "UNLOAD_FAILED")
+                            {
+                                AddPythonLogEntry("モデルのアンロードに失敗しました");
+                                break;
+                            }
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        AddPythonLogEntry("モデルアンロードのタイムアウト");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AddPythonLogEntry($"モデルアンロードエラー: {ex.Message}");
+            }
+        }
+
         private void StopPersistentPythonSession()
         {
             try
             {
                 if (_persistentPythonProcess != null && !_persistentPythonProcess.HasExited)
                 {
+                    // モデルアンロードコマンドを送信してからプロセス終了
+                    _pythonInput?.WriteLine("UNLOAD");
+                    _pythonInput?.Flush();
+                    
+                    // アンロード応答を少し待機
+                    System.Threading.Thread.Sleep(1000);
+                    
                     // 終了コマンドを送信
                     _pythonInput?.WriteLine("EXIT");
                     _pythonInput?.Flush();

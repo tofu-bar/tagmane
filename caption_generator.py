@@ -73,15 +73,30 @@ def initialize_glm_model():
                     print(f"Using GPU: {torch.cuda.get_device_name(0)}", file=sys.stderr)
                     print(f"GPU memory available: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB", file=sys.stderr)
                     
+                    # メモリ効率的な段階的読み込み
+                    print("Loading model on CPU first to minimize VRAM usage...", file=sys.stderr)
+                    
+                    # 1. CPU上でモデルを読み込み（VRAM使用量ゼロ）
                     glm_model = Glm4vForConditionalGeneration.from_pretrained(
                         pretrained_model_name_or_path=MODEL_PATH,
-                        torch_dtype=torch.bfloat16,
-                        device_map="auto",
+                        torch_dtype=torch.float32,  # 一旦float32で読み込み
+                        device_map="cpu",  # 明示的にCPU指定
                         attn_implementation="eager",
                         trust_remote_code=True,
                         low_cpu_mem_usage=True,
-                        max_memory={0: "32GB"},
                     )
+                    
+                    print("Model loaded on CPU, converting to bfloat16...", file=sys.stderr)
+                    
+                    # 2. bfloat16に変換（CPU上で実行）
+                    glm_model = glm_model.to(dtype=torch.bfloat16)
+                    
+                    print("Converting to bfloat16 completed, moving to GPU...", file=sys.stderr)
+                    
+                    # 3. GPU に移動（この時点でVRAM使用量が22GB程度になる）
+                    glm_model = glm_model.to(device="cuda")
+                    
+                    print("Model successfully moved to GPU", file=sys.stderr)
                     
                     if hasattr(torch.backends.cuda, 'max_split_size_mb'):
                         torch.backends.cuda.max_split_size_mb = 512
@@ -104,6 +119,41 @@ def initialize_glm_model():
         print(f"Error initializing GLM-4V model: {e}", file=sys.stderr)
         glm_model = None
         glm_processor = None
+        return False
+
+def unload_glm_model():
+    """GLM-4Vモデルをアンロードして VRAM を解放"""
+    global glm_model, glm_processor
+    
+    try:
+        with model_lock:
+            if glm_model is not None:
+                print("Unloading GLM-4V model...", file=sys.stderr)
+                
+                # モデルをCPUに移動（VRAMから削除）
+                glm_model = glm_model.to('cpu')
+                
+                # 明示的に削除
+                del glm_model
+                glm_model = None
+                
+                print("GLM-4V model unloaded from GPU", file=sys.stderr)
+            
+            if glm_processor is not None:
+                del glm_processor
+                glm_processor = None
+                print("GLM-4V processor unloaded", file=sys.stderr)
+            
+            # GPU メモリクリーンアップ
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()  # GPU操作の完了を待機
+                print("GPU memory cleared", file=sys.stderr)
+                
+            return True
+            
+    except Exception as e:
+        print(f"Error unloading GLM-4V model: {e}", file=sys.stderr)
         return False
 
 # タグカテゴリ関連の辞書読み込み機能は削除（C#側から分類済みデータを受け取る）
@@ -308,6 +358,20 @@ def generate_caption_streaming(image_path, prompt, tags, categorized_tags=None):
                         generated_text = f"A cosplay photo featuring {character_name} from {copyright_name}."
                         print(f"Using fallback description: {generated_text}", file=sys.stderr)
             
+            # Unicodeエスケープシーケンスを正常な文字に変換
+            generated_text = generated_text.encode('utf-8').decode('unicode_escape').encode('latin1').decode('utf-8', errors='ignore')
+            
+            # 追加の文字クリーンアップ
+            import unicodedata
+            generated_text = unicodedata.normalize('NFKC', generated_text)  # 正規化
+            generated_text = generated_text.replace('\u2019', "'")  # 右シングルクォート
+            generated_text = generated_text.replace('\u201c', '"')  # 左ダブルクォート
+            generated_text = generated_text.replace('\u201d', '"')  # 右ダブルクォート
+            generated_text = generated_text.replace('\u2013', '-')  # enダッシュ
+            generated_text = generated_text.replace('\u2014', '--')  # emダッシュ
+            
+            print(f"Cleaned caption: {repr(generated_text[:100])}", file=sys.stderr)
+            
             # ストリーミング風に文字を出力
             print(f"Starting streaming output...", file=sys.stderr)
             for char in generated_text:
@@ -365,7 +429,17 @@ def interactive_mode():
             
             if line == "EXIT":
                 print("EXITING", flush=True)
+                # 終了時にモデルをアンロード
+                unload_glm_model()
                 break
+            elif line == "UNLOAD":
+                # モデルアンロードコマンド
+                success = unload_glm_model()
+                if success:
+                    print("MODEL_UNLOADED", flush=True)
+                else:
+                    print("UNLOAD_FAILED", flush=True)
+                continue
             
             # PROCESS_JSON|imagePath|jsonData形式と旧形式の両方をサポート
             if line.startswith("PROCESS_JSON|"):
