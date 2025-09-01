@@ -6722,42 +6722,20 @@ namespace tagmane
                     return false;
                 }
 
-                AddMainLogEntry("依存関係をインストールしています（時間がかかる場合があります）...");
-                AddPythonLogEntry("Python環境セットアップを段階的に実行します...");
-
-                // ステップ1: pipのアップグレード
-                AddPythonLogEntry("ステップ 1/3: pipをアップグレードしています...");
-                bool pipUpgradeSuccess = await RunPipCommand(pythonExe, "-m pip install --upgrade pip", "pipアップグレード");
-                if (!pipUpgradeSuccess)
-                {
-                    AddPythonLogEntry("警告: pipのアップグレードに失敗しましたが、続行します");
-                }
-
-                // ステップ2: 基本パッケージのインストール
-                AddPythonLogEntry("ステップ 2/3: 基本パッケージをインストールしています...");
-                string[] basicPackages = {
-                    "numpy>=1.21.0",
-                    "Pillow>=9.0.0",
-                    "setuptools>=65.0",
-                    "wheel>=0.38.0"
-                };
-
-                foreach (string package in basicPackages)
-                {
-                    bool success = await RunPipCommand(pythonExe, $"-m pip install \"{package}\"", $"基本パッケージ {package}");
-                    if (!success)
-                    {
-                        AddMainLogEntry($"基本パッケージのインストールに失敗しました: {package}");
-                        AddPythonLogEntry($"エラー: {package} のインストールに失敗");
-                        return false;
-                    }
-                }
-
-                // ステップ3: 残りの依存関係をインストール
-                AddPythonLogEntry("ステップ 3/3: GLM-4.1V関連パッケージをインストールしています...");
-                bool mainInstallSuccess = await RunPipCommand(pythonExe, $"-m pip install -r \"{requirementsPath}\"", "メイン依存関係");
+                // setup-glm-env.batを実行してPyTorch + 依存関係をインストール
+                AddMainLogEntry("GLM-4.1V環境をセットアップしています（時間がかかる場合があります）...");
+                AddPythonLogEntry("setup-glm-env.batを実行します...");
                 
-                if (mainInstallSuccess)
+                string setupBatPath = Path.Combine(appDir, "setup-glm-env.bat");
+                if (!File.Exists(setupBatPath))
+                {
+                    AddMainLogEntry("setup-glm-env.batが見つかりません");
+                    AddPythonLogEntry("エラー: setup-glm-env.batファイルが存在しません");
+                    return false;
+                }
+
+                bool setupSuccess = await RunBatchFile(setupBatPath, "GLM-4.1V環境セットアップ");
+                if (setupSuccess)
                 {
                     File.WriteAllText(setupCompleteFile, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                     AddMainLogEntry("Python環境のセットアップが完了しました");
@@ -6836,6 +6814,72 @@ namespace tagmane
                     else
                     {
                         AddPythonLogEntry($"✗ {operationName} が失敗しました (終了コード: {pipProcess.ExitCode})");
+                        return false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AddPythonLogEntry($"✗ {operationName} 実行中に例外が発生: {ex.Message}");
+                return false;
+            }
+        }
+
+        private async Task<bool> RunBatchFile(string batchFilePath, string operationName)
+        {
+            try
+            {
+                ProcessStartInfo batchInfo = new ProcessStartInfo
+                {
+                    FileName = batchFilePath,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    WorkingDirectory = Path.GetDirectoryName(batchFilePath)
+                };
+
+                using (Process batchProcess = new Process { StartInfo = batchInfo })
+                {
+                    batchProcess.Start();
+                    AddPythonLogEntry($"{operationName} を実行中...");
+
+                    // 出力を非同期で読み取り
+                    Task outputTask = Task.Run(async () =>
+                    {
+                        while (!batchProcess.StandardOutput.EndOfStream)
+                        {
+                            string line = await batchProcess.StandardOutput.ReadLineAsync();
+                            if (!string.IsNullOrWhiteSpace(line))
+                            {
+                                AddPythonLogEntry($"SETUP: {line}");
+                            }
+                        }
+                    });
+
+                    Task errorTask = Task.Run(async () =>
+                    {
+                        while (!batchProcess.StandardError.EndOfStream)
+                        {
+                            string line = await batchProcess.StandardError.ReadLineAsync();
+                            if (!string.IsNullOrWhiteSpace(line))
+                            {
+                                AddPythonLogEntry($"SETUP ERROR: {line}");
+                            }
+                        }
+                    });
+
+                    await batchProcess.WaitForExitAsync();
+                    await Task.WhenAll(outputTask, errorTask);
+
+                    if (batchProcess.ExitCode == 0)
+                    {
+                        AddPythonLogEntry($"✓ {operationName} が正常に完了しました");
+                        return true;
+                    }
+                    else
+                    {
+                        AddPythonLogEntry($"✗ {operationName} が失敗しました (終了コード: {batchProcess.ExitCode})");
                         return false;
                     }
                 }

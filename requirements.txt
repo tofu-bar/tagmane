@@ -1,4 +1,5 @@
 # GLM-4.1V Caption Generation Requirements
+# Note: PyTorch is installed separately via setup-glm-env.bat to ensure CUDA version
 
 # Basic dependencies first
 pip>=24.0
@@ -8,12 +9,6 @@ wheel>=0.38.0
 # Essential packages
 numpy>=1.21.0
 Pillow>=9.0.0
-
-# PyTorch (GPU version for CUDA 12.6)
---extra-index-url https://download.pytorch.org/whl/cu126
-torch>=2.0.0
-torchvision>=0.15.0
-torchaudio>=2.0.0
 
 # HuggingFace ecosystem
 huggingface-hub>=0.16.0
