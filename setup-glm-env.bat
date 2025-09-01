@@ -22,33 +22,15 @@ set CUDA_VERSION=""
 set PYTORCH_INDEX_URL=""
 set CUDA_AVAILABLE=false
 
-:: nvidia-smiでCUDAドライバーバージョンを取得
-nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits >nul 2>&1
-if %errorlevel% equ 0 (
-    echo NVIDIA GPU detected, checking CUDA version...
+:: nvidia-smiで一度にCUDAバージョンを取得（効率化）
+for /f "tokens=9" %%i in ('nvidia-smi 2^>nul ^| findstr "CUDA Version"') do (
+    set CUDA_VERSION_FULL=%%i
     set CUDA_AVAILABLE=true
-    
-    :: CUDAランタイムバージョンをnvidia-smiから取得
-    for /f "tokens=9" %%i in ('nvidia-smi ^| findstr "CUDA Version"') do (
-        set CUDA_VERSION_FULL=%%i
-    )
-    
-    :: nvcc が利用可能かチェック（開発環境）
-    nvcc --version >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo CUDA development tools detected
-        for /f "tokens=4" %%i in ('nvcc --version ^| findstr "release"') do (
-            set NVCC_VERSION=%%i
-            echo NVCC version: %%i
-        )
-    )
-    
-    :: CUDAバージョンに基づいてPyTorchインデックスURLを決定
-    if defined CUDA_VERSION_FULL (
-        echo CUDA Version: %CUDA_VERSION_FULL%
-        
-        :: バージョン番号を抽出してPyTorchの対応バージョンを決定
-        echo Determining PyTorch compatibility for CUDA %CUDA_VERSION_FULL%
+    echo NVIDIA GPU detected - CUDA Version: %%i
+)
+:: CUDAバージョンに基づいてPyTorchインデックスURLを決定
+if defined CUDA_VERSION_FULL (
+    echo Determining PyTorch compatibility for CUDA %CUDA_VERSION_FULL%
         
         :: より確実なバージョンマッチング
         if "%CUDA_VERSION_FULL:~0,4%"=="12.6" (
@@ -141,13 +123,8 @@ echo Upgrading pip...
 python -m pip install --upgrade pip setuptools wheel
 
 :: 検出されたCUDA環境に適したPyTorchのインストール
-if "%CUDA_VERSION%"=="cpu" (
-    echo Installing PyTorch CPU version...
-    python -m pip install torch torchvision torchaudio --index-url %PYTORCH_INDEX_URL%
-) else (
-    echo Installing PyTorch with %CUDA_VERSION% support...
-    python -m pip install torch torchvision torchaudio --index-url %PYTORCH_INDEX_URL%
-)
+echo Installing PyTorch ^(%CUDA_VERSION%^)...
+python -m pip install torch torchvision torchaudio --index-url %PYTORCH_INDEX_URL%
 
 if %errorlevel% neq 0 (
     echo Error: Failed to install PyTorch
@@ -165,11 +142,9 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: その他の依存関係をインストール（PyTorch以外）
+:: その他の依存関係を一括インストール（PyTorch以外）
 echo Installing other dependencies...
-python -m pip install numpy>=1.21.0 Pillow>=9.0.0
-python -m pip install huggingface-hub>=0.16.0 tokenizers>=0.13.0 safetensors>=0.3.0
-python -m pip install transformers>=4.35.0 accelerate>=0.20.0 sentencepiece>=0.1.99
+python -m pip install numpy>=1.21.0 Pillow>=9.0.0 huggingface-hub>=0.16.0 tokenizers>=0.13.0 safetensors>=0.3.0 transformers>=4.35.0 accelerate>=0.20.0 sentencepiece>=0.1.99
 
 if %errorlevel% neq 0 (
     echo Error: Failed to install dependencies
