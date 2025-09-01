@@ -127,12 +127,13 @@ namespace tagmane
         }
     }
     
+
     // キャプション生成設定を保持するクラス
     public class CaptionGenerationSettings
     {
         public string SystemPrompt { get; set; } = "You are a helpful assistant that describes images accurately and concisely.";
         public string UserPrompt { get; set; } = "Please describe this image in detail, focusing on the main subjects, their actions, the setting, and any notable details.";
-        public int MaxTokens { get; set; } = 512;
+        public int MaxTokens { get; set; } = 2048;
         public double Temperature { get; set; } = 0.7;
         public double TopP { get; set; } = 0.9;
         public bool UseExistingTags { get; set; } = true;

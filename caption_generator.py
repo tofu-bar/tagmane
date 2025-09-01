@@ -40,16 +40,9 @@ MODEL_PATH = "THUDM/GLM-4.1V-9B-Thinking"
 # デフォルトのキャプションプロンプト
 DEFAULT_CAPTION_PROMPT = """Please describe this image in 2-3 concise sentences. Focus on the main subject and key visual elements.
 
-Character: {character}
-Copyright: {copyright}
-General tags: {general}
-Artist: {artist}
-Rating: {rating}
-Quality: {quality}
-Meta: {meta}
-Model: {model}
+{tag_info}
 
-IMPORTANT: Start your response immediately with <answer>your description here</answer>. Do not use <think> tags. Provide a direct, concise description."""
+Provide your answer in <answer></answer> tags."""
 
 # GLM-4V関連の変数
 glm_model = None
@@ -214,24 +207,36 @@ def generate_caption_streaming(image_path, prompt, tags, categorized_tags=None, 
             }
             print(f"Using fallback categorization (all tags as general)", file=sys.stderr)
         
-        # プロンプト用の辞書を作成
-        print(f"Creating prompt replacements...", file=sys.stderr)
-        prompt_replacements = {
-            'tags': ", ".join(tags) if isinstance(tags, list) and tags else "No tags",
-            'character': ", ".join(categorized_tags['character']) if categorized_tags['character'] else "No character tags",
-            'copyright': ", ".join(categorized_tags['copyright']) if categorized_tags['copyright'] else "No copyright tags",
-            'artist': ", ".join(categorized_tags['artist']) if categorized_tags['artist'] else "No artist tags",
-            'general': ", ".join(categorized_tags['general'][:20]) if categorized_tags['general'] else "No general tags",
-            'rating': ", ".join(categorized_tags['rating']) if categorized_tags['rating'] else "No rating tags",
-            'quality': ", ".join(categorized_tags['quality']) if categorized_tags['quality'] else "No quality tags",
-            'meta': ", ".join(categorized_tags['meta']) if categorized_tags['meta'] else "No meta tags",
-            'model': ", ".join(categorized_tags['model']) if categorized_tags['model'] else "No model tags"
-        }
-        print(f"Prompt replacements created successfully", file=sys.stderr)
+        # タグ情報を持つカテゴリのみを含むプロンプトを構築
+        print(f"Creating tag info for prompt...", file=sys.stderr)
+        tag_info_parts = []
+        
+        # 各カテゴリをチェックして、タグがあるものだけを追加
+        if categorized_tags.get('character'):
+            tag_info_parts.append(f"Character: {', '.join(categorized_tags['character'])}")
+        if categorized_tags.get('copyright'):
+            tag_info_parts.append(f"Copyright: {', '.join(categorized_tags['copyright'])}")
+        if categorized_tags.get('general'):
+            # generalタグは最初の20個に制限
+            tag_info_parts.append(f"General tags: {', '.join(categorized_tags['general'][:20])}")
+        if categorized_tags.get('artist'):
+            tag_info_parts.append(f"Artist: {', '.join(categorized_tags['artist'])}")
+        if categorized_tags.get('rating'):
+            tag_info_parts.append(f"Rating: {', '.join(categorized_tags['rating'])}")
+        if categorized_tags.get('quality'):
+            tag_info_parts.append(f"Quality: {', '.join(categorized_tags['quality'])}")
+        if categorized_tags.get('meta'):
+            tag_info_parts.append(f"Meta: {', '.join(categorized_tags['meta'])}")
+        if categorized_tags.get('model'):
+            tag_info_parts.append(f"Model: {', '.join(categorized_tags['model'])}")
+        
+        # タグ情報を改行で結合
+        tag_info = '\n'.join(tag_info_parts) if tag_info_parts else "No tag information available"
+        print(f"Tag info created with {len(tag_info_parts)} categories", file=sys.stderr)
         
         # プロンプトをフォーマット
         print(f"Formatting prompt...", file=sys.stderr)
-        formatted_prompt = prompt.format(**prompt_replacements)
+        formatted_prompt = prompt.format(tag_info=tag_info)
         print(f"Using prompt: {formatted_prompt}", file=sys.stderr)
         
         with model_lock:
@@ -294,7 +299,7 @@ def generate_caption_streaming(image_path, prompt, tags, categorized_tags=None, 
                     output[:, inputs['input_ids'].size(1):],
                     skip_special_tokens=True
                 )[0]
-                print(f"Raw response: {repr(response_text[:200])}", file=sys.stderr)
+                print(f"Raw response (length: {len(response_text)}): {repr(response_text)}", file=sys.stderr)
             except Exception as e:
                 print(f"Error during generation: {e}", file=sys.stderr)
                 print(f"Error type: {type(e)}", file=sys.stderr)
@@ -302,67 +307,136 @@ def generate_caption_streaming(image_path, prompt, tags, categorized_tags=None, 
                 print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
                 raise e
                 
-            # <answer></answer>タグから内容を抽出（リトライ機能付き）
+            # <answer></answer>タグから内容を抽出（マルチターン会話での継続機能付き）
             import re
             generated_text = ""
             max_retries = 2
             
-            for retry in range(max_retries + 1):
-                answer_match = re.search(r'<answer>(.*?)</answer>', response_text, re.DOTALL)
-                if answer_match:
-                    generated_text = answer_match.group(1).strip()
-                    print(f"Extracted from <answer> tags: {repr(generated_text[:100])}", file=sys.stderr)
-                    break
-                elif retry < max_retries:
-                    # リトライ: より短いプロンプトで再生成
-                    print(f"No <answer> tags found. Retrying with simplified prompt... (attempt {retry + 2}/{max_retries + 1})", file=sys.stderr)
-                    simplified_prompt = f"Describe this {categorized_tags['character'][0] if categorized_tags and categorized_tags['character'] else 'character'} cosplay in one sentence. Start with: <answer>"
+            # 初回の応答を確認
+            answer_match = re.search(r'<answer>(.*?)</answer>', response_text, re.DOTALL)
+            if answer_match:
+                generated_text = answer_match.group(1).strip()
+                print(f"Extracted from <answer> tags (length: {len(generated_text)}): {repr(generated_text)}", file=sys.stderr)
+            else:
+                # <answer>タグが見つからない場合、マルチターン会話として続行
+                print(f"No <answer> tags found. Continuing conversation to get answer...", file=sys.stderr)
+                
+                # 会話履歴を構築（初回のやり取り + assistantの応答 + 続きを促すプロンプト）
+                # 注意: GLM-4.1Vでは、全てのcontentがlist形式である必要がある
+                conversation_history = [
+                    {
+                        "role": "user", 
+                        "content": [
+                            {"type": "image", "image": image},
+                            {"type": "text", "text": formatted_prompt}
+                        ]
+                    },
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "text", "text": response_text}  # モデルの初回応答（<think>タグなど含む）
+                        ]
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Please continue and provide your final answer in <answer> tags."}
+                        ]
+                    }
+                ]
+                
+                # マルチターンでの継続生成を試みる
+                for retry in range(max_retries):
+                    print(f"Multi-turn continuation attempt {retry + 1}/{max_retries}...", file=sys.stderr)
                     
-                    # 再生成（短いトークン制限）
-                    retry_config = generation_config.copy()
-                    retry_config['max_new_tokens'] = 256
+                    # 継続生成（短めのトークン制限）
+                    continuation_config = generation_config.copy()
+                    continuation_config['max_new_tokens'] = 256
                     
-                    with torch.no_grad():
-                        retry_inputs = glm_processor.apply_chat_template(
-                            [{"role": "user", "content": [
-                                {"type": "image", "image": image},
-                                {"type": "text", "text": simplified_prompt}
-                            ]}],
-                            add_generation_prompt=True,
-                            tokenize=True,
-                            return_tensors="pt",
-                            return_dict=True
-                        ).to(glm_model.device)
-                        
-                        retry_output = glm_model.generate(**retry_inputs, **retry_config)
-                        response_text = glm_processor.batch_decode(
-                            retry_output[:, retry_inputs['input_ids'].size(1):],
-                            skip_special_tokens=True
-                        )[0]
-                        print(f"Retry response: {repr(response_text[:200])}", file=sys.stderr)
-                else:
-                    # 最後の手段：<think>タグから有用な情報を抽出
-                    print(f"All retries failed. Extracting from <think> content...", file=sys.stderr)
-                    think_patterns = [
-                        r'cosplay[a-zA-Z\s]*(?:of|as)\s+([^.]+?)\s+from\s+([^.]+?)[.\s]',  # "cosplay of X from Y"
-                        r'The image shows.*?cosplay.*?([^.]{20,80})[.\s]',  # "The image shows...cosplay..."
-                        r'person.*?cosplaying.*?([^.]{20,80})[.\s]',  # "person cosplaying..."
-                        r'([^.]{30,100}(?:cosplay|character|costume)[^.]{0,50})[.\s]'  # 一般的なコスプレ記述
-                    ]
-                    
-                    for pattern in think_patterns:
-                        think_match = re.search(pattern, response_text, re.IGNORECASE | re.DOTALL)
-                        if think_match:
-                            generated_text = think_match.group(0).strip()
-                            if len(generated_text) > 20:
-                                print(f"Extracted from <think>: {repr(generated_text[:100])}", file=sys.stderr)
+                    try:
+                        with torch.no_grad():
+                            continuation_inputs = glm_processor.apply_chat_template(
+                                conversation_history,
+                                add_generation_prompt=True,
+                                tokenize=True,
+                                return_tensors="pt",
+                                return_dict=True
+                            ).to(glm_model.device)
+                            
+                            continuation_output = glm_model.generate(**continuation_inputs, **continuation_config)
+                            continuation_text = glm_processor.batch_decode(
+                                continuation_output[:, continuation_inputs['input_ids'].size(1):],
+                                skip_special_tokens=True
+                            )[0]
+                            print(f"Continuation response (length: {len(continuation_text)}): {repr(continuation_text)}", file=sys.stderr)
+                            
+                            # 継続応答から<answer>タグを探す
+                            answer_match = re.search(r'<answer>(.*?)</answer>', continuation_text, re.DOTALL)
+                            if answer_match:
+                                generated_text = answer_match.group(1).strip()
+                                print(f"Successfully extracted from continuation (length: {len(generated_text)}): {repr(generated_text)}", file=sys.stderr)
                                 break
+                            else:
+                                # 継続応答を会話履歴に追加して次のリトライに備える
+                                conversation_history.append({
+                                    "role": "assistant",
+                                    "content": [
+                                        {"type": "text", "text": continuation_text}
+                                    ]
+                                })
+                                conversation_history.append({
+                                    "role": "user",
+                                    "content": [
+                                        {"type": "text", "text": "I need your answer in <answer> tags. Please provide a concise description starting with <answer> and ending with </answer>."}
+                                    ]
+                                })
+                                
+                    except Exception as e:
+                        print(f"Error during multi-turn continuation: {e}", file=sys.stderr)
+                        print(f"Error type: {type(e)}", file=sys.stderr)
+                        import traceback
+                        print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
+                        break
+                
+                # それでも<answer>タグが得られない場合、response_textから情報を抽出
+                if not generated_text:
+                    print(f"Multi-turn attempts failed. Extracting from available content...", file=sys.stderr)
                     
+                    # まず、部分的な<answer>タグがないか確認（閉じタグがない場合）
+                    partial_answer = re.search(r'<answer>([^<]+)', response_text, re.DOTALL)
+                    if partial_answer:
+                        generated_text = partial_answer.group(1).strip()
+                        # 文の途中で切れている場合、最後の完全な文までを取得
+                        if generated_text and not generated_text[-1] in '.!?':
+                            last_sentence = re.search(r'^(.*[.!?])', generated_text, re.DOTALL)
+                            if last_sentence:
+                                generated_text = last_sentence.group(1).strip()
+                        if generated_text and len(generated_text) > 20:
+                            print(f"Extracted from partial <answer> (length: {len(generated_text)}): {repr(generated_text)}", file=sys.stderr)
+                    
+                    # <think>タグから有用な情報を抽出
                     if not generated_text:
-                        # 最終フォールバック
+                        think_patterns = [
+                            r'The image shows\s+([^.]+\.)',  # "The image shows..."から始まる文
+                            r'This is\s+([^.]+\.)',  # "This is..."から始まる文
+                            r'A\s+([^.]+(?:character|person|girl|boy|woman|man)[^.]+\.)',  # キャラクター説明
+                            r'([^.]{30,150}\.)'  # 任意の完全な文（最初に見つかったもの）
+                        ]
+                        
+                        all_text = response_text  # 初回応答全体から探す
+                        for pattern in think_patterns:
+                            think_match = re.search(pattern, all_text, re.IGNORECASE | re.DOTALL)
+                            if think_match:
+                                generated_text = think_match.group(0).strip()
+                                if len(generated_text) > 20:
+                                    print(f"Extracted from content (length: {len(generated_text)}): {repr(generated_text)}", file=sys.stderr)
+                                    break
+                    
+                    # 最終フォールバック
+                    if not generated_text:
                         character_name = ", ".join(categorized_tags['character']) if categorized_tags and categorized_tags['character'] else "character"
                         copyright_name = ", ".join(categorized_tags['copyright']) if categorized_tags and categorized_tags['copyright'] else "anime series"
-                        generated_text = f"A cosplay photo featuring {character_name} from {copyright_name}."
+                        generated_text = f"A character from {copyright_name}."
                         print(f"Using fallback description: {generated_text}", file=sys.stderr)
             
             # Unicodeエスケープシーケンスを正常な文字に変換
@@ -377,7 +451,7 @@ def generate_caption_streaming(image_path, prompt, tags, categorized_tags=None, 
             generated_text = generated_text.replace('\u2013', '-')  # enダッシュ
             generated_text = generated_text.replace('\u2014', '--')  # emダッシュ
             
-            print(f"Cleaned caption: {repr(generated_text[:100])}", file=sys.stderr)
+            print(f"Cleaned caption (length: {len(generated_text)}): {repr(generated_text)}", file=sys.stderr)
             
             # ストリーミング風に文字を出力
             print(f"Starting streaming output...", file=sys.stderr)
@@ -549,7 +623,7 @@ def main():
     parser.add_argument('--save', action='store_true', help='Save caption to JSON file')
     parser.add_argument('--init-only', action='store_true', help='Only initialize model and exit')
     parser.add_argument('--interactive', action='store_true', help='Start interactive mode for persistent session')
-    parser.add_argument('--max-tokens', type=int, default=512, help='Maximum tokens for generation')
+    parser.add_argument('--max-tokens', type=int, default=2048, help='Maximum tokens for generation')
     parser.add_argument('--temperature', type=float, default=0.7, help='Temperature for generation')
     parser.add_argument('--top-p', type=float, default=0.9, help='Top-p for generation')
     parser.add_argument('--system-prompt-base64', help='Base64 encoded system prompt')

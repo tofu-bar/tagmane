@@ -69,11 +69,11 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <Slider x:Name="MaxTokensSlider" Grid.Column="0" 
-                                    Minimum="50" Maximum="1024" Value="512" 
+                                    Minimum="50" Maximum="4096" Value="2048" 
                                     VerticalAlignment="Center" Margin="0,0,15,0"
                                     ValueChanged="MaxTokensSlider_ValueChanged"/>
                             <TextBlock x:Name="MaxTokensValueText" Grid.Column="1"
-                                       Text="512" VerticalAlignment="Center" 
+                                       Text="2048" VerticalAlignment="Center" 
                                        MinWidth="60" TextAlignment="Center"
                                        Background="#2D2D2D" Padding="5" Foreground="White"/>
                         </Grid>
