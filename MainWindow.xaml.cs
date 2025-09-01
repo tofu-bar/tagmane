@@ -6429,18 +6429,25 @@ namespace tagmane
                 }
 
                 // 設定に基づいてタグをフィルタリング
-                AddPythonLogEntry($"設定値: UseExistingTags={_captionSettings.UseExistingTags}, UseCharacterCopyrightTags={_captionSettings.UseCharacterCopyrightTags}, UseGeneralTagsHint={_captionSettings.UseGeneralTagsHint}");
+                AddPythonLogEntry($"設定値: UseExistingTags={_captionSettings.UseExistingTags}");
                 if (_captionSettings.UseExistingTags)
                 {
-                    if (!_captionSettings.UseCharacterCopyrightTags)
-                    {
+                    if (!_captionSettings.UseCharacterTags)
                         categorizedTags["character"].Clear();
+                    if (!_captionSettings.UseCopyrightTags)
                         categorizedTags["copyright"].Clear();
-                    }
-                    if (!_captionSettings.UseGeneralTagsHint)
-                    {
+                    if (!_captionSettings.UseGeneralTags)
                         categorizedTags["general"].Clear();
-                    }
+                    if (!_captionSettings.UseArtistTags)
+                        categorizedTags["artist"].Clear();
+                    if (!_captionSettings.UseRatingTags)
+                        categorizedTags["rating"].Clear();
+                    if (!_captionSettings.UseQualityTags)
+                        categorizedTags["quality"].Clear();
+                    if (!_captionSettings.UseMetaTags)
+                        categorizedTags["meta"].Clear();
+                    if (!_captionSettings.UseModelTags)
+                        categorizedTags["model"].Clear();
                 }
                 else
                 {
@@ -7167,18 +7174,25 @@ Provide your answer wrapped in <answer></answer> tags:";
                 }
 
                 // 設定に基づいてタグをフィルタリング
-                AddPythonLogEntry($"設定値: UseExistingTags={_captionSettings.UseExistingTags}, UseCharacterCopyrightTags={_captionSettings.UseCharacterCopyrightTags}, UseGeneralTagsHint={_captionSettings.UseGeneralTagsHint}");
+                AddPythonLogEntry($"設定値: UseExistingTags={_captionSettings.UseExistingTags}");
                 if (_captionSettings.UseExistingTags)
                 {
-                    if (!_captionSettings.UseCharacterCopyrightTags)
-                    {
+                    if (!_captionSettings.UseCharacterTags)
                         categorizedTags["character"].Clear();
+                    if (!_captionSettings.UseCopyrightTags)
                         categorizedTags["copyright"].Clear();
-                    }
-                    if (!_captionSettings.UseGeneralTagsHint)
-                    {
+                    if (!_captionSettings.UseGeneralTags)
                         categorizedTags["general"].Clear();
-                    }
+                    if (!_captionSettings.UseArtistTags)
+                        categorizedTags["artist"].Clear();
+                    if (!_captionSettings.UseRatingTags)
+                        categorizedTags["rating"].Clear();
+                    if (!_captionSettings.UseQualityTags)
+                        categorizedTags["quality"].Clear();
+                    if (!_captionSettings.UseMetaTags)
+                        categorizedTags["meta"].Clear();
+                    if (!_captionSettings.UseModelTags)
+                        categorizedTags["model"].Clear();
                 }
                 else
                 {

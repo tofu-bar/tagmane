@@ -136,10 +136,28 @@
                                   FontSize="12" Checked="UseExistingTagsCheckBox_CheckedChanged" 
                                   Unchecked="UseExistingTagsCheckBox_CheckedChanged"/>
                         <StackPanel Margin="25,0,0,8" x:Name="TagOptionsPanel">
-                            <CheckBox x:Name="UseCharacterCopyrightTagsCheckBox" Content="characterタグとcopyrightタグを与える" 
+                            <CheckBox x:Name="UseCharacterTagsCheckBox" Content="characterタグを与える" 
                                       IsChecked="True" Foreground="LightGray" Margin="0,0,0,4"
                                       FontSize="11"/>
-                            <CheckBox x:Name="UseGeneralTagsHintCheckBox" Content="generalタグを(ヒントとして)与える" 
+                            <CheckBox x:Name="UseCopyrightTagsCheckBox" Content="copyrightタグを与える" 
+                                      IsChecked="True" Foreground="LightGray" Margin="0,0,0,4"
+                                      FontSize="11"/>
+                            <CheckBox x:Name="UseGeneralTagsCheckBox" Content="generalタグを与える" 
+                                      IsChecked="True" Foreground="LightGray" Margin="0,0,0,4"
+                                      FontSize="11"/>
+                            <CheckBox x:Name="UseArtistTagsCheckBox" Content="artistタグを与える" 
+                                      IsChecked="False" Foreground="LightGray" Margin="0,0,0,4"
+                                      FontSize="11"/>
+                            <CheckBox x:Name="UseRatingTagsCheckBox" Content="ratingタグを与える" 
+                                      IsChecked="False" Foreground="LightGray" Margin="0,0,0,4"
+                                      FontSize="11"/>
+                            <CheckBox x:Name="UseQualityTagsCheckBox" Content="qualityタグを与える" 
+                                      IsChecked="False" Foreground="LightGray" Margin="0,0,0,4"
+                                      FontSize="11"/>
+                            <CheckBox x:Name="UseMetaTagsCheckBox" Content="metaタグを与える" 
+                                      IsChecked="True" Foreground="LightGray" Margin="0,0,0,4"
+                                      FontSize="11"/>
+                            <CheckBox x:Name="UseModelTagsCheckBox" Content="modelタグを与える" 
                                       IsChecked="False" Foreground="LightGray" Margin="0,0,0,4"
                                       FontSize="11"/>
                         </StackPanel>

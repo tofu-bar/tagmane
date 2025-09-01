@@ -24,8 +24,14 @@ namespace tagmane
             TemperatureSlider.Value = Settings.Temperature;
             TopPSlider.Value = Settings.TopP;
             UseExistingTagsCheckBox.IsChecked = Settings.UseExistingTags;
-            UseCharacterCopyrightTagsCheckBox.IsChecked = Settings.UseCharacterCopyrightTags;
-            UseGeneralTagsHintCheckBox.IsChecked = Settings.UseGeneralTagsHint;
+            UseCharacterTagsCheckBox.IsChecked = Settings.UseCharacterTags;
+            UseCopyrightTagsCheckBox.IsChecked = Settings.UseCopyrightTags;
+            UseGeneralTagsCheckBox.IsChecked = Settings.UseGeneralTags;
+            UseArtistTagsCheckBox.IsChecked = Settings.UseArtistTags;
+            UseRatingTagsCheckBox.IsChecked = Settings.UseRatingTags;
+            UseQualityTagsCheckBox.IsChecked = Settings.UseQualityTags;
+            UseMetaTagsCheckBox.IsChecked = Settings.UseMetaTags;
+            UseModelTagsCheckBox.IsChecked = Settings.UseModelTags;
             DetailedDescriptionCheckBox.IsChecked = Settings.DetailedDescription;
             
             UpdateValueLabels();
@@ -40,8 +46,14 @@ namespace tagmane
             Settings.Temperature = TemperatureSlider.Value;
             Settings.TopP = TopPSlider.Value;
             Settings.UseExistingTags = UseExistingTagsCheckBox.IsChecked ?? true;
-            Settings.UseCharacterCopyrightTags = UseCharacterCopyrightTagsCheckBox.IsChecked ?? true;
-            Settings.UseGeneralTagsHint = UseGeneralTagsHintCheckBox.IsChecked ?? false;
+            Settings.UseCharacterTags = UseCharacterTagsCheckBox.IsChecked ?? true;
+            Settings.UseCopyrightTags = UseCopyrightTagsCheckBox.IsChecked ?? true;
+            Settings.UseGeneralTags = UseGeneralTagsCheckBox.IsChecked ?? true;
+            Settings.UseArtistTags = UseArtistTagsCheckBox.IsChecked ?? false;
+            Settings.UseRatingTags = UseRatingTagsCheckBox.IsChecked ?? false;
+            Settings.UseQualityTags = UseQualityTagsCheckBox.IsChecked ?? false;
+            Settings.UseMetaTags = UseMetaTagsCheckBox.IsChecked ?? true;
+            Settings.UseModelTags = UseModelTagsCheckBox.IsChecked ?? false;
             Settings.DetailedDescription = DetailedDescriptionCheckBox.IsChecked ?? false;
         }
         
@@ -96,12 +108,22 @@ namespace tagmane
         
         private void UpdateTagOptionsEnabled()
         {
-            if (UseExistingTagsCheckBox == null || UseCharacterCopyrightTagsCheckBox == null || UseGeneralTagsHintCheckBox == null)
+            if (UseExistingTagsCheckBox == null || UseCharacterTagsCheckBox == null || 
+                UseCopyrightTagsCheckBox == null || UseGeneralTagsCheckBox == null ||
+                UseArtistTagsCheckBox == null || UseRatingTagsCheckBox == null ||
+                UseQualityTagsCheckBox == null || UseMetaTagsCheckBox == null ||
+                UseModelTagsCheckBox == null)
                 return;
                 
             bool isEnabled = UseExistingTagsCheckBox.IsChecked ?? false;
-            UseCharacterCopyrightTagsCheckBox.IsEnabled = isEnabled;
-            UseGeneralTagsHintCheckBox.IsEnabled = isEnabled;
+            UseCharacterTagsCheckBox.IsEnabled = isEnabled;
+            UseCopyrightTagsCheckBox.IsEnabled = isEnabled;
+            UseGeneralTagsCheckBox.IsEnabled = isEnabled;
+            UseArtistTagsCheckBox.IsEnabled = isEnabled;
+            UseRatingTagsCheckBox.IsEnabled = isEnabled;
+            UseQualityTagsCheckBox.IsEnabled = isEnabled;
+            UseMetaTagsCheckBox.IsEnabled = isEnabled;
+            UseModelTagsCheckBox.IsEnabled = isEnabled;
         }
     }
     
@@ -114,8 +136,14 @@ namespace tagmane
         public double Temperature { get; set; } = 0.7;
         public double TopP { get; set; } = 0.9;
         public bool UseExistingTags { get; set; } = true;
-        public bool UseCharacterCopyrightTags { get; set; } = true;
-        public bool UseGeneralTagsHint { get; set; } = false;
+        public bool UseCharacterTags { get; set; } = true;
+        public bool UseCopyrightTags { get; set; } = true;
+        public bool UseGeneralTags { get; set; } = true;
+        public bool UseArtistTags { get; set; } = false;
+        public bool UseRatingTags { get; set; } = false;
+        public bool UseQualityTags { get; set; } = false;
+        public bool UseMetaTags { get; set; } = true;
+        public bool UseModelTags { get; set; } = false;
         public bool DetailedDescription { get; set; } = false;
         
         // 設定のコピーを作成するメソッド
@@ -129,8 +157,14 @@ namespace tagmane
                 Temperature = this.Temperature,
                 TopP = this.TopP,
                 UseExistingTags = this.UseExistingTags,
-                UseCharacterCopyrightTags = this.UseCharacterCopyrightTags,
-                UseGeneralTagsHint = this.UseGeneralTagsHint,
+                UseCharacterTags = this.UseCharacterTags,
+                UseCopyrightTags = this.UseCopyrightTags,
+                UseGeneralTags = this.UseGeneralTags,
+                UseArtistTags = this.UseArtistTags,
+                UseRatingTags = this.UseRatingTags,
+                UseQualityTags = this.UseQualityTags,
+                UseMetaTags = this.UseMetaTags,
+                UseModelTags = this.UseModelTags,
                 DetailedDescription = this.DetailedDescription
             };
         }
