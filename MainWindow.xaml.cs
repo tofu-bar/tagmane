@@ -1335,6 +1335,12 @@ namespace tagmane
                     writer.WriteString("caption", caption);
                 }
                 
+                // tagsフィールドが存在しない場合は追加（GLM-4.1V使用時など）
+                if (!root.TryGetProperty("tags", out _) && !string.IsNullOrEmpty(tagString))
+                {
+                    writer.WriteString("tags", tagString);
+                }
+                
                 writer.WriteEndObject();
                 writer.Flush();
                 
@@ -6473,10 +6479,17 @@ namespace tagmane
                                     CaptionTextBox.Text = finalCaption;
                                 }
                                 
-                                // JSONファイルを更新
+                                // JSONファイルを更新または作成
                                 string jsonFilePath = Path.ChangeExtension(imageInfo.ImagePath, ".json");
                                 string tagString = string.Join(",", imageInfo.Tags);
-                                UpdateJsonFile(jsonFilePath, tagString, finalCaption);
+                                if (File.Exists(jsonFilePath))
+                                {
+                                    UpdateJsonFile(jsonFilePath, tagString, finalCaption);
+                                }
+                                else
+                                {
+                                    CreateJsonFile(jsonFilePath, tagString, finalCaption);
+                                }
                             });
                             
                             AddMainLogEntry($"キャプションを生成しました: {Path.GetFileName(imagePath)}");
@@ -7187,7 +7200,14 @@ Provide your answer wrapped in <answer></answer> tags:";
 
                     string jsonFilePath = Path.ChangeExtension(imageInfo.ImagePath, ".json");
                     string tagString = string.Join(",", imageInfo.Tags);
-                    UpdateJsonFile(jsonFilePath, tagString, finalCaption);
+                    if (File.Exists(jsonFilePath))
+                    {
+                        UpdateJsonFile(jsonFilePath, tagString, finalCaption);
+                    }
+                    else
+                    {
+                        CreateJsonFile(jsonFilePath, tagString, finalCaption);
+                    }
 
                     AddMainLogEntry($"キャプションを生成しました: {Path.GetFileName(imageInfo.ImagePath)}");
                 }
