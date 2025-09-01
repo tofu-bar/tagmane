@@ -42,6 +42,7 @@ DEFAULT_CAPTION_PROMPT = """Please describe this image in 2-3 concise sentences.
 
 Character: {character}
 Copyright: {copyright}
+General tags: {general}
 
 IMPORTANT: Start your response immediately with <answer>your description here</answer>. Do not use <think> tags. Provide a direct, concise description."""
 

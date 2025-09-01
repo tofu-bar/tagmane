@@ -6429,6 +6429,7 @@ namespace tagmane
                 }
 
                 // 設定に基づいてタグをフィルタリング
+                AddPythonLogEntry($"設定値: UseExistingTags={_captionSettings.UseExistingTags}, UseCharacterCopyrightTags={_captionSettings.UseCharacterCopyrightTags}, UseGeneralTagsHint={_captionSettings.UseGeneralTagsHint}");
                 if (_captionSettings.UseExistingTags)
                 {
                     if (!_captionSettings.UseCharacterCopyrightTags)
@@ -7166,6 +7167,7 @@ Provide your answer wrapped in <answer></answer> tags:";
                 }
 
                 // 設定に基づいてタグをフィルタリング
+                AddPythonLogEntry($"設定値: UseExistingTags={_captionSettings.UseExistingTags}, UseCharacterCopyrightTags={_captionSettings.UseCharacterCopyrightTags}, UseGeneralTagsHint={_captionSettings.UseGeneralTagsHint}");
                 if (_captionSettings.UseExistingTags)
                 {
                     if (!_captionSettings.UseCharacterCopyrightTags)
