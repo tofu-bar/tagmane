@@ -32,6 +32,7 @@ namespace tagmane
         private List<int> _copyrightIndexes;
         private List<int> _artistIndexes;
         private List<int> _metaIndexes;
+        private List<int> _qualityIndexes;
         private int _modelTargetSize;
         private const int MaxLogEntries = 20;
 
@@ -140,6 +141,7 @@ namespace tagmane
             _copyrightIndexes = new List<int>();
             _artistIndexes = new List<int>();
             _metaIndexes = new List<int>();
+            _qualityIndexes = new List<int>();
 
             LoadLabels(jsonPath);
 
@@ -374,12 +376,15 @@ namespace tagmane
                         case "meta":
                             _metaIndexes.Add(index);
                             break;
+                        case "quality":
+                            _qualityIndexes.Add(index);
+                            break;
                     }
                 }
                 
                 AddLogEntry($"タグ数: {_tagNames.Count}, Rating: {_ratingIndexes.Count}, General: {_generalIndexes.Count}, " +
                            $"Character: {_characterIndexes.Count}, Copyright: {_copyrightIndexes.Count}, " +
-                           $"Artist: {_artistIndexes.Count}, Meta: {_metaIndexes.Count}");
+                           $"Artist: {_artistIndexes.Count}, Meta: {_metaIndexes.Count}, Quality: {_qualityIndexes.Count}");
             }
             catch (Exception ex)
             {
@@ -682,6 +687,29 @@ namespace tagmane
                         }
                     }
                     
+                    // Qualityタグの処理（最大値を選択）
+                    var quality = "";
+                    if (_qualityIndexes.Count > 0)
+                    {
+                        float maxProb = 0f;
+                        int maxIndex = -1;
+                        
+                        foreach (var idx in _qualityIndexes)
+                        {
+                            if (probs[idx] > maxProb)
+                            {
+                                maxProb = probs[idx];
+                                maxIndex = idx;
+                            }
+                        }
+                        
+                        if (maxIndex >= 0)
+                        {
+                            quality = _tagNames[maxIndex].Replace("_", " "); // アンダースコアをスペースに置換
+                            AddLogEntry($"Qualityタグ: {quality} ({maxProb:F3})");
+                        }
+                    }
+                    
                     // 一般タグの処理
                     foreach (var idx in _generalIndexes)
                     {
@@ -750,6 +778,12 @@ namespace tagmane
                         allTags[rating] = 1.0f;
                     }
                     
+                    // Qualityタグを追加
+                    if (!string.IsNullOrEmpty(quality))
+                    {
+                        allTags[quality] = 1.0f;
+                    }
+                    
                     // キャラクタータグを追加
                     foreach (var tag in characterTags)
                     {
@@ -774,8 +808,21 @@ namespace tagmane
                         ratingDict.Add(rating, 1.0f);
                     }
                     
+                    // Quality辞書を作成
+                    var qualityDict = new Dictionary<string, float>();
+                    if (!string.IsNullOrEmpty(quality))
+                    {
+                        qualityDict.Add(quality, 1.0f);
+                    }
+                    
                     // 一般タグとその他のタグを結合
                     var combinedTags = generalTags.Concat(otherTags).ToDictionary(x => x.Key, x => x.Value);
+                    
+                    // 戻り値でQualityタグも含めるため、combinedTagsにqualityを追加
+                    foreach (var qualityTag in qualityDict)
+                    {
+                        combinedTags[qualityTag.Key] = qualityTag.Value;
+                    }
                     
                     // WDPredictorと同様の順序で返す
                     return (sortedGeneralStrings, ratingDict, characterTags, combinedTags);
