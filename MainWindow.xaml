@@ -337,9 +337,9 @@
                         <TextBlock x:Name="CharacterThresholdValue" Text="{Binding ElementName=CharacterThresholdSlider, Path=Value, StringFormat={}{0:F2}}" 
                                    VerticalAlignment="Center" Margin="5,0,0,0"/>
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,5">
+                    <StackPanel Margin="0,5">
                         <CheckBox x:Name="UseGPUCheckBox" Content="GPUを使用して推論する" IsChecked="True" Checked="UseGPUCheckBox_Checked" Unchecked="UseGPUCheckBox_Checked"/>
-                        <ComboBox x:Name="VLMGpuSelectionComboBox" Width="200" Margin="10,0,0,0" 
+                        <ComboBox x:Name="VLMGpuSelectionComboBox" Width="200" Margin="0,5,0,0" HorizontalAlignment="Left"
                                   Visibility="{Binding ElementName=UseGPUCheckBox, Path=IsChecked, Converter={StaticResource BooleanToVisibilityConverter}}"
                                   SelectionChanged="VLMGpuSelectionComboBox_SelectionChanged"/>
                     </StackPanel>

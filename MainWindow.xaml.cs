@@ -46,7 +46,7 @@ namespace tagmane
     /// </summary>
     public partial class MainWindow : Window
     {
-        private string _currentVersion = "1.0.7";
+        private string _currentVersion = "1.9.1";
         private CancellationTokenSource _logCancellationTokenSource;
         private RingBuffer<string> _logQueue = new RingBuffer<string>(100);
         private RingBuffer<string> _debugLogQueue = new RingBuffer<string>(100);
