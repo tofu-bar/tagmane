@@ -620,7 +620,8 @@ namespace tagmane
             float generalThresh,
             bool generalMcutEnabled,
             float characterThresh,
-            bool characterMcutEnabled)
+            bool characterMcutEnabled,
+            float minimumThresh = 0.0f)
         {
             if (!_isModelLoaded)
             {
@@ -631,6 +632,11 @@ namespace tagmane
             try
             {
                 AddLogEntry("推論を実行しています");
+                AddLogEntry($"generalThresh: {generalThresh}");
+                AddLogEntry($"generalMcutEnabled: {generalMcutEnabled}");
+                AddLogEntry($"characterThresh: {characterThresh}");
+                AddLogEntry($"characterMcutEnabled: {characterMcutEnabled}");
+                AddLogEntry($"minimumThresh: {minimumThresh}");
                 AddLogEntry($"入力テンソル形状: {string.Join(", ", inputTensor.Dimensions.ToArray())}");
                 
                 // テンソルの値の範囲を確認
@@ -673,7 +679,7 @@ namespace tagmane
                         
                         foreach (var idx in _ratingIndexes)
                         {
-                            if (probs[idx] > maxProb)
+                            if (probs[idx] > maxProb && probs[idx] > minimumThresh)
                             {
                                 maxProb = probs[idx];
                                 maxIndex = idx;
@@ -684,6 +690,10 @@ namespace tagmane
                         {
                             rating = _tagNames[maxIndex].Replace("_", " "); // アンダースコアをスペースに置換
                             AddLogEntry($"レーティングタグ: {rating} ({maxProb:F3})");
+                        }
+                        else if (_ratingIndexes.Count > 0)
+                        {
+                            AddLogEntry($"レーティングタグ: すべてが最小閾値({minimumThresh:F2})により削除されました");
                         }
                     }
                     
@@ -696,7 +706,7 @@ namespace tagmane
                         
                         foreach (var idx in _qualityIndexes)
                         {
-                            if (probs[idx] > maxProb)
+                            if (probs[idx] > maxProb && probs[idx] > minimumThresh)
                             {
                                 maxProb = probs[idx];
                                 maxIndex = idx;
@@ -708,37 +718,64 @@ namespace tagmane
                             quality = _tagNames[maxIndex].Replace("_", " "); // アンダースコアをスペースに置換
                             AddLogEntry($"Qualityタグ: {quality} ({maxProb:F3})");
                         }
+                        else if (_qualityIndexes.Count > 0)
+                        {
+                            AddLogEntry($"Qualityタグ: すべてが最小閾値({minimumThresh:F2})により削除されました");
+                        }
                     }
                     
                     // 一般タグの処理
+                    var effectiveGeneralThreshold = Math.Max(generalThresh, minimumThresh);
+                    var generalTagsBeforeFilter = 0;
                     foreach (var idx in _generalIndexes)
                     {
-                        if (probs[idx] >= generalThresh)
+                        generalTagsBeforeFilter++;
+                        if (probs[idx] >= effectiveGeneralThreshold)
                         {
                             generalTags[_tagNames[idx].Replace("_", " ")] = probs[idx]; // アンダースコアをスペースに置換
                         }
                     }
-                    AddLogEntry($"一般タグ: {generalTags.Count}個（閾値: {generalThresh}）");
+                    var generalFilteredCount = generalTagsBeforeFilter - generalTags.Count;
+                    if (generalFilteredCount > 0)
+                    {
+                        AddLogEntry($"一般タグ: 効果的な閾値 {effectiveGeneralThreshold:F3} により {generalFilteredCount}/{generalTagsBeforeFilter} 個が削除されました");
+                    }
+                    AddLogEntry($"一般タグ: {generalTags.Count}個が残りました");
                     
                     // キャラクタータグの処理
+                    var effectiveCharacterThreshold = Math.Max(characterThresh, minimumThresh);
+                    var characterTagsBeforeFilter = 0;
                     foreach (var idx in _characterIndexes)
                     {
-                        if (probs[idx] >= characterThresh)
+                        characterTagsBeforeFilter++;
+                        if (probs[idx] >= effectiveCharacterThreshold)
                         {
                             characterTags[_tagNames[idx].Replace("_", " ")] = probs[idx]; // アンダースコアをスペースに置換
                         }
                     }
-                    AddLogEntry($"キャラクタータグ: {characterTags.Count}個（閾値: {characterThresh}）");
+                    var characterFilteredCount = characterTagsBeforeFilter - characterTags.Count;
+                    if (characterFilteredCount > 0)
+                    {
+                        AddLogEntry($"キャラクタータグ: 効果的な閾値 {effectiveCharacterThreshold:F3} により {characterFilteredCount}/{characterTagsBeforeFilter} 個が削除されました");
+                    }
+                    AddLogEntry($"キャラクタータグ: {characterTags.Count}個が残りました");
                     
                     // その他のタグ（著作権とメタ）の処理
+                    var otherTagsBeforeFilter = 0;
                     foreach (var idx in _copyrightIndexes.Concat(_metaIndexes))
                     {
-                        if (probs[idx] >= generalThresh)
+                        otherTagsBeforeFilter++;
+                        if (probs[idx] >= effectiveGeneralThreshold)
                         {
                             otherTags[_tagNames[idx].Replace("_", " ")] = probs[idx]; // アンダースコアをスペースに置換
                         }
                     }
-                    AddLogEntry($"その他のタグ: {otherTags.Count}個（閾値: {generalThresh}）");
+                    var otherFilteredCount = otherTagsBeforeFilter - otherTags.Count;
+                    if (otherFilteredCount > 0)
+                    {
+                        AddLogEntry($"その他のタグ: 効果的な閾値 {effectiveGeneralThreshold:F3} により {otherFilteredCount}/{otherTagsBeforeFilter} 個が削除されました");
+                    }
+                    AddLogEntry($"その他のタグ: {otherTags.Count}個が残りました");
                     
                     // メタタグのフィルタリング
                     var filteredMetaTags = new List<(string, float)>();
@@ -799,7 +836,12 @@ namespace tagmane
                     // すべてのタグを確率順にソート
                     var sortedGeneralStrings = string.Join(", ", allTags.OrderByDescending(x => x.Value).Select(x => x.Key));
                     
-                    AddLogEntry($"ソート済みタグ（全カテゴリ）: {sortedGeneralStrings}");
+                    AddLogEntry($"最終フィルタリング結果: 全{allTags.Count}個のタグが残りました");
+                    if (sortedGeneralStrings.Length > 100) {
+                        AddLogEntry($"ソート済みタグ（先頭100文字）: {sortedGeneralStrings.Substring(0, 100)}...");
+                    } else {
+                        AddLogEntry($"ソート済みタグ（全カテゴリ）: {sortedGeneralStrings}");
+                    }
                     
                     // レーティング辞書を作成
                     var ratingDict = new Dictionary<string, float>();

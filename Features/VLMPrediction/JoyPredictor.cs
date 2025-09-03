@@ -231,10 +231,12 @@ namespace tagmane
         
         public (string, Dictionary<string, float>, Dictionary<string, float>, Dictionary<string, float>) Predict(
             DenseTensor<float> inputTensor,
-            float generalThresh)
+            float generalThresh,
+            float minimumThresh = 0.0f)
         {
             AddLogEntry("推論を開始します");
             AddLogEntry($"generalThresh: {generalThresh}");
+            AddLogEntry($"minimumThresh: {minimumThresh}");
 
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("input", inputTensor) };
 
@@ -251,14 +253,23 @@ namespace tagmane
                     // scores[System.Text.RegularExpressions.Regex.Replace(_tags[i], @"(?<=\w)_(?=\w)", " ")] = Sigmoid(output[0, i]);
                 }
 
-                var filteredScores = scores.Where(kv => kv.Value >= generalThresh)
+                var effectiveThreshold = Math.Max(generalThresh, minimumThresh);
+                var beforeFilterCount = scores.Count;
+                var filteredScores = scores.Where(kv => kv.Value >= effectiveThreshold)
                                            .OrderByDescending(kv => kv.Value)
                                            .ToDictionary(kv => kv.Key, kv => kv.Value);
+                
+                var filteredCount = beforeFilterCount - filteredScores.Count;
+                if (filteredCount > 0)
+                {
+                    AddLogEntry($"効果的な閾値 {effectiveThreshold:F3} により {filteredCount}/{beforeFilterCount} 個のタグが削除されました");
+                }
+                AddLogEntry($"フィルタリング結果: {filteredScores.Count}個のタグが残りました");
 
                 var sortedGeneralStrings = string.Join(", ", filteredScores.Keys);
 
-                // joytagは分類区分がないためgeneralのみを返す
-                return (sortedGeneralStrings, new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
+                // joytagは分類区分がないためgeneralのみを返す（filteredScoresをgeneralとして返す）
+                return (sortedGeneralStrings, new Dictionary<string, float>(), new Dictionary<string, float>(), filteredScores);
             }
         }
 

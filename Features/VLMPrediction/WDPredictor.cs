@@ -256,7 +256,8 @@ namespace tagmane
             float generalThresh,
             bool generalMcutEnabled,
             float characterThresh,
-            bool characterMcutEnabled)
+            bool characterMcutEnabled,
+            float minimumThresh = 0.0f)
         {
             if (!_isModelLoaded)
             {
@@ -264,11 +265,12 @@ namespace tagmane
                 return ("", new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
             }
 
-            // AddLogEntry("VLMログ：推論を開始します");
-            // AddLogEntry($"generalThresh: {generalThresh}");
-            // AddLogEntry($"generalMcutEnabled: {generalMcutEnabled}");
-            // AddLogEntry($"characterThresh: {characterThresh}");
-            // AddLogEntry($"characterMcutEnabled: {characterMcutEnabled}");
+            AddLogEntry("VLMログ：推論を開始します");
+            AddLogEntry($"generalThresh: {generalThresh}");
+            AddLogEntry($"generalMcutEnabled: {generalMcutEnabled}");
+            AddLogEntry($"characterThresh: {characterThresh}");
+            AddLogEntry($"characterMcutEnabled: {characterMcutEnabled}");
+            AddLogEntry($"minimumThresh: {minimumThresh}");
 
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(_model.InputMetadata.First().Key, inputTensor) };
 
@@ -277,11 +279,21 @@ namespace tagmane
                 var predictions = outputs.First().AsEnumerable<float>().ToArray();
                 var labels = _tagNames.Zip(predictions, (name, pred) => (name, pred)).ToList();
 
-                var rating = _ratingIndexes.Select(i => labels[i]).ToDictionary(x => x.name, x => x.pred);
-                var general = GetFilteredTags(_generalIndexes, labels, generalThresh, generalMcutEnabled);
-                var characters = GetFilteredTags(_characterIndexes, labels, characterThresh, characterMcutEnabled);
+                // Ratingタグのフィルタリング
+                var allRatingTags = _ratingIndexes.Select(i => labels[i]).ToList();
+                var rating = allRatingTags.Where(x => x.pred > minimumThresh).ToDictionary(x => x.name, x => x.pred);
+                var filteredRatingCount = allRatingTags.Count - rating.Count;
+                if (filteredRatingCount > 0)
+                {
+                    AddLogEntry($"Ratingタグ: {filteredRatingCount}個が最小閾値({minimumThresh:F2})により削除されました");
+                }
+
+                var general = GetFilteredTags(_generalIndexes, labels, generalThresh, generalMcutEnabled, minimumThresh);
+                var characters = GetFilteredTags(_characterIndexes, labels, characterThresh, characterMcutEnabled, minimumThresh);
 
                 var sortedGeneralStrings = string.Join(", ", general.OrderByDescending(x => x.Value).Select(x => x.Key));
+
+                AddLogEntry($"フィルタリング結果 - Rating: {rating.Count}個, General: {general.Count}個, Character: {characters.Count}個");
 
                 return (sortedGeneralStrings, rating, characters, general);
             }
@@ -345,16 +357,29 @@ namespace tagmane
             List<int> indexes,
             List<(string name, float pred)> labels,
             float threshold,
-            bool mcutEnabled)
+            bool mcutEnabled,
+            float minimumThresh = 0.0f)
         {
             var tags = indexes.Select(i => labels[i]).ToList();
+            var originalCount = tags.Count;
 
             if (mcutEnabled)
             {
                 threshold = McutThreshold(tags.Select(x => x.pred).ToArray());
+                AddLogEntry($"MCut閾値が計算されました: {threshold:F3}");
             }
 
-            return tags.Where(x => x.pred > threshold).ToDictionary(x => x.name, x => x.pred);
+            // Apply both the category threshold and minimum threshold
+            var effectiveThreshold = Math.Max(threshold, minimumThresh);
+            var filteredTags = tags.Where(x => x.pred > effectiveThreshold).ToDictionary(x => x.name, x => x.pred);
+            
+            var filteredCount = originalCount - filteredTags.Count;
+            if (filteredCount > 0)
+            {
+                AddLogEntry($"効果的な閾値 {effectiveThreshold:F3} により {filteredCount}/{originalCount} 個のタグが削除されました");
+            }
+            
+            return filteredTags;
         }
 
         private float McutThreshold(float[] probs)

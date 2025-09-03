@@ -65,16 +65,17 @@ namespace tagmane
             float generalThresh=0.35f,
             bool generalMcutEnabled=false,
             float characterThresh=0.85f,
-            bool characterMcutEnabled=false)
+            bool characterMcutEnabled=false,
+            float minimumThresh=0.0f)
         {
             if (!_isModelLoaded) throw new InvalidOperationException("モデルが読み込まれていません。");
 
             if (_currentPredictor is WDPredictor wdPredictor)
-                return wdPredictor.Predict(tensor, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled);
+                return wdPredictor.Predict(tensor, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled, minimumThresh);
             else if (_currentPredictor is JoyPredictor joyPredictor)
-                return joyPredictor.Predict(tensor, generalThresh);
+                return joyPredictor.Predict(tensor, generalThresh, minimumThresh);
             else if (_currentPredictor is CelPredictor celPredictor)
-                return celPredictor.Predict(tensor, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled);
+                return celPredictor.Predict(tensor, generalThresh, generalMcutEnabled, characterThresh, characterMcutEnabled, minimumThresh);
             else
                 throw new InvalidOperationException("No predictor loaded");
         }

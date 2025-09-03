@@ -46,7 +46,7 @@ namespace tagmane
     /// </summary>
     public partial class MainWindow : Window
     {
-        private string _currentVersion = "1.9.1";
+        private string _currentVersion = "1.0.9";
         private CancellationTokenSource _logCancellationTokenSource;
         private RingBuffer<string> _logQueue = new RingBuffer<string>(100);
         private RingBuffer<string> _debugLogQueue = new RingBuffer<string>(100);
@@ -727,6 +727,45 @@ namespace tagmane
                     AddMainLogEntry($"{imageInfo.ImagePath}から{newTags.Count}個のタグの追加を取り消しました");
                 },
                 Description = $"{imageInfo.ImagePath}に{newTags.Count}個のタグを追加"
+            };
+        }
+
+        private TagGroupAction CreateRemoveTagsAction(ImageInfo imageInfo, List<string> tagsToRemove)
+        {
+            // 削除するタグの現在の位置を記録
+            var tagPositions = new List<TagPositionInfo>();
+            foreach (var tag in tagsToRemove)
+            {
+                var position = imageInfo.Tags.IndexOf(tag);
+                if (position >= 0)
+                {
+                    tagPositions.Add(new TagPositionInfo { Tag = tag, Position = position });
+                }
+            }
+
+            return new TagGroupAction
+            {
+                Image = imageInfo,
+                TagInfos = tagPositions,
+                IsAdd = false,
+                DoAction = () =>
+                {
+                    foreach (var tag in tagsToRemove)
+                    {
+                        imageInfo.Tags.Remove(tag);
+                    }
+                    AddMainLogEntry($"{imageInfo.ImagePath}から{tagsToRemove.Count}個のタグを削除しました");
+                },
+                UndoAction = () =>
+                {
+                    // 元の位置に戻す
+                    foreach (var tagInfo in tagPositions.OrderBy(t => t.Position))
+                    {
+                        imageInfo.Tags.Insert(Math.Min(tagInfo.Position, imageInfo.Tags.Count), tagInfo.Tag);
+                    }
+                    AddMainLogEntry($"{imageInfo.ImagePath}に{tagsToRemove.Count}個のタグを復元しました（元に戻す）");
+                },
+                Description = $"{imageInfo.ImagePath}から{tagsToRemove.Count}個のタグを削除"
             };
         }
 
@@ -4564,6 +4603,12 @@ namespace tagmane
             // 必要に応じて、この値をVLMPredictorに渡す
         }
 
+        private void MinimumThresholdSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            // 最小閾値スライダーの値が変更されたときの処理
+            // 必要に応じて、この値をVLMPredictorに渡す
+        }
+
         private async void UseGPUCheckBox_Checked(object sender, RoutedEventArgs e)
         {
             if (VLMConcurrencySlider != null)
@@ -4824,7 +4869,7 @@ namespace tagmane
                 }
 
                 // 変換後のBitmapImageを使用してVLM推論
-                var predictedTags = await Task.Run(() =>
+                var prediction = await Task.Run(() =>
                 {
                     return PredictVLMFromTensor(
                         _vlmPredictor.PrepareTensor(bitmapImage)!,
@@ -4832,23 +4877,11 @@ namespace tagmane
                     );
                 }, _cts.Token);
 
-                if (predictedTags.Any())
-                {
-                    var newTags = predictedTags.Except(selectedImage.Tags).ToList();
-                    if (newTags.Any())
-                    {
-                        var action = CreateAddTagsAction(selectedImage, newTags);
-                        action.DoAction();
-                        _undoStack.Push(action);
-                        _redoStack.Clear();
-                        UpdateUIAfterTagsChange();
-                        AddMainLogEntry($"選択範囲から{newTags.Count}個のタグを追加しました。");
-                    }
-                    else
-                    {
-                        AddMainLogEntry("選択範囲から新しいタグは見つかりませんでした。");
-                    }
-                }
+                // ProcessPredictedTagsを使って既存タグの削除と新規タグの追加を処理
+                ProcessPredictedTags(selectedImage, prediction);
+                _redoStack.Clear();
+                UpdateUIAfterTagsChange();
+                AddMainLogEntry($"選択範囲からVLM推論を実行しました。");
             }
             catch (Exception ex)
             {
@@ -4951,14 +4984,19 @@ namespace tagmane
                 // テンソルを使用してタグを予測する
                 new PipelineStage(async i => {
                     if (i is null || i!.Item2 is null) return null;
-                    return (i!.Item1, await PredictVLMFromTensor(i!.Item2, _cts.Token));
+                    var prediction = await PredictVLMFromTensor(i!.Item2, _cts.Token);
+                    return (i!.Item1, prediction);
                 }, isGpuStage: usingGPU),
 
                 // 予測されたタグを処理する
                 new PipelineStage(async i => {
-                    if (i is null || i!.Item2 is null) return null;
-                    ProcessPredictedTags(i!.Item1, i!.Item2);
-                    return i!.Item1;
+                    if (i is null) return null;
+                    var imageInfo = i.Item1 as ImageInfo;
+                    var prediction = i.Item2;
+                    if (imageInfo is null || prediction is null) return null;
+                    
+                    ProcessPredictedTags(imageInfo, prediction);
+                    return imageInfo;
                 })
             };
 
@@ -5057,26 +5095,84 @@ namespace tagmane
             }
         }
 
-        private void ProcessPredictedTags(ImageInfo imageInfo, List<string> predictedTags)
+        private void ProcessPredictedTags(ImageInfo imageInfo, (List<string> tags, Dictionary<string, float> allConfidences) prediction)
         {
+            var predictedTags = prediction.tags;
+            var allConfidences = prediction.allConfidences;
+            float minimumThreshold = (float)Dispatcher.Invoke(() => MinimumThresholdSlider.Value);
+            
+            // 新しく追加するタグ
             var newTags = predictedTags.Except(imageInfo.Tags).ToList();
-            if (newTags.Any())
+            
+            // 削除するタグ（既存タグの中で、モデルの辞書に含まれており、かつ閾値以下のもののみ）
+            var tagsToRemove = new List<string>();
+            foreach (var existingTag in imageInfo.Tags)
             {
-                var action = CreateAddTagsAction(imageInfo, newTags);
-                action.DoAction();
-                lock (_undoStack)
+                // タグが推論結果（モデルの辞書）に含まれているか確認
+                if (allConfidences.ContainsKey(existingTag))
                 {
-                _undoStack.Push(action);
+                    // 含まれている場合、確信度が最小閾値以下なら削除対象
+                    if (allConfidences[existingTag] <= minimumThreshold)
+                    {
+                        tagsToRemove.Add(existingTag);
+                        AddMainLogEntry($"タグ '{existingTag}' を削除 (確信度: {allConfidences[existingTag]:F3} ≤ 閾値: {minimumThreshold:F3})");
+                    }
+                }
+                // モデルの辞書に含まれていないタグは削除対象にしない（スキップ）
+            }
+            
+            // タグの追加と削除を実行
+            if (newTags.Any() || tagsToRemove.Any())
+            {
+                // 削除アクションを実行
+                if (tagsToRemove.Any())
+                {
+                    var removeAction = CreateRemoveTagsAction(imageInfo, tagsToRemove);
+                    removeAction.DoAction();
+                    lock (_undoStack)
+                    {
+                        _undoStack.Push(removeAction);
+                    }
+                }
+                
+                // 追加アクションを実行
+                if (newTags.Any())
+                {
+                    var addAction = CreateAddTagsAction(imageInfo, newTags);
+                    addAction.DoAction();
+                    lock (_undoStack)
+                    {
+                        _undoStack.Push(addAction);
+                    }
                 }
             }
         }
 
-        private async Task<List<string>> PredictVLMFromTensor(DenseTensor<float> tensor, CancellationToken cancellationToken)
+        private async Task<(List<string> tags, Dictionary<string, float> allConfidences)> PredictVLMFromTensor(DenseTensor<float> tensor, CancellationToken cancellationToken)
         {
-            (float generalThreshold, float characterThreshold) = await Dispatcher.InvokeAsync(() => 
-                ((float)GeneralThresholdSlider.Value, (float)CharacterThresholdSlider.Value)
+            (float generalThreshold, float characterThreshold, float minimumThreshold) = await Dispatcher.InvokeAsync(() => 
+                ((float)GeneralThresholdSlider.Value, (float)CharacterThresholdSlider.Value, (float)MinimumThresholdSlider.Value)
             );
 
+            // 一時的に閾値を0にして、すべてのタグと確信度を取得
+            var (generalTagsAll, ratingAll, charactersAll, allTagsAll) = Task.Run(() => {
+                try {
+                    return _vlmPredictor.Predict(
+                        tensor,
+                        0.0f,  // generalThresholdを0にしてすべて取得
+                        false,
+                        0.0f,  // characterThresholdを0にしてすべて取得
+                        false,
+                        0.0f   // minimumThresholdも0にしてすべて取得
+                    );
+                } catch (Exception ex) {
+                    AddMainLogEntry($"画像の読み込み中にエラーが発生しました: {ex.Message}");
+                    _vlmErrorLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} 画像読み込みエラー: {ex.Message}");
+                    return (string.Empty, new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
+                }
+            }, cancellationToken).Result;
+
+            // フィルタリング済みのタグも取得（表示用）
             var (generalTags, rating, characters, allTags) = Task.Run(() => {
                 try {
                     return _vlmPredictor.Predict(
@@ -5084,42 +5180,57 @@ namespace tagmane
                         generalThreshold,
                         false,
                         characterThreshold,
-                        false
+                        false,
+                        minimumThreshold
                     );
                 } catch (Exception ex) {
-                    AddMainLogEntry($"画像の読み込み中にエラーが発生しました: {ex.Message}");
-                    _vlmErrorLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} 画像読み込みエラー: {ex.Message}");
-                    // tag更新をせずに継続
                     return (string.Empty, new Dictionary<string, float>(), new Dictionary<string, float>(), new Dictionary<string, float>());
                 }
             }, cancellationToken).Result;
 
-            // original author に確認のため、古い挙動をコメントで保存
-            // // generalTagsが空の場合は空のリストを返す
-            // if (string.IsNullOrWhiteSpace(generalTags)) { return new List<string>(); }
-            // // generalTagsとcharactersを結合して返す
-            // var predictedTags = generalTags.Split(',').Select(t => t.Trim()).ToList();
-            // predictedTags.AddRange(characters.Keys);
-            // return predictedTags;
+            // すべてのタグと確信度を統合（閾値0で取得したもの）
+            var allConfidences = new Dictionary<string, float>();
             
-            var predictedTags = generalTags.Split(',').Select(t => t.Trim()).ToList();
+            // ratingタグを追加
+            foreach(var kvp in ratingAll)
+            {
+                allConfidences[kvp.Key] = kvp.Value;
+            }
+            
+            // charactersタグを追加
+            foreach(var kvp in charactersAll)
+            {
+                allConfidences[kvp.Key] = kvp.Value;
+            }
+            
+            // allTags（generalとother）を追加
+            foreach(var kvp in allTagsAll)
+            {
+                if (!allConfidences.ContainsKey(kvp.Key))
+                {
+                    allConfidences[kvp.Key] = kvp.Value;
+                }
+            }
+            
+            // フィルタリング済みのタグリスト（追加用）
+            var predictedTags = generalTags.Split(',').Select(t => t.Trim()).Where(t => !string.IsNullOrEmpty(t)).ToList();
             predictedTags.AddRange(characters.Keys);
 
-            return predictedTags;
+            return (predictedTags, allConfidences);
         }
 
         // VLM推論
         private async Task<List<string>> PredictVLMTagsAsync(ImageInfo imageInfo, CancellationToken cancellationToken)
         {
             AddMainLogEntry("VLM推論を開始します(単体版)");
-            var predictedTags = await Task.Run(() => { 
+            var prediction = await Task.Run(() => { 
                 return PredictVLMFromTensor(
                     _vlmPredictor.PrepareTensor(LoadImageForVLMPrediction(imageInfo.ImagePath))!,
                     cancellationToken
                 );
             }, cancellationToken);
-            await Dispatcher.InvokeAsync(() => AddMainLogEntry($"VLM推論結果: {string.Join(", ", predictedTags)}"));
-            return predictedTags;
+            await Dispatcher.InvokeAsync(() => AddMainLogEntry($"VLM推論結果: {string.Join(", ", prediction.tags)}"));
+            return prediction.tags;
         }
 
         // VLMログの更新
