@@ -18,6 +18,7 @@ namespace tagmane
         {
             if (modelRepo.Contains("joytag"))
             {
+                LogUpdated?.Invoke(this, $"VLMPredictor: JoyPredictorを選択 - {modelRepo}");
                 _currentPredictor = new JoyPredictor();
                 ((JoyPredictor)_currentPredictor).LogUpdated += OnPredictorLogUpdated;
                 await ((JoyPredictor)_currentPredictor).LoadModel(modelRepo, useGpu, gpuId);
@@ -25,6 +26,7 @@ namespace tagmane
             }
             else if (modelRepo.Contains("cella110n/cl_tagger"))
             {
+                LogUpdated?.Invoke(this, $"VLMPredictor: CelPredictorを選択 - {modelRepo}");
                 _currentPredictor = new CelPredictor();
                 ((CelPredictor)_currentPredictor).LogUpdated += OnPredictorLogUpdated;
                 await ((CelPredictor)_currentPredictor).LoadModel(modelRepo, useGpu, hfToken, gpuId);
@@ -32,6 +34,7 @@ namespace tagmane
             }
             else
             {
+                LogUpdated?.Invoke(this, $"VLMPredictor: WDPredictorを選択 - {modelRepo}");
                 _currentPredictor = new WDPredictor();
                 ((WDPredictor)_currentPredictor).LogUpdated += OnPredictorLogUpdated;
                 await ((WDPredictor)_currentPredictor).LoadModel(modelRepo, useGpu, gpuId);

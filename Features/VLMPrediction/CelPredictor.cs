@@ -39,7 +39,7 @@ namespace tagmane
         private const string MODEL_FILENAME = "model.onnx";
         private const string LABEL_FILENAME = "tag_mapping.json";
         private const string MODEL_REPO = "cella110n/cl_tagger";
-        private const string MODEL_SUBDIR = "cl_tagger_1_01";
+        private string MODEL_SUBDIR; // LoadModelで設定される
 
         public ObservableCollection<string> VLMLogEntries { get; } = new ObservableCollection<string>();
         public event EventHandler<string> LogUpdated;
@@ -86,12 +86,61 @@ namespace tagmane
 
         public async Task LoadModel(string modelRepo, bool useGpu = true, string hfToken = null, int gpuId = 0)
         {
-            AddLogEntry($"リポジトリからモデルを読み込みます: {modelRepo}");
+            AddLogEntry($"CelPredictor: LoadModel呼び出し - modelRepo: '{modelRepo}'");
+            
+            // バージョン指定がある場合は分割して処理
+            string actualRepo = "cella110n/cl_tagger"; // デフォルトのリポジトリ名
+            if (modelRepo.Contains(":"))
+            {
+                var parts = modelRepo.Split(':');
+                actualRepo = parts[0];
+                // 表示名の余分な部分を削除（例: "cella110n/cl_tagger (1.02)" -> "cella110n/cl_tagger"）
+                if (actualRepo.Contains(" "))
+                {
+                    actualRepo = actualRepo.Split(' ')[0];
+                }
+                MODEL_SUBDIR = parts[1];
+                AddLogEntry($"リポジトリからモデルを読み込みます: {actualRepo} (バージョン: {MODEL_SUBDIR})");
+            }
+            else
+            {
+                // コロンが含まれていない場合は、parenthesesからバージョンを抽出
+                if (modelRepo.Contains("(") && modelRepo.Contains(")"))
+                {
+                    // "cella110n/cl_tagger (1.02)" から "1.02" を抽出
+                    var startIndex = modelRepo.LastIndexOf('(') + 1;
+                    var endIndex = modelRepo.LastIndexOf(')');
+                    var version = modelRepo.Substring(startIndex, endIndex - startIndex);
+                    MODEL_SUBDIR = $"cl_tagger_{version.Replace(".", "_")}"; // "1.02" -> "cl_tagger_1_02"
+                    actualRepo = modelRepo.Substring(0, modelRepo.IndexOf(' ')); // " (1.02)" 部分を削除
+                    AddLogEntry($"リポジトリからモデルを読み込みます: {actualRepo} (バージョン: {MODEL_SUBDIR})");
+                }
+                else
+                {
+                    // 古い形式または不明な形式の場合
+                    if (modelRepo.Contains(" "))
+                    {
+                        actualRepo = modelRepo.Split(' ')[0];
+                    }
+                    else
+                    {
+                        actualRepo = modelRepo;
+                    }
+                    MODEL_SUBDIR = "cl_tagger_1_01"; // 後方互換性のためのデフォルト
+                    AddLogEntry($"リポジトリからモデルを読み込みます: {actualRepo} (バージョン: {MODEL_SUBDIR})");
+                }
+            }
             
             // モデルファイルのパスを先に確認
-            var modelDir = Path.Combine(Path.GetTempPath(), "tagmane", modelRepo.Split('/').Last());
+            var modelDir = Path.Combine(Path.GetTempPath(), "tagmane", actualRepo.Split('/').Last(), MODEL_SUBDIR);
             var jsonPath = Path.Combine(modelDir, LABEL_FILENAME);
             var modelPath = Path.Combine(modelDir, MODEL_FILENAME);
+            
+            AddLogEntry($"CelPredictor: 使用するディレクトリ - {modelDir}");
+            AddLogEntry($"CelPredictor: JSONパス - {jsonPath}");
+            AddLogEntry($"CelPredictor: モデルパス - {modelPath}");
+            AddLogEntry($"CelPredictor: JSON存在確認 - {File.Exists(jsonPath)}");
+            AddLogEntry($"CelPredictor: モデル存在確認 - {File.Exists(modelPath)}");
             
             bool needDownload = !File.Exists(jsonPath) || !File.Exists(modelPath);
             
@@ -127,7 +176,7 @@ namespace tagmane
             // 既存のモデルを使用するか、新たにダウンロード
             if (needDownload)
             {
-                (jsonPath, modelPath) = await DownloadModel(modelRepo, hfToken);
+                (jsonPath, modelPath) = await DownloadModel(actualRepo, hfToken);
             }
             else
             {
@@ -180,6 +229,13 @@ namespace tagmane
                     }
 
                     sessionOptions.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+                    
+                    // モデルファイルの詳細情報をログ出力
+                    var modelFileInfo = new FileInfo(modelPath);
+                    AddLogEntry($"CelPredictor: 読み込み中のモデルファイル - {modelPath}");
+                    AddLogEntry($"CelPredictor: モデルファイルサイズ - {modelFileInfo.Length:N0} bytes");
+                    AddLogEntry($"CelPredictor: モデル最終更新日時 - {modelFileInfo.LastWriteTime}");
+                    
                     _model = new InferenceSession(modelPath, sessionOptions);
                     _modelInputName = _model.InputMetadata.First().Key;
                     
@@ -219,7 +275,7 @@ namespace tagmane
 
         private async Task<(string jsonPath, string modelPath)> DownloadModel(string repo, string hfToken)
         {
-            var modelDir = Path.Combine(Path.GetTempPath(), "tagmane", repo.Split('/').Last());
+            var modelDir = Path.Combine(Path.GetTempPath(), "tagmane", repo.Split('/').Last(), MODEL_SUBDIR);
             Directory.CreateDirectory(modelDir);
 
             var jsonPath = Path.Combine(modelDir, LABEL_FILENAME);
@@ -331,6 +387,11 @@ namespace tagmane
         {
             AddLogEntry($"タグマッピングを読み込んでいます: {jsonPath}");
             
+            // JSONファイルの詳細情報をログ出力
+            var jsonFileInfo = new FileInfo(jsonPath);
+            AddLogEntry($"CelPredictor: JSONファイルサイズ - {jsonFileInfo.Length:N0} bytes");
+            AddLogEntry($"CelPredictor: JSON最終更新日時 - {jsonFileInfo.LastWriteTime}");
+            
             try
             {
                 string jsonContent = File.ReadAllText(jsonPath);
@@ -352,6 +413,16 @@ namespace tagmane
                     int index = int.Parse(kvp.Key);
                     string tag = kvp.Value.Tag;
                     string category = kvp.Value.Category;
+                    
+                    // すべてのエスケープパターンを除去
+                    // 複数回のバックスラッシュ + 括弧を処理
+                    while (tag.Contains("\\(") || tag.Contains("\\)"))
+                    {
+                        tag = tag.Replace("\\(", "(").Replace("\\)", ")");
+                    }
+                    
+                    // アンダースコアをスペースに置換（tagmane標準形式）
+                    tag = tag.Replace("_", " ");
                     
                     _tagNames[index] = tag;
                     
@@ -688,7 +759,7 @@ namespace tagmane
                         
                         if (maxIndex >= 0)
                         {
-                            rating = _tagNames[maxIndex].Replace("_", " "); // アンダースコアをスペースに置換
+                            rating = _tagNames[maxIndex]; // 既にLoadLabelsで変換済み
                             AddLogEntry($"レーティングタグ: {rating} ({maxProb:F3})");
                         }
                         else if (_ratingIndexes.Count > 0)
@@ -715,7 +786,7 @@ namespace tagmane
                         
                         if (maxIndex >= 0)
                         {
-                            quality = _tagNames[maxIndex].Replace("_", " "); // アンダースコアをスペースに置換
+                            quality = _tagNames[maxIndex]; // 既にLoadLabelsで変換済み
                             AddLogEntry($"Qualityタグ: {quality} ({maxProb:F3})");
                         }
                         else if (_qualityIndexes.Count > 0)
@@ -732,7 +803,7 @@ namespace tagmane
                         generalTagsBeforeFilter++;
                         if (probs[idx] >= effectiveGeneralThreshold)
                         {
-                            generalTags[_tagNames[idx].Replace("_", " ")] = probs[idx]; // アンダースコアをスペースに置換
+                            generalTags[_tagNames[idx]] = probs[idx]; // 既にLoadLabelsで変換済み
                         }
                     }
                     var generalFilteredCount = generalTagsBeforeFilter - generalTags.Count;
@@ -750,7 +821,7 @@ namespace tagmane
                         characterTagsBeforeFilter++;
                         if (probs[idx] >= effectiveCharacterThreshold)
                         {
-                            characterTags[_tagNames[idx].Replace("_", " ")] = probs[idx]; // アンダースコアをスペースに置換
+                            characterTags[_tagNames[idx]] = probs[idx]; // 既にLoadLabelsで変換済み
                         }
                     }
                     var characterFilteredCount = characterTagsBeforeFilter - characterTags.Count;
@@ -767,7 +838,7 @@ namespace tagmane
                         otherTagsBeforeFilter++;
                         if (probs[idx] >= effectiveGeneralThreshold)
                         {
-                            otherTags[_tagNames[idx].Replace("_", " ")] = probs[idx]; // アンダースコアをスペースに置換
+                            otherTags[_tagNames[idx]] = probs[idx]; // 既にLoadLabelsで変換済み
                         }
                     }
                     var otherFilteredCount = otherTagsBeforeFilter - otherTags.Count;

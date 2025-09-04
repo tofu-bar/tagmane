@@ -131,20 +131,21 @@ namespace tagmane
         private StreamWriter _pythonInput;
         private StreamReader _pythonOutput;
         private StreamReader _pythonError;
-        private List<(string Name, double GeneralThreshold)> _vlmModels = new List<(string, double)> 
+        private List<(string Name, string DisplayName, double GeneralThreshold)> _vlmModels = new List<(string, string, double)> 
         {
-            ("SmilingWolf/wd-eva02-large-tagger-v3", 0.50),
-            ("SmilingWolf/wd-vit-large-tagger-v3", 0.25),
-            ("SmilingWolf/wd-v1-4-swinv2-tagger-v2", 0.35),
-            ("SmilingWolf/wd-vit-tagger-v3", 0.25),
-            ("SmilingWolf/wd-swinv2-tagger-v3", 0.25),
-            ("SmilingWolf/wd-convnext-tagger-v3", 0.25),
-            ("SmilingWolf/wd-v1-4-moat-tagger-v2", 0.35),
-            ("SmilingWolf/wd-v1-4-convnext-tagger-v2", 0.35),
-            ("SmilingWolf/wd-v1-4-vit-tagger-v2", 0.35),
-            ("SmilingWolf/wd-v1-4-convnextv2-tagger-v2", 0.35),
-            ("fancyfeast/joytag", 0.5),
-            ("cella110n/cl_tagger", 0.55)
+            ("SmilingWolf/wd-eva02-large-tagger-v3", "SmilingWolf/wd-eva02-large-tagger-v3", 0.50),
+            ("SmilingWolf/wd-vit-large-tagger-v3", "SmilingWolf/wd-vit-large-tagger-v3", 0.25),
+            ("SmilingWolf/wd-v1-4-swinv2-tagger-v2", "SmilingWolf/wd-v1-4-swinv2-tagger-v2", 0.35),
+            ("SmilingWolf/wd-vit-tagger-v3", "SmilingWolf/wd-vit-tagger-v3", 0.25),
+            ("SmilingWolf/wd-swinv2-tagger-v3", "SmilingWolf/wd-swinv2-tagger-v3", 0.25),
+            ("SmilingWolf/wd-convnext-tagger-v3", "SmilingWolf/wd-convnext-tagger-v3", 0.25),
+            ("SmilingWolf/wd-v1-4-moat-tagger-v2", "SmilingWolf/wd-v1-4-moat-tagger-v2", 0.35),
+            ("SmilingWolf/wd-v1-4-convnext-tagger-v2", "SmilingWolf/wd-v1-4-convnext-tagger-v2", 0.35),
+            ("SmilingWolf/wd-v1-4-vit-tagger-v2", "SmilingWolf/wd-v1-4-vit-tagger-v2", 0.35),
+            ("SmilingWolf/wd-v1-4-convnextv2-tagger-v2", "SmilingWolf/wd-v1-4-convnextv2-tagger-v2", 0.35),
+            ("fancyfeast/joytag", "fancyfeast/joytag", 0.5),
+            ("cella110n/cl_tagger:cl_tagger_1_01", "cella110n/cl_tagger (1.01)", 0.55),
+            ("cella110n/cl_tagger:cl_tagger_1_02", "cella110n/cl_tagger (1.02)", 0.55)
         };
         private const double DefaultCharacterThreshold = 0.85;
 
@@ -628,7 +629,7 @@ namespace tagmane
 
             // VLMモデルの設定を読み込む
             string savedModel = Properties.Settings.Default.SelectedVLMModel;
-            VLMModelComboBox.ItemsSource = _vlmModels.Select(m => m.Name);
+            VLMModelComboBox.ItemsSource = _vlmModels.Select(m => m.DisplayName);
             if (!string.IsNullOrEmpty(savedModel) && _vlmModels.Any(m => m.Name == savedModel)) 
             { 
                 VLMModelComboBox.SelectedIndex = _vlmModels.FindIndex(m => m.Name == savedModel);
@@ -644,7 +645,10 @@ namespace tagmane
             Properties.Settings.Default.WebPDllPath = _webpDllPath;
             
             // 選択されたVLMモデルを保存
-            if (VLMModelComboBox.SelectedItem is string selectedModel) { Properties.Settings.Default.SelectedVLMModel = selectedModel; }
+            if (VLMModelComboBox.SelectedIndex >= 0) 
+            { 
+                Properties.Settings.Default.SelectedVLMModel = _vlmModels[VLMModelComboBox.SelectedIndex].Name; 
+            }
             
             Properties.Settings.Default.Save();
             AddMainLogEntry("設定を保存しました。");
@@ -4574,11 +4578,11 @@ namespace tagmane
 
         private async void VLMModelComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (VLMModelComboBox.SelectedItem is string selectedModel)
+            if (VLMModelComboBox.SelectedIndex >= 0)
             {
-                var modelInfo = _vlmModels.First(m => m.Name == selectedModel);
+                var modelInfo = _vlmModels[VLMModelComboBox.SelectedIndex];
                 UpdateThresholds(modelInfo.GeneralThreshold, DefaultCharacterThreshold);
-                await LoadVLMModel(selectedModel);
+                await LoadVLMModel(modelInfo.Name);
 
                 // 設定を保存
                 SaveSettings();
@@ -4680,7 +4684,11 @@ namespace tagmane
 
             try
             {
-                AddMainLogEntry($"VLMモデル '{modelName}' の読み込みを開始します。");
+                // 表示用の名前を取得
+                var modelInfo = _vlmModels.FirstOrDefault(m => m.Name == modelName);
+                string displayName = modelInfo.DisplayName ?? modelName;
+                
+                AddMainLogEntry($"VLMモデル '{displayName}' の読み込みを開始します。");
                 await _vlmPredictor.LoadModel(modelName, useGpu, null, _vlmGpuId);
                 if (_vlmPredictor.IsGpuLoaded)
                 {
