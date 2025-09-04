@@ -4622,8 +4622,18 @@ namespace tagmane
 
             if (_isInitializeSuccess)
             {
-                await LoadVLMModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false);
+                await LoadVLMModel(GetSelectedVLMModelName(), UseGPUCheckBox.IsChecked ?? false);
             }
+        }
+
+        private string GetSelectedVLMModelName()
+        {
+            var selectedIndex = VLMModelComboBox.SelectedIndex;
+            if (selectedIndex >= 0 && selectedIndex < _vlmModels.Count)
+            {
+                return _vlmModels[selectedIndex].Name;
+            }
+            return _vlmModels.FirstOrDefault().Name; // フォールバック
         }
         
         private async void VLMGpuSelectionComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -4635,7 +4645,7 @@ namespace tagmane
                 // GPU選択が変更されたら、モデルを再読み込み
                 if (UseGPUCheckBox.IsChecked == true)
                 {
-                    await LoadVLMModel(VLMModelComboBox.SelectedItem as string, true);
+                    await LoadVLMModel(GetSelectedVLMModelName(), true);
                 }
             }
         }
@@ -4733,7 +4743,7 @@ namespace tagmane
                 // ボタンを無効化して、処理中であることを示す
                 VLMPredictButton.IsEnabled = false;
 
-                await _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false, null, _vlmGpuId);
+                await _vlmPredictor.LoadModel(GetSelectedVLMModelName(), UseGPUCheckBox.IsChecked ?? false, null, _vlmGpuId);
 
                 // キャンセルトークンソースを作成
                 _cts = new CancellationTokenSource();
@@ -4858,7 +4868,7 @@ namespace tagmane
                 VLMPredictButton.IsEnabled = false;
                 _cts = new CancellationTokenSource();
 
-                await _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false, null, _vlmGpuId);
+                await _vlmPredictor.LoadModel(GetSelectedVLMModelName(), UseGPUCheckBox.IsChecked ?? false, null, _vlmGpuId);
 
                 // 選択範囲の画像を取得
                 var croppedImage = await GetSelectedRegion();
@@ -4929,7 +4939,7 @@ namespace tagmane
                 // ボタンを無効化して、処理中であることを示す
                 VLMPredictAllButton.IsEnabled = false;
 
-                await _vlmPredictor.LoadModel(VLMModelComboBox.SelectedItem as string, UseGPUCheckBox.IsChecked ?? false, null, _vlmGpuId);
+                await _vlmPredictor.LoadModel(GetSelectedVLMModelName(), UseGPUCheckBox.IsChecked ?? false, null, _vlmGpuId);
                 
                 AddMainLogEntry("すべての画像に対してVLM推論を開始します");
                 

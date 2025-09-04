@@ -88,48 +88,22 @@ namespace tagmane
         {
             AddLogEntry($"CelPredictor: LoadModel呼び出し - modelRepo: '{modelRepo}'");
             
-            // バージョン指定がある場合は分割して処理
-            string actualRepo = "cella110n/cl_tagger"; // デフォルトのリポジトリ名
+            // UIから渡される内部名を直接使用 (例: "cella110n/cl_tagger:cl_tagger_1_02")
+            string actualRepo;
             if (modelRepo.Contains(":"))
             {
                 var parts = modelRepo.Split(':');
                 actualRepo = parts[0];
-                // 表示名の余分な部分を削除（例: "cella110n/cl_tagger (1.02)" -> "cella110n/cl_tagger"）
-                if (actualRepo.Contains(" "))
-                {
-                    actualRepo = actualRepo.Split(' ')[0];
-                }
                 MODEL_SUBDIR = parts[1];
-                AddLogEntry($"リポジトリからモデルを読み込みます: {actualRepo} (バージョン: {MODEL_SUBDIR})");
             }
             else
             {
-                // コロンが含まれていない場合は、parenthesesからバージョンを抽出
-                if (modelRepo.Contains("(") && modelRepo.Contains(")"))
-                {
-                    // "cella110n/cl_tagger (1.02)" から "1.02" を抽出
-                    var startIndex = modelRepo.LastIndexOf('(') + 1;
-                    var endIndex = modelRepo.LastIndexOf(')');
-                    var version = modelRepo.Substring(startIndex, endIndex - startIndex);
-                    MODEL_SUBDIR = $"cl_tagger_{version.Replace(".", "_")}"; // "1.02" -> "cl_tagger_1_02"
-                    actualRepo = modelRepo.Substring(0, modelRepo.IndexOf(' ')); // " (1.02)" 部分を削除
-                    AddLogEntry($"リポジトリからモデルを読み込みます: {actualRepo} (バージョン: {MODEL_SUBDIR})");
-                }
-                else
-                {
-                    // 古い形式または不明な形式の場合
-                    if (modelRepo.Contains(" "))
-                    {
-                        actualRepo = modelRepo.Split(' ')[0];
-                    }
-                    else
-                    {
-                        actualRepo = modelRepo;
-                    }
-                    MODEL_SUBDIR = "cl_tagger_1_01"; // 後方互換性のためのデフォルト
-                    AddLogEntry($"リポジトリからモデルを読み込みます: {actualRepo} (バージョン: {MODEL_SUBDIR})");
-                }
+                // 後方互換性のため（古い形式）
+                actualRepo = "cella110n/cl_tagger";
+                MODEL_SUBDIR = "cl_tagger_1_01";
             }
+            
+            AddLogEntry($"リポジトリからモデルを読み込みます: {actualRepo} (バージョン: {MODEL_SUBDIR})");
             
             // モデルファイルのパスを先に確認
             var modelDir = Path.Combine(Path.GetTempPath(), "tagmane", actualRepo.Split('/').Last(), MODEL_SUBDIR);
