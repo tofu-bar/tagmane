@@ -35,6 +35,7 @@ namespace tagmane
         private List<int> _qualityIndexes;
         private int _modelTargetSize;
         private const int MaxLogEntries = 20;
+        private static bool _enableDetailedLogs = false; // 詳細ログを無効化
 
         private const string MODEL_FILENAME = "model.onnx";
         private const string LABEL_FILENAME = "tag_mapping.json";
@@ -45,8 +46,10 @@ namespace tagmane
         public event EventHandler<string> LogUpdated;
         public bool IsGpuLoaded { get; private set; }
 
-        private void AddLogEntry(string message)
+        private void AddLogEntry(string message, bool isDetailedLog = false)
         {
+            if (isDetailedLog && !_enableDetailedLogs) return; // 詳細ログをスキップ
+            
             string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
             LogUpdated?.Invoke(this, $"CelPredictor: {logMessage}");
         }
@@ -560,7 +563,7 @@ namespace tagmane
 
             try
             {
-                AddLogEntry($"前処理開始: 画像サイズ {image.PixelWidth}x{image.PixelHeight}, リサイズモード: {_currentResizeMode}");
+                AddLogEntry($"前処理開始: 画像サイズ {image.PixelWidth}x{image.PixelHeight}, リサイズモード: {_currentResizeMode}", true);
                 
                 int width = image.PixelWidth;
                 int height = image.PixelHeight;
@@ -570,7 +573,7 @@ namespace tagmane
                 int padX = (squareSize - width) / 2;
                 int padY = (squareSize - height) / 2;
                 
-                AddLogEntry($"正方形パディング: {squareSize}x{squareSize} (パディング: X={padX}, Y={padY})");
+                AddLogEntry($"正方形パディング: {squareSize}x{squareSize} (パディング: X={padX}, Y={padY})", true);
                 
                 // 白背景の正方形画像を作成
                 byte[] squarePixels = new byte[squareSize * squareSize * 4];
@@ -606,7 +609,7 @@ namespace tagmane
                 
                 if (_currentResizeMode == ResizeMode.Bicubic)
                 {
-                    AddLogEntry($"BICUBICフィルタでリサイズ: {squareSize}x{squareSize} -> {_modelTargetSize}x{_modelTargetSize}");
+                    AddLogEntry($"BICUBICフィルタでリサイズ: {squareSize}x{squareSize} -> {_modelTargetSize}x{_modelTargetSize}", true);
                     resizedPixels = ResizeWithBicubic(
                         squarePixels, squareSize, squareSize, _modelTargetSize, _modelTargetSize);
                 }
@@ -648,7 +651,7 @@ namespace tagmane
                     minVal = Math.Min(minVal, val);
                     maxVal = Math.Max(maxVal, val);
                 }
-                AddLogEntry($"テンソル作成完了: 形状={string.Join(",", tensor.Dimensions.ToArray())}, 値範囲={minVal}～{maxVal}");
+                AddLogEntry($"テンソル作成完了: 形状={string.Join(",", tensor.Dimensions.ToArray())}, 値範囲={minVal}～{maxVal}", true);
                 
                 return tensor;
             }
@@ -676,13 +679,13 @@ namespace tagmane
 
             try
             {
-                AddLogEntry("推論を実行しています");
-                AddLogEntry($"generalThresh: {generalThresh}");
-                AddLogEntry($"generalMcutEnabled: {generalMcutEnabled}");
-                AddLogEntry($"characterThresh: {characterThresh}");
-                AddLogEntry($"characterMcutEnabled: {characterMcutEnabled}");
-                AddLogEntry($"minimumThresh: {minimumThresh}");
-                AddLogEntry($"入力テンソル形状: {string.Join(", ", inputTensor.Dimensions.ToArray())}");
+                AddLogEntry("推論を実行しています", true);
+                AddLogEntry($"generalThresh: {generalThresh}", true);
+                AddLogEntry($"generalMcutEnabled: {generalMcutEnabled}", true);
+                AddLogEntry($"characterThresh: {characterThresh}", true);
+                AddLogEntry($"characterMcutEnabled: {characterMcutEnabled}", true);
+                AddLogEntry($"minimumThresh: {minimumThresh}", true);
+                AddLogEntry($"入力テンソル形状: {string.Join(", ", inputTensor.Dimensions.ToArray())}", true);
                 
                 // テンソルの値の範囲を確認
                 float minVal = float.MaxValue;
@@ -692,7 +695,7 @@ namespace tagmane
                     minVal = Math.Min(minVal, val);
                     maxVal = Math.Max(maxVal, val);
                 }
-                AddLogEntry($"入力テンソルの値の範囲: {minVal} to {maxVal}");
+                AddLogEntry($"入力テンソルの値の範囲: {minVal} to {maxVal}", true);
 
                 var inputs = new List<NamedOnnxValue> { 
                     NamedOnnxValue.CreateFromTensor(_modelInputName, inputTensor) 
@@ -701,7 +704,7 @@ namespace tagmane
                 using (var outputs = _model.Run(inputs))
                 {
                     var predictions = outputs.First().AsEnumerable<float>().ToArray();
-                    AddLogEntry($"出力テンソルサイズ: {predictions.Length}");
+                    AddLogEntry($"出力テンソルサイズ: {predictions.Length}", true);
 
                     // シグモイド関数で確率に変換
                     var probs = new float[predictions.Length];
@@ -734,7 +737,7 @@ namespace tagmane
                         if (maxIndex >= 0)
                         {
                             rating = _tagNames[maxIndex]; // 既にLoadLabelsで変換済み
-                            AddLogEntry($"レーティングタグ: {rating} ({maxProb:F3})");
+                            AddLogEntry($"レーティングタグ: {rating} ({maxProb:F3})", true);
                         }
                         else if (_ratingIndexes.Count > 0)
                         {
@@ -761,7 +764,7 @@ namespace tagmane
                         if (maxIndex >= 0)
                         {
                             quality = _tagNames[maxIndex]; // 既にLoadLabelsで変換済み
-                            AddLogEntry($"Qualityタグ: {quality} ({maxProb:F3})");
+                            AddLogEntry($"Qualityタグ: {quality} ({maxProb:F3})", true);
                         }
                         else if (_qualityIndexes.Count > 0)
                         {
@@ -781,11 +784,7 @@ namespace tagmane
                         }
                     }
                     var generalFilteredCount = generalTagsBeforeFilter - generalTags.Count;
-                    if (generalFilteredCount > 0)
-                    {
-                        AddLogEntry($"一般タグ: 効果的な閾値 {effectiveGeneralThreshold:F3} により {generalFilteredCount}/{generalTagsBeforeFilter} 個が削除されました");
-                    }
-                    AddLogEntry($"一般タグ: {generalTags.Count}個が残りました");
+                    // 一般タグフィルタリング完了（詳細ログは削除）
                     
                     // キャラクタータグの処理
                     var effectiveCharacterThreshold = Math.Max(characterThresh, minimumThresh);
@@ -799,11 +798,7 @@ namespace tagmane
                         }
                     }
                     var characterFilteredCount = characterTagsBeforeFilter - characterTags.Count;
-                    if (characterFilteredCount > 0)
-                    {
-                        AddLogEntry($"キャラクタータグ: 効果的な閾値 {effectiveCharacterThreshold:F3} により {characterFilteredCount}/{characterTagsBeforeFilter} 個が削除されました");
-                    }
-                    AddLogEntry($"キャラクタータグ: {characterTags.Count}個が残りました");
+                    // キャラクタータグフィルタリング完了（詳細ログは削除）
                     
                     // その他のタグ（著作権とメタ）の処理
                     var otherTagsBeforeFilter = 0;
@@ -816,11 +811,7 @@ namespace tagmane
                         }
                     }
                     var otherFilteredCount = otherTagsBeforeFilter - otherTags.Count;
-                    if (otherFilteredCount > 0)
-                    {
-                        AddLogEntry($"その他のタグ: 効果的な閾値 {effectiveGeneralThreshold:F3} により {otherFilteredCount}/{otherTagsBeforeFilter} 個が削除されました");
-                    }
-                    AddLogEntry($"その他のタグ: {otherTags.Count}個が残りました");
+                    // その他のタグフィルタリング完了（詳細ログは削除）
                     
                     // メタタグのフィルタリング
                     var filteredMetaTags = new List<(string, float)>();
@@ -835,12 +826,11 @@ namespace tagmane
                         if (!shouldExclude)
                         {
                             filteredMetaTags.Add((tag, confidence));
-                            AddLogEntry($"  メタタグ: {tag}: {confidence:F3}");
+                            // メタタグ追加（詳細ログは削除）
                         }
                         else
                         {
-                            // フィルタリングされたタグもログに記録（ただし[FILTERED]マーク付き）
-                            AddLogEntry($"  [FILTERED] メタタグ: {tag}: {confidence:F3}");
+                            // メタタグフィルタリング（詳細ログは削除）
                         }
                     }
 
@@ -881,12 +871,7 @@ namespace tagmane
                     // すべてのタグを確率順にソート
                     var sortedGeneralStrings = string.Join(", ", allTags.OrderByDescending(x => x.Value).Select(x => x.Key));
                     
-                    AddLogEntry($"最終フィルタリング結果: 全{allTags.Count}個のタグが残りました");
-                    if (sortedGeneralStrings.Length > 100) {
-                        AddLogEntry($"ソート済みタグ（先頭100文字）: {sortedGeneralStrings.Substring(0, 100)}...");
-                    } else {
-                        AddLogEntry($"ソート済みタグ（全カテゴリ）: {sortedGeneralStrings}");
-                    }
+                    // 最終フィルタリング完了（詳細ログは削除）
                     
                     // レーティング辞書を作成
                     var ratingDict = new Dictionary<string, float>();

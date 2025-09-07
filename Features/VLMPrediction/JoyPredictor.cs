@@ -21,12 +21,15 @@ namespace tagmane
         private const string MODEL_FILENAME = "model.onnx";
         private const string LABEL_FILENAME = "top_tags.txt";
         private const string MODEL_REPO = "fancyfeast/joytag";
+        private static bool _enableDetailedLogs = false; // 詳細ログを無効化
 
         public event EventHandler<string> LogUpdated;
         public bool IsGpuLoaded { get; private set; }
 
-        private void AddLogEntry(string message)
+        private void AddLogEntry(string message, bool isDetailedLog = false)
         {
+            if (isDetailedLog && !_enableDetailedLogs) return; // 詳細ログをスキップ
+            
             string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
             LogUpdated?.Invoke(this, $"JoyPredictor: {logMessage}");
         }

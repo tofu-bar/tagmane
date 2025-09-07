@@ -65,6 +65,9 @@ namespace tagmane
         
         private int _logUpdateIntervalMs = 500;
         private int _vlmUpdateIntervalMs = 1000;
+        
+        // 詳細ログ制御フラグ
+        private static bool _enableDetailedLogs = false;
 
         private bool _isInitializeSuccess = false;
         private FileExplorer _fileExplorer;
@@ -720,7 +723,7 @@ namespace tagmane
                     {
                         imageInfo.Tags.Add(tag);
                     }
-                    AddMainLogEntry($"{imageInfo.ImagePath}に{newTags.Count}個のタグを追加しました");
+                    AddMainLogEntry($"{imageInfo.ImagePath}に{newTags.Count}個のタグを追加しました", true);
                 },
                 UndoAction = () =>
                 {
@@ -1038,8 +1041,10 @@ namespace tagmane
             _debugLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} - {message}");
         }
 
-        public void AddMainLogEntry(string message)
+        public void AddMainLogEntry(string message, bool isDetailedLog = false)
         {
+            if (isDetailedLog && !_enableDetailedLogs) return; // 詳細ログをスキップ
+            
             _logQueue.Enqueue($"{DateTime.Now:HH:mm:ss} - {message}");
         }
 
@@ -2352,7 +2357,7 @@ namespace tagmane
                             {
                                 selectedImage.Tags.Insert(tagInfo.Position, tagInfo.Tag);
                             }
-                            AddMainLogEntry($"{addedTags.Count}個のタグを追加しました");
+                            AddMainLogEntry($"{addedTags.Count}個のタグを追加しました", true);
                         },
                         UndoAction = () =>
                         {   
@@ -3205,7 +3210,7 @@ namespace tagmane
                             var image = kvp.Key;
                             image.Tags.AddRange(kvp.Value);
                         }
-                        AddMainLogEntry($"{addedTags.Sum(kvp => kvp.Value.Count)}個のタグを追加しました。");
+                        AddMainLogEntry($"{addedTags.Sum(kvp => kvp.Value.Count)}個のタグを追加しました。", true);
                     },
                     UndoAction = () =>
                     {

@@ -21,6 +21,9 @@ public class AsyncPipelineService
     private readonly Counter[] _processedItemsCounter;
     private readonly List<PipelineStage> _pipelineStages;
     
+    // パイプライン実行時のblocks参照用
+    private List<TransformBlock<object?, object?>>? _currentBlocks = null;
+    
     private readonly Dictionary<int, SemaphoreSlim> _gpuSemaphores = new();
     private readonly Dictionary<int, Counter> _gpuSemaphoreNoopObtainedCounters = new();
 
@@ -28,8 +31,18 @@ public class AsyncPipelineService
     private readonly Dictionary<int, RingBuffer<double>> _stageProcessingTimes = new();
     private const int TIMING_WINDOW_SIZE = 10;
 
-    private const int MIN_RECORDS_FOR_ADJUSTMENT = 10; // 調整開始までに必要な最小レコード数
-    private const int ADJUSTMENT_INTERVAL_MS = 5000;   // 調整間隔（ミリ秒）
+    // スループット監視用
+    private readonly Dictionary<int, RingBuffer<double>> _stageThroughput = new();
+    private readonly Dictionary<int, DateTime> _stageLastProcessTime = new();
+    private readonly Dictionary<int, int> _stageProcessedCount = new();
+    
+    // キュー長監視用
+    private readonly Dictionary<int, int> _stageQueueLengths = new();
+    private readonly object _queueMonitorLock = new object();
+    
+    private const int MIN_RECORDS_FOR_ADJUSTMENT = 2; // 調整開始までに必要な最小レコード数（さらに短縮）
+    private const int ADJUSTMENT_INTERVAL_MS = 2000;   // 調整間隔（ミリ秒）（さらに短縮）
+    private const int TARGET_QUEUE_LENGTH = 2; // 目標キュー長
     private DateTime _lastAdjustmentTime = DateTime.MinValue;
 
     private void AddLogEntry(string message)
@@ -48,6 +61,10 @@ public class AsyncPipelineService
         _processedItemsCounter = new Counter[_pipelineStages.Count];
         for (int i = 0; i < _pipelineStages.Count; i++) {
             _stageProcessingTimes[i] = new RingBuffer<double>(TIMING_WINDOW_SIZE);
+            _stageThroughput[i] = new RingBuffer<double>(TIMING_WINDOW_SIZE);
+            _stageLastProcessTime[i] = DateTime.Now;
+            _stageProcessedCount[i] = 0;
+            _stageQueueLengths[i] = 0;
             _processedItemsCounter[i] = new Counter();
             if (_pipelineStages[i].IsGpuStage) {
                 _gpuSemaphores[i] = new SemaphoreSlim(gpuConcurrencyLimit);
@@ -69,48 +86,147 @@ public class AsyncPipelineService
     private void ReportStageProcessingTime(int stageIndex, double processingTimeMs)
     {
         _stageProcessingTimes[stageIndex].Enqueue(processingTimeMs);
+        
+        // スループット計算（枚/秒）
+        var throughput = processingTimeMs > 0 ? 1000.0 / processingTimeMs : 0;
+        _stageThroughput[stageIndex].Enqueue(throughput);
+        
+        // 処理カウントと時間の更新
+        _stageProcessedCount[stageIndex]++;
+        _stageLastProcessTime[stageIndex] = DateTime.Now;
     }
 
-    private int AdjustGpuConcurrency(int stageIndex, double currentProcessingTimeMs)
+    private double CalculateCurrentThroughput(int stageIndex)
     {
-        var previousStageProcessingTime = GetAveragePreviousStageProcessingTime(stageIndex);
-        if (previousStageProcessingTime <= 0) return 0;
+        var throughputBuffer = _stageThroughput[stageIndex];
+        if (throughputBuffer.Count == 0) return 0;
+        
+        return throughputBuffer.Average(); // 枚/秒
+    }
+
+    private void UpdateQueueLength(int stageIndex, int queueLength)
+    {
+        lock (_queueMonitorLock)
+        {
+            _stageQueueLengths[stageIndex] = queueLength;
+        }
+    }
+
+    private int GetQueueLength(int stageIndex)
+    {
+        lock (_queueMonitorLock)
+        {
+            return _stageQueueLengths.GetValueOrDefault(stageIndex, 0);
+        }
+    }
+
+    private int AdjustGpuConcurrency(int stageIndex, double currentProcessingTimeMs, int currentQueueLength = 0)
+    {
+        AddLogEntry($"並列度調整チェック開始 - Stage:{stageIndex}, Queue:{currentQueueLength}, ProcessTime:{currentProcessingTimeMs:F1}ms");
+        
+        // 前回の調整から十分な時間が経過しているか確認
+        if ((DateTime.Now - _lastAdjustmentTime).TotalMilliseconds < ADJUSTMENT_INTERVAL_MS) 
+        {
+            AddLogEntry($"調整間隔未達 - 経過時間:{(DateTime.Now - _lastAdjustmentTime).TotalMilliseconds:F0}ms < {ADJUSTMENT_INTERVAL_MS}ms");
+            return 0;
+        }
 
         // 十分なレコードが蓄積されているか確認
-        var previousStageIndex = stageIndex - 1;
-        if (_stageProcessingTimes[previousStageIndex].Count < MIN_RECORDS_FOR_ADJUSTMENT) return 0;
-
-        // 前回の調整から十分な時間が経過しているか確認
-        if ((DateTime.Now - _lastAdjustmentTime).TotalMilliseconds < ADJUSTMENT_INTERVAL_MS) return 0;
+        if (_stageThroughput[stageIndex].Count < MIN_RECORDS_FOR_ADJUSTMENT) 
+        {
+            AddLogEntry($"レコード不足 - 現在:{_stageThroughput[stageIndex].Count} < 必要:{MIN_RECORDS_FOR_ADJUSTMENT}");
+            return 0;
+        }
 
         lock (_concurrencyLock)
         {
             _lastAdjustmentTime = DateTime.Now;
-
             var newLimit = _currentGpuConcurrencyLimit;
-            
-            // 調整ロジックをより慎重に
-            var ratio = currentProcessingTimeMs / previousStageProcessingTime;
-            
-            if (ratio > 1.2)
+            var adjustmentReason = "";
+
+            // 1. キュー長ベースの調整（最優先）
+            if (currentQueueLength > TARGET_QUEUE_LENGTH * 3)
             {
-                // 処理時間が20%以上長い場合は減少
-                newLimit = Math.Max(1, _currentGpuConcurrencyLimit - 1);
-                AddLogEntry($"GPU並列度を下げます: {_currentGpuConcurrencyLimit} → {newLimit} (比率: {ratio:F2})");
+                // キューが著しく長い場合は並列度を大幅に上げる
+                var increase = Math.Min(2, _initialGpuConcurrencyLimit - _currentGpuConcurrencyLimit);
+                newLimit = Math.Min(_currentGpuConcurrencyLimit + increase, _initialGpuConcurrencyLimit);
+                adjustmentReason = $"キュー長過大 (Q:{currentQueueLength})";
             }
-            else if (ratio < 0.9)
+            else if (currentQueueLength > TARGET_QUEUE_LENGTH * 1.5)
             {
-                // 処理時間が10%以上短い場合は増加
-                newLimit = Math.Min(_initialGpuConcurrencyLimit, _currentGpuConcurrencyLimit + 1);
-                AddLogEntry($"GPU並列度を上げます: {_currentGpuConcurrencyLimit} → {newLimit} (比率: {ratio:F2})");
+                // キューがやや長い場合は並列度を上げる
+                newLimit = Math.Min(_currentGpuConcurrencyLimit + 1, _initialGpuConcurrencyLimit);
+                adjustmentReason = $"キュー長高 (Q:{currentQueueLength})";
+            }
+            else if (currentQueueLength == 0 && _currentGpuConcurrencyLimit > 1)
+            {
+                // 2. スループットベースの調整
+                var previousStageIndex = stageIndex - 1;
+                if (previousStageIndex >= 0)
+                {
+                    var currentThroughput = CalculateCurrentThroughput(stageIndex);
+                    var previousThroughput = CalculateCurrentThroughput(previousStageIndex);
+                    
+                    if (previousThroughput > 0 && currentThroughput > 0)
+                    {
+                        var throughputRatio = previousThroughput / currentThroughput;
+                        
+                        if (throughputRatio > 1.5 && _currentGpuConcurrencyLimit < _initialGpuConcurrencyLimit)
+                        {
+                            // 前段のスループットが現段より50%以上高い場合は並列度を上げる
+                            newLimit = Math.Min(_currentGpuConcurrencyLimit + 1, _initialGpuConcurrencyLimit);
+                            adjustmentReason = $"スループット不均衡 (前段:{previousThroughput:F1}→現段:{currentThroughput:F1}枚/秒)";
+                        }
+                        else if (throughputRatio < 0.8)
+                        {
+                            // 前段より現段の方が20%以上速い場合は並列度を下げる
+                            newLimit = Math.Max(_currentGpuConcurrencyLimit - 1, 1);
+                            adjustmentReason = $"GPU過剰 (前段:{previousThroughput:F1}→現段:{currentThroughput:F1}枚/秒)";
+                        }
+                    }
+                }
+                
+                // キューが空で他に調整要因がない場合は並列度を下げる
+                if (adjustmentReason == "" && _currentGpuConcurrencyLimit > 1)
+                {
+                    newLimit = Math.Max(_currentGpuConcurrencyLimit - 1, 1);
+                    adjustmentReason = "キュー空";
+                }
+            }
+            
+            // 3. 理論値による上限チェック（Little's Lawの適用）
+            var previousStageProcessingTime = GetAveragePreviousStageProcessingTime(stageIndex);
+            if (previousStageProcessingTime > 0)
+            {
+                var theoreticalOptimalParallelism = Math.Ceiling(currentProcessingTimeMs / previousStageProcessingTime);
+                var maxTheoreticalLimit = Math.Min((int)theoreticalOptimalParallelism + 1, _initialGpuConcurrencyLimit);
+                
+                if (newLimit > maxTheoreticalLimit)
+                {
+                    newLimit = maxTheoreticalLimit;
+                    adjustmentReason += $" [理論上限:{theoreticalOptimalParallelism:F1}]";
+                }
+            }
+
+            // 段階的調整（急激な変化を抑制）
+            var maxChange = Math.Max(1, _initialGpuConcurrencyLimit / 4); // 最大25%ずつ変更
+            if (newLimit > _currentGpuConcurrencyLimit + maxChange)
+            {
+                newLimit = _currentGpuConcurrencyLimit + maxChange;
+            }
+            else if (newLimit < _currentGpuConcurrencyLimit - maxChange)
+            {
+                newLimit = _currentGpuConcurrencyLimit - maxChange;
             }
 
             newLimit = Math.Max(1, Math.Min(_initialGpuConcurrencyLimit, newLimit));
             
             if (newLimit != _currentGpuConcurrencyLimit)
             {
+                AddLogEntry($"GPU並列度調整: {_currentGpuConcurrencyLimit} → {newLimit} ({adjustmentReason})");
                 _currentGpuConcurrencyLimit = newLimit;
             }
+            
             return newLimit;
         }
     }
@@ -135,6 +251,7 @@ public class AsyncPipelineService
         });
 
         var blocks = new List<TransformBlock<object?, object?>>();
+        _currentBlocks = blocks; // 参照を保存
         using var semaphoreCPU = new SemaphoreSlim(_cpuConcurrencyLimit);
         _currentGpuConcurrencyLimit = 1;
 
@@ -178,13 +295,29 @@ public class AsyncPipelineService
 
                                 if (stage.IsGpuStage)
                                 {
+                                    // キュー長を取得（可能な場合）
+                                    var currentQueueLength = 0;
+                                    try 
+                                    {
+                                        // _currentBlocksを使用してキュー長を取得
+                                        if (_currentBlocks != null && stageIndex < _currentBlocks.Count)
+                                        {
+                                            currentQueueLength = _currentBlocks[stageIndex].InputCount;
+                                            UpdateQueueLength(stageIndex, currentQueueLength);
+                                        }
+                                    }
+                                    catch 
+                                    {
+                                        // キュー長取得に失敗した場合は0とする
+                                        currentQueueLength = 0;
+                                    }
+
                                     var oldLimit = _currentGpuConcurrencyLimit;
-                                    var newLimit = AdjustGpuConcurrency(stageIndex, processingTime);
+                                    var newLimit = AdjustGpuConcurrency(stageIndex, processingTime, currentQueueLength);
                                     if (newLimit == 0) return result;
                                     // ロックを取得してないがスレッドセーフ（AdjustGpuConcurrencyの副作用）
                                     if (newLimit != oldLimit)
                                     {
-                                        AddLogEntry($"GPU並列度: {oldLimit} → {newLimit}");
                                         var targetLocksToTake = _initialGpuConcurrencyLimit - newLimit;
                                         var noopCounter = _gpuSemaphoreNoopObtainedCounters[stageIndex];
                                         while (noopCounter.Count() < targetLocksToTake)
@@ -302,6 +435,7 @@ public class AsyncPipelineService
         finally
         {
             _isProcessing = false;
+            _currentBlocks = null; // 参照をクリア
             AddLogEntry("パイプラインの処理が完了しました。");
             await statusReportTask;
             foreach (var block in blocks)

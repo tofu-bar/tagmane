@@ -22,6 +22,7 @@ namespace tagmane
         private List<int> _characterIndexes;
         private int _modelTargetSize;
         private const int MaxLogEntries = 20;
+        private static bool _enableDetailedLogs = false; // 詳細ログを無効化
 
         private const string MODEL_FILENAME = "model.onnx";
         private const string LABEL_FILENAME = "selected_tags.csv";
@@ -30,8 +31,10 @@ namespace tagmane
         public event EventHandler<string> LogUpdated;
         public bool IsGpuLoaded { get; private set; }
 
-        private void AddLogEntry(string message)
+        private void AddLogEntry(string message, bool isDetailedLog = false)
         {
+            if (isDetailedLog && !_enableDetailedLogs) return; // 詳細ログをスキップ
+            
             string logMessage = $"{DateTime.Now:HH:mm:ss} - {message}";
             LogUpdated?.Invoke(this, $"WDPredictor: {logMessage}");
         }
