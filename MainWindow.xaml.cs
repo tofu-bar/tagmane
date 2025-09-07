@@ -5972,7 +5972,7 @@ namespace tagmane
                     imagesToProcess,
                     fillColor,
                     _webPHandler,
-                    AddMainLogEntry,
+                    message => AddMainLogEntry(message),
                     progress,
                     enableRandomColorInversion: randomInvert
                 );
@@ -6091,7 +6091,7 @@ namespace tagmane
                     imagesToProcess,
                     resizeParams,
                     _webPHandler,
-                    AddMainLogEntry,
+                    message => AddMainLogEntry(message),
                     progress,
                     randomScaleVariation,
                     randomScaleStep
