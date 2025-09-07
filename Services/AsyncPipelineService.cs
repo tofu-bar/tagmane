@@ -48,11 +48,22 @@ public class AsyncPipelineService
     private void AddLogEntry(string message)
     {
         string logMessage = $"Pipeline: {DateTime.Now:HH:mm:ss} - {message}";
+        // デバッグ用：LogUpdatedイベントがnullでないかチェック
+        if (LogUpdated == null)
+        {
+            Console.WriteLine($"[DEBUG] LogUpdatedイベントがnullです: {logMessage}");
+        }
+        else
+        {
+            var handlerCount = LogUpdated.GetInvocationList().Length;
+            Console.WriteLine($"[DEBUG] LogUpdatedイベントを発火 (ハンドラー数: {handlerCount}): {logMessage}");
+        }
         LogUpdated?.Invoke(this, logMessage);
     }
 
     public AsyncPipelineService(int cpuConcurrencyLimit, int gpuConcurrencyLimit, List<PipelineStage> pipelineStages)
     {
+        Console.WriteLine($"[DEBUG] AsyncPipelineServiceコンストラクタ開始 - CPU:{cpuConcurrencyLimit}, GPU:{gpuConcurrencyLimit}");
         _cpuConcurrencyLimit = cpuConcurrencyLimit;
         _initialGpuConcurrencyLimit = gpuConcurrencyLimit;
         _currentGpuConcurrencyLimit = gpuConcurrencyLimit;        
@@ -122,7 +133,7 @@ public class AsyncPipelineService
 
     private int AdjustGpuConcurrency(int stageIndex, double currentProcessingTimeMs, int currentQueueLength = 0)
     {
-        AddLogEntry($"並列度調整チェック開始 - Stage:{stageIndex}, Queue:{currentQueueLength}, ProcessTime:{currentProcessingTimeMs:F1}ms");
+        AddLogEntry($"並列度調整チェック開始 - Stage:{stageIndex}, Queue:{currentQueueLength}, ProcessTime:{currentProcessingTimeMs:F1}ms, 現在並列度:{_currentGpuConcurrencyLimit}");
         
         // 前回の調整から十分な時間が経過しているか確認
         if ((DateTime.Now - _lastAdjustmentTime).TotalMilliseconds < ADJUSTMENT_INTERVAL_MS) 
@@ -235,10 +246,10 @@ public class AsyncPipelineService
         IAsyncEnumerable<TInput> inputs,
         CancellationTokenSource cts)
     {
+        Console.WriteLine("[DEBUG] ProcessAsync開始");
         AddLogEntry("パイプラインの処理を開始します。");
 
         _isProcessing = true;
-        _lastAdjustmentTime = DateTime.Now;
         var progressObservable = Observable.Interval(TimeSpan.FromMilliseconds(_statusUpdateIntervalMs))
             .ToAsyncEnumerable();
         var statusReportTask = Task.Run(async () =>

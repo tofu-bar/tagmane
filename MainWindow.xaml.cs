@@ -4948,7 +4948,9 @@ namespace tagmane
                 
                 AddMainLogEntry("すべての画像に対してVLM推論を開始します");
                 
+                AddMainLogEntry("ProcessVLMPredictAllInAsyncPipeline呼び出し開始");
                 await ProcessVLMPredictAllInAsyncPipeline();
+                AddMainLogEntry("ProcessVLMPredictAllInAsyncPipeline呼び出し完了");
                 
                 AddMainLogEntry("すべての画像に対するVLM推論が完了しました");
             }
@@ -4986,6 +4988,7 @@ namespace tagmane
 
         private async Task ProcessVLMPredictAllInAsyncPipeline()
         {   
+            AddMainLogEntry("ProcessVLMPredictAllInAsyncPipeline: 開始");
             _cts = new CancellationTokenSource();
 
             if (UseGPUCheckBox.IsChecked == true && !_vlmPredictor.IsGpuLoaded) {
@@ -5023,12 +5026,16 @@ namespace tagmane
                 })
             };
 
+            AddMainLogEntry($"AsyncPipelineService作成 - CPU並列度:{(int)VLMConcurrencySlider.Value}, GPU並列度:{(int)VLMConcurrencySlider.Value}");
             var asyncPipelineService = new AsyncPipelineService(
                 cpuConcurrencyLimit: (int)VLMConcurrencySlider.Value, 
                 gpuConcurrencyLimit: (int)VLMConcurrencySlider.Value,
                 pipelineStages
             );
+            Console.WriteLine($"[DEBUG] UpdatePipelineLogイベント接続開始");
             asyncPipelineService.LogUpdated += UpdatePipelineLog;
+            Console.WriteLine($"[DEBUG] UpdatePipelineLogイベント接続完了");
+            AddMainLogEntry("AsyncPipelineServiceログイベント接続完了");
 
             var totalImages = _imageInfos.Count;
             var stopwatch = Stopwatch.StartNew();
@@ -5044,9 +5051,11 @@ namespace tagmane
             };
 
             try {
+                AddMainLogEntry("AsyncPipelineService.ProcessAsync実行開始");
                 await asyncPipelineService.ProcessAsync<(ImageInfo, BitmapImage), ImageInfo>(
                     LoadAllBitmapImagesAsync(),
                     _cts);
+                AddMainLogEntry("AsyncPipelineService.ProcessAsync実行完了");
             } catch (OperationCanceledException) {
                 AddMainLogEntry("VLM推論がキャンセルされました");
             } finally {
@@ -5268,8 +5277,32 @@ namespace tagmane
         private void UpdatePipelineLog(object? sender, string log)
         {
             Dispatcher.Invoke(() => {
-                AddDebugLogEntry("UpdatePipelineLog");
+                // デバッグログは簡素化（確認用のみ）
+                if (log.Contains("GPU並列度調整:") || log.Contains("パイプラインの処理が完了"))
+                {
+                    AddDebugLogEntry("UpdatePipelineLog: 重要なイベント受信");
+                }
+                
                 _pipelineLogQueue.Enqueue($"{DateTime.Now:HH:mm:ss} - {log}");
+                
+                // 重要なログをメインログに詳細表示
+                if (log.Contains("GPU並列度調整:"))
+                {
+                    AddMainLogEntry($"[Pipeline] {log}");
+                }
+                else if (log.Contains("パイプラインの処理を開始"))
+                {
+                    AddMainLogEntry($"[Pipeline] パイプライン処理開始");
+                }
+                else if (log.Contains("パイプラインの処理が完了"))
+                {
+                    AddMainLogEntry($"[Pipeline] パイプライン処理完了");
+                }
+                // else if (log.Contains("並列度調整チェック開始"))
+                // {
+                //     // キューサイズと処理時間の詳細をメインログに表示
+                //     AddMainLogEntry($"[Pipeline] {log}");
+                // }
             });
         }
 
